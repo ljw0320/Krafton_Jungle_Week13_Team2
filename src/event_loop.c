@@ -9,6 +9,8 @@
 #include "event_loop.h"
 
 static int epfd;
+static int lfd;  // loop_unwatch가 재개할 listen fd
+static int accept_paused;
 
 int loop_watch(struct conn *c, uint32_t events) {
     struct epoll_event ev = {.events = events, .data.ptr = c};
@@ -22,9 +24,20 @@ int loop_watch(struct conn *c, uint32_t events) {
 }
 
 void loop_unwatch(struct conn *c) {
-    if (c->events == 0) return;
-    if (epoll_ctl(epfd, EPOLL_CTL_DEL, c->fd, NULL) < 0) perror("epoll_ctl");
-    c->events = 0;
+    if (c->events != 0) {
+        if (epoll_ctl(epfd, EPOLL_CTL_DEL, c->fd, NULL) < 0) perror("epoll_ctl");
+        c->events = 0;
+    }
+    // fd가 하나 비므로 accept 재개. 실제 accept는 다음 epoll_wait라 그때는 close된 뒤다
+    if (accept_paused) {
+        struct epoll_event ev = {.events = EPOLLIN, .data.ptr = NULL};
+        if (epoll_ctl(epfd, EPOLL_CTL_MOD, lfd, &ev) < 0) {
+            perror("epoll_ctl");
+            return;
+        }
+        accept_paused = 0;
+        fprintf(stderr, "accept resumed\n");
+    }
 }
 
 static void accept_all(int listen_fd) {
@@ -32,6 +45,17 @@ static void accept_all(int listen_fd) {
         int fd = accept4(listen_fd, NULL, NULL, SOCK_NONBLOCK);
         if (fd < 0) {
             if (errno == EINTR || errno == ECONNABORTED) continue;
+            if (errno == EMFILE || errno == ENFILE) {
+                // LT라 대기열이 남으면 계속 깨어나므로 감시를 끈다
+                struct epoll_event ev = {.events = 0, .data.ptr = NULL};
+                if (epoll_ctl(epfd, EPOLL_CTL_MOD, listen_fd, &ev) < 0) {
+                    perror("epoll_ctl");
+                    return;
+                }
+                accept_paused = 1;
+                fprintf(stderr, "accept paused\n");
+                return;
+            }
             if (errno != EAGAIN && errno != EWOULDBLOCK) perror("accept4");
             return;
         }
@@ -41,6 +65,7 @@ static void accept_all(int listen_fd) {
 }
 
 int loop_run(int listen_fd) {
+    lfd = listen_fd;
     epfd = epoll_create1(0);
     if (epfd < 0) {
         perror("epoll_create1");
