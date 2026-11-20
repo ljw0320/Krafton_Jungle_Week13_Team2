@@ -187,6 +187,7 @@ accept4 ──▶ READING (EPOLLIN 감시)
 	- 0이면 대기한다(rbuf가 차면 닫는다).
 	- -1이면 닫는다.
 	- `> 0`이면 `http_handle` → `memmove`로 처리한 요청 제거 → `WRITING` → `conn_on_writable`을 직접 호출한다.
+	- (2026-11-20 Task 5) 실제로는 `static int conn_send(c)`(-1 닫힘 / 0 남음 / 1 다 보내고 READING)로 나누고 `conn_process`를 루프로 둔다. `conn_on_writable`은 `conn_send`가 1이면 `conn_process`를 부른다. `conn_process` ↔ `conn_on_writable` 상호 재귀를 그대로 두면 파이프라이닝된 요청 수만큼 스택이 깊어지기 때문이다. 동작은 같다.
 - `conn_on_writable`: `send(fd, wbuf + woff, wlen - woff, 0)`를 한 번 호출한다.
 	- 남으면 `events`에 `EPOLLOUT`이 없을 때만 `loop_watch(EPOLLOUT)`를 부른다.
 	- 다 보내면 `free(wbuf)` 후 `keep_alive`면 `READING` + `loop_watch(EPOLLIN)` + rbuf가 남았을 때 `conn_process`, 아니면 `conn_close`.

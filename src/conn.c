@@ -1,15 +1,19 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
 #include "conn.h"
 #include "event_loop.h"
+#include "http.h"
 
 static struct conn *head;
 static int conn_count;
+
+static int conn_process(struct conn *c);
 
 struct conn *conn_new(int fd) {
     struct conn *c = calloc(1, sizeof(*c));
@@ -58,6 +62,60 @@ int conn_on_readable(struct conn *c) {
     c->rlen += (size_t)n;
     c->last_active = time(NULL);
     fprintf(stderr, "fd=%d recv %zd bytes\n", c->fd, n);
+    return conn_process(c);
+}
+
+// send 한 번. -1: 닫힘, 0: 남음(WRITING 유지), 1: 다 보내고 READING으로 돌아옴
+static int conn_send(struct conn *c) {
+    ssize_t n = send(c->fd, c->wbuf + c->woff, c->wlen - c->woff, 0);
+    if (n < 0) {
+        if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+            conn_close(c);
+            return -1;
+        }
+    } else {
+        c->woff += (size_t)n;
+        c->last_active = time(NULL);
+        fprintf(stderr, "fd=%d send %zd bytes\n", c->fd, n);
+    }
+    if (c->woff < c->wlen) {
+        if (!(c->events & EPOLLOUT) && loop_watch(c, EPOLLOUT) < 0) {
+            conn_close(c);
+            return -1;
+        }
+        return 0;
+    }
+    free(c->wbuf);
+    c->wbuf = NULL;
+    if (!c->keep_alive) {
+        conn_close(c);
+        return -1;
+    }
+    c->state = CONN_READING;
+    if (c->events != EPOLLIN && loop_watch(c, EPOLLIN) < 0) {
+        conn_close(c);
+        return -1;
+    }
+    return 1;
+}
+
+// rbuf의 완성된 요청을 차례로 처리한다. 재귀 대신 루프로 파이프라이닝을 처리한다
+static int conn_process(struct conn *c) {
+    for (;;) {
+        ssize_t n = http_request_len(c->rbuf, c->rlen);
+        if (n == 0) break;
+        if (n < 0 || http_handle(c->rbuf, (size_t)n, &c->wbuf, &c->wlen,
+                                 &c->keep_alive) < 0) {
+            conn_close(c);
+            return -1;
+        }
+        c->rlen -= (size_t)n;
+        memmove(c->rbuf, c->rbuf + n, c->rlen);
+        c->woff = 0;
+        c->state = CONN_WRITING;
+        int r = conn_send(c);
+        if (r <= 0) return r;
+    }
     // 꽉 찬 채로 돌아가면 다음 recv 크기가 0이라 FIN과 구분되지 않는다
     if (c->rlen == RBUF_SIZE) {
         conn_close(c);
@@ -67,6 +125,6 @@ int conn_on_readable(struct conn *c) {
 }
 
 int conn_on_writable(struct conn *c) {
-    (void)c;
-    return 0;
+    int r = conn_send(c);
+    return r == 1 ? conn_process(c) : r;
 }
