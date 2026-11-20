@@ -79,9 +79,12 @@ static int conn_send(struct conn *c) {
         fprintf(stderr, "fd=%d send %zd bytes\n", c->fd, n);
     }
     if (c->woff < c->wlen) {
-        if (!(c->events & EPOLLOUT) && loop_watch(c, EPOLLOUT) < 0) {
-            conn_close(c);
-            return -1;
+        if (!(c->events & EPOLLOUT)) {
+            if (loop_watch(c, EPOLLOUT) < 0) {
+                conn_close(c);
+                return -1;
+            }
+            fprintf(stderr, "fd=%d EPOLLOUT on\n", c->fd);
         }
         return 0;
     }
@@ -92,9 +95,12 @@ static int conn_send(struct conn *c) {
         return -1;
     }
     c->state = CONN_READING;
-    if (c->events != EPOLLIN && loop_watch(c, EPOLLIN) < 0) {
-        conn_close(c);
-        return -1;
+    if (c->events != EPOLLIN) {
+        if (loop_watch(c, EPOLLIN) < 0) {
+            conn_close(c);
+            return -1;
+        }
+        fprintf(stderr, "fd=%d EPOLLOUT off\n", c->fd);
     }
     return 1;
 }
