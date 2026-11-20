@@ -130,6 +130,18 @@ static int conn_process(struct conn *c) {
     return 0;
 }
 
+// '>': time()이 초 단위라 '>='면 9초대에 닫힌다. 실제 타임아웃은 10~11초
+void conn_sweep_idle(time_t now) {
+    struct conn *next;
+    for (struct conn *c = head; c; c = next) {
+        next = c->next;  // conn_close가 c를 해제하므로 먼저 저장
+        if (now - c->last_active > IDLE_TIMEOUT_SEC) {
+            fprintf(stderr, "fd=%d idle timeout\n", c->fd);
+            conn_close(c);
+        }
+    }
+}
+
 int conn_on_writable(struct conn *c) {
     int r = conn_send(c);
     return r == 1 ? conn_process(c) : r;

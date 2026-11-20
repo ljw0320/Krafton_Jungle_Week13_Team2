@@ -52,6 +52,7 @@ int loop_run(int listen_fd) {
         return -1;
     }
     struct epoll_event events[MAX_EVENTS];
+    time_t last_sweep = 0;
     for (;;) {
         int n = epoll_wait(epfd, events, MAX_EVENTS, 1000);
         if (n < 0) {
@@ -73,6 +74,11 @@ int loop_run(int listen_fd) {
             // -1이면 c는 이미 해제됐다
             if ((e & EPOLLIN) && conn_on_readable(c) < 0) continue;
             if (e & EPOLLOUT) conn_on_writable(c);
+        }
+        time_t now = time(NULL);
+        if (now != last_sweep) {
+            last_sweep = now;
+            conn_sweep_idle(now);
         }
     }
 }

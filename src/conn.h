@@ -6,6 +6,7 @@
 #include <time.h>
 
 #define RBUF_SIZE 8192
+#define IDLE_TIMEOUT_SEC 10
 
 enum conn_state { CONN_READING, CONN_WRITING };
 
@@ -28,5 +29,6 @@ struct conn *conn_new(int fd);
 void conn_close(struct conn *c);
 int conn_on_readable(struct conn *c);
 int conn_on_writable(struct conn *c);
+void conn_sweep_idle(time_t now);
 
 #endif
