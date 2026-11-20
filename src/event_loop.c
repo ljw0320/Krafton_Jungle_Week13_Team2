@@ -5,11 +5,28 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include "conn.h"
 #include "event_loop.h"
 
 static int epfd;
 
-// 3단계 임시: accept한 fd는 로그만 찍고 닫는다
+int loop_watch(struct conn *c, uint32_t events) {
+    struct epoll_event ev = {.events = events, .data.ptr = c};
+    int op = c->events == 0 ? EPOLL_CTL_ADD : EPOLL_CTL_MOD;
+    if (epoll_ctl(epfd, op, c->fd, &ev) < 0) {
+        perror("epoll_ctl");
+        return -1;
+    }
+    c->events = events;
+    return 0;
+}
+
+void loop_unwatch(struct conn *c) {
+    if (c->events == 0) return;
+    if (epoll_ctl(epfd, EPOLL_CTL_DEL, c->fd, NULL) < 0) perror("epoll_ctl");
+    c->events = 0;
+}
+
 static void accept_all(int listen_fd) {
     for (;;) {
         int fd = accept4(listen_fd, NULL, NULL, SOCK_NONBLOCK);
@@ -19,7 +36,7 @@ static void accept_all(int listen_fd) {
             return;
         }
         fprintf(stderr, "accept fd=%d\n", fd);
-        close(fd);
+        conn_new(fd);
     }
 }
 
@@ -42,7 +59,20 @@ int loop_run(int listen_fd) {
             perror("epoll_wait");
             return -1;
         }
-        for (int i = 0; i < n; i++)
-            if (events[i].data.ptr == NULL) accept_all(listen_fd);
+        for (int i = 0; i < n; i++) {
+            struct conn *c = events[i].data.ptr;
+            uint32_t e = events[i].events;
+            if (c == NULL) {
+                accept_all(listen_fd);
+                continue;
+            }
+            if (e & (EPOLLERR | EPOLLHUP)) {
+                conn_close(c);
+                continue;
+            }
+            // -1이면 c는 이미 해제됐다
+            if ((e & EPOLLIN) && conn_on_readable(c) < 0) continue;
+            if (e & EPOLLOUT) conn_on_writable(c);
+        }
     }
 }
