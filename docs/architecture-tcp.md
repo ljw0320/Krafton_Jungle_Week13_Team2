@@ -14,7 +14,7 @@
 | 수신 버퍼 | `rbuf[8192]` 고정 | 버퍼가 찼는데도 요청이 완성되지 않으면 연결을 닫는다. 나중에 431로 바꾼다 |
 
 환경 확인 결과 (2026-11-20)
-- WSL: Ubuntu 24.04, gcc 13.3, make, curl, nc, ss, python3가 있다. `valgrind`, `strace`, `ab`는 없다.
+- WSL: Ubuntu 24.04, gcc 13.3, make, curl, nc, ss, python3가 있다. `ab`는 없다. `valgrind` 3.22, `strace` 6.8은 2026-11-20 Task 9 전에 설치했다.
 - WSL의 `ulimit -n`은 10240이다. EMFILE 테스트는 한도를 직접 낮춰서 한다.
 - 레포 git이 `core.autocrlf=true`다. Makefile, 셸 스크립트가 CRLF로 체크아웃되면 WSL에서 깨질 수 있으므로 `.gitattributes`를 둔다.
 
@@ -124,7 +124,7 @@ accept4 ──▶ READING (EPOLLIN 감시)
 
 ## `conn_close` 순서
 
-1. `loop_unwatch(c)`: `EPOLL_CTL_DEL` (`close` 전에 해야 한다)
+1. `loop_unwatch(c)`: `EPOLL_CTL_DEL` (`close` 전에 해야 한다). `c->events == 0`(등록 전에 `conn_new`의 `loop_watch`가 실패한 경우)이면 DEL을 건너뛴다. 어느 쪽이든 accept가 멈춰 있으면 다시 켠다. 이를 위해 `listen_fd`를 `event_loop.c`의 `static int lfd`로 저장한다(2026-11-20 Task 8).
 2. `close(c->fd)`
 3. `free(c->wbuf)`
 4. 리스트에서 제거
@@ -259,4 +259,5 @@ accept4 ──▶ READING (EPOLLIN 감시)
 - 1초마다 전체 연결을 순회한다(O(연결 수)). 연결이 많아지면 `last_active` 순서 리스트로 바꾼다. 활동이 생긴 연결을 리스트 끝으로 옮기면 앞에서부터 검사하다가 멈출 수 있다.
 - 프록시를 붙이면 한 이벤트 배치 안에서 다른 연결(`peer`)이 해제될 수 있다. 그때 해제를 배치 끝으로 미루는 방법을 검토한다.
 - 셧다운이 없어서 valgrind는 `Ctrl+C` 종료 후 `definitely lost`만 확인할 수 있다. 시그널 셧다운을 만들면 남은 연결 전부를 `conn_close`하고 다시 확인한다.
+- accept 재개는 연결이 닫힐 때만 일어난다. 열린 연결이 0개인데 `ENFILE`(다른 프로세스가 시스템 전체 fd를 씀)로 멈추면 다시 켜지지 않는다. 필요해지면 1초 sweep에서 재개를 다시 시도한다(2026-11-20 최종 리뷰).
 - 이번 계획에서 뺀 것: Dockerfile, 부하 테스트 도구(`ab`/`wrk`), 설정 파일, 시그널 셧다운.

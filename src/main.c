@@ -8,7 +8,7 @@
 
 int main(int argc, char **argv) {
     long port = 0;
-    char *end = argv[argc > 1 ? 1 : 0];
+    char *end = NULL;
     if (argc == 2) {
         errno = 0;
         port = strtol(argv[1], &end, 10);
