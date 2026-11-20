@@ -1,6 +1,10 @@
 #include <errno.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
+
+#include "server.h"
 
 int main(int argc, char **argv) {
     long port = 0;
@@ -13,6 +17,8 @@ int main(int argc, char **argv) {
         fprintf(stderr, "usage: ./server <port>\n");
         return 1;
     }
-    printf("port=%ld\n", port);
+    signal(SIGPIPE, SIG_IGN);
+    if (server_listen((uint16_t)port) < 0) exit(1);
+    pause();  // 2단계 임시: 3단계에서 loop_run으로 교체
     return 0;
 }
