@@ -2,8 +2,8 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 
+#include "event_loop.h"
 #include "server.h"
 
 int main(int argc, char **argv) {
@@ -18,7 +18,8 @@ int main(int argc, char **argv) {
         return 1;
     }
     signal(SIGPIPE, SIG_IGN);
-    if (server_listen((uint16_t)port) < 0) exit(1);
-    pause();  // 2단계 임시: 3단계에서 loop_run으로 교체
+    int listen_fd = server_listen((uint16_t)port);
+    if (listen_fd < 0) exit(1);
+    if (loop_run(listen_fd) < 0) exit(1);
     return 0;
 }

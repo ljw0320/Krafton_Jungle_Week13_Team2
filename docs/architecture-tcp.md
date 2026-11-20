@@ -49,7 +49,7 @@ src/
 |---|---|---|
 | `main.c` | `main` | `argv[1]`을 `strtol`로 검사한다(1~65535가 아니면 사용법을 출력하고 `exit(1)`). `signal(SIGPIPE, SIG_IGN)` 후 `server_listen(port)`를 부르고, -1이면 `exit(1)`한다. 이어서 `loop_run(listen_fd)`를 부르고, -1을 반환하면 `exit(1)`한다 |
 | `server.c` | `int server_listen(uint16_t port)` | `socket` → `SO_REUSEADDR` → `bind(0.0.0.0)` → `listen(SOMAXCONN)` → `O_NONBLOCK`. 실패하면 `perror` 후 -1을 반환한다 |
-| `event_loop.c` | `int loop_run(int listen_fd)`<br>`int loop_watch(struct conn *c, uint32_t events)`<br>`void loop_unwatch(struct conn *c)` | `loop_run`은 `epoll_create1`이나 `listen_fd` 등록이 실패하면 `perror` 후 -1을 반환하고, 그 밖에는 반환하지 않는다. `epoll` fd는 이 파일의 `static` 변수로 두고 다른 파일은 직접 만지지 않는다. `loop_watch`는 처음이면 `EPOLL_CTL_ADD`, 이후에는 `EPOLL_CTL_MOD`를 부르고 `c->events`에 현재 값을 기록한다. `loop_unwatch`는 `EPOLL_CTL_DEL`을 부르고, accept가 멈춰 있으면 다시 켠다(EMFILE 처리) |
+| `event_loop.c` | `int loop_run(int listen_fd)`<br>`int loop_watch(struct conn *c, uint32_t events)`<br>`void loop_unwatch(struct conn *c)` | `loop_run`은 `epoll_create1`이나 `listen_fd` 등록이 실패하거나 `epoll_wait`이 `EINTR`이 아닌 오류를 내면 `perror` 후 -1을 반환하고, 그 밖에는 반환하지 않는다(2026-11-20 Task 3: `epoll_wait` 실패를 `continue`하면 같은 오류로 CPU 100% 무한 루프가 되므로 추가). `epoll` fd는 이 파일의 `static` 변수로 두고 다른 파일은 직접 만지지 않는다. `loop_watch`는 처음이면 `EPOLL_CTL_ADD`, 이후에는 `EPOLL_CTL_MOD`를 부르고 `c->events`에 현재 값을 기록한다. `loop_unwatch`는 `EPOLL_CTL_DEL`을 부르고, accept가 멈춰 있으면 다시 켠다(EMFILE 처리) |
 | `conn.c` | `struct conn *conn_new(int fd)`<br>`void conn_close(struct conn *c)`<br>`int conn_on_readable(struct conn *c)`<br>`int conn_on_writable(struct conn *c)`<br>`void conn_sweep_idle(time_t now)` | 연결 하나의 수명 전체를 맡는다. 핸들러는 연결이 살아 있으면 0, `conn_close`로 닫았으면 -1을 반환한다. -1을 받은 쪽은 `c`를 다시 건드리지 않는다 |
 | `http.c` | 아래 "HTTP 자리" 참고 | 지금은 `\r\n\r\n` 검색과 고정 응답만 한다 |
 
