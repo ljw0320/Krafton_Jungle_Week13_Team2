@@ -13,6 +13,7 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+#include "http.h"
 
 static volatile sig_atomic_t stopping;
 
@@ -138,47 +139,7 @@ static int open_listener(int port)
     return listener;
 }
 
-static int configure_client(int fd, int idle)
-{
-    struct timeval timeout = {.tv_sec = idle, .tv_usec = 0};
-    if (set_socket_blocking(fd, true) == -1)
-        return -1;
-    if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) == -1 ||
-        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) == -1) {
-        perror("client timeout setup");
-        return -1;
-    }
-    return 0;
-}
-
-static int echo_client(int fd)
-{
-    char buffer[16384];
-    for (;;) {
-        ssize_t n = recv(fd, buffer, sizeof(buffer), 0);
-        if (n == 0)
-            return 0;
-        if (n < 0) {
-            if (errno == EINTR)
-                continue;
-            if (errno != EAGAIN && errno != EWOULDBLOCK && errno != ECONNRESET)
-                perror("recv");
-            return 1;
-        }
-        ssize_t sent = 0;
-        while (sent < n) {
-            ssize_t count = send(fd, buffer + sent, (size_t)(n - sent), 0);
-            if (count > 0)
-                sent += count;
-            else if (count < 0 && errno == EINTR)
-                continue;
-            else
-                return 1;
-        }
-    }
-}
-
-static void run_child(int listener, int client_fd,
+static void run_child(int listener, int client_fd, int root_fd, int idle_seconds,
                       struct child_processes *children, const sigset_t *wait_mask)
 {
     /* The child owns client_fd; it does not accept or manage other children. */
@@ -195,12 +156,13 @@ static void run_child(int listener, int client_fd,
         close(client_fd);
         _exit(EXIT_FAILURE);
     }
-    int status = echo_client(client_fd);
+    int status = serve_http(client_fd, root_fd, idle_seconds);
+    close(root_fd);
     close(client_fd);
     _exit(status);
 }
 
-static int run_parent(int listener, struct child_processes *children,
+static int run_parent(int listener, int root_fd, struct child_processes *children,
                       int idle_seconds, const sigset_t *wait_mask)
 {
     while (!stopping) {
@@ -227,13 +189,13 @@ static int run_parent(int listener, struct child_processes *children,
             perror("accept");
             return EXIT_FAILURE;
         }
-        if (configure_client(fd, idle_seconds) == -1) {
+        if (set_socket_blocking(fd, false) == -1) {
             close(fd);
             continue;
         }
         pid_t pid = check_call(fork(), "fork");
         if (pid == 0)
-            run_child(listener, fd, children, wait_mask);
+            run_child(listener, fd, root_fd, idle_seconds, children, wait_mask);
         close(fd);  /* Only the child retains the connection after fork. */
         if (pid == -1)
             return EXIT_FAILURE;
@@ -301,22 +263,34 @@ static int shutdown_children(struct child_processes *children, int grace_seconds
 
 int main(int argc, char **argv)
 {
-    if (argc > 5) {
-        fprintf(stderr, "Usage: %s [port [max_children [idle_seconds [grace_seconds]]]]\n", argv[0]);
+    if (argc > 6) {
+        fprintf(stderr, "Usage: %s [port [root [max_children [idle_seconds [grace_seconds]]]]]\n", argv[0]);
         return EXIT_FAILURE;
     }
-    int port = argc > 1 ? parse_positive_integer(argv[1], 65535) : 8080;
-    int limit = argc > 2 ? parse_positive_integer(argv[2], 4096) : 64;
-    int idle = argc > 3 ? parse_positive_integer(argv[3], 86400) : 10;
-    int grace = argc > 4 ? parse_positive_integer(argv[4], 3600) : 5;
+
+    int port = argc > 1 ? parse_positive_integer(argv[1], 65535) : 8080; /* 서버 포트 */
+    const char *root = argc > 2 ? argv[2] : "public";
+    int limit = argc > 3 ? parse_positive_integer(argv[3], 4096) : 64; /* 최대 자식 수 */
+    int idle = argc > 4 ? parse_positive_integer(argv[4], 86400) : 5; /* 다음 요청 대기 제한 시간 */
+    int grace = argc > 5 ? parse_positive_integer(argv[5], 3600) : 5; /* 종료 시 자식에게 주는 유예 시간 */
     if (port < 0 || limit < 0 || idle < 0 || grace < 0)
         return EXIT_FAILURE;
+
+    int root_fd = open(root, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    if (root_fd == -1) {
+        perror("open static root");
+        return EXIT_FAILURE;
+    }
     sigset_t wait_mask;
-    if (setup_parent_signals(&wait_mask) == -1)
+    if (setup_parent_signals(&wait_mask) == -1) {
+        close(root_fd);
         return EXIT_FAILURE;
+    }
     int listener = open_listener(port);
-    if (listener == -1)
+    if (listener == -1) {
+        close(root_fd);
         return EXIT_FAILURE;
+    }
     struct child_processes children = {
         .pids = calloc((size_t)limit, sizeof(pid_t)),
         .capacity = limit,
@@ -324,14 +298,16 @@ int main(int argc, char **argv)
     };
     if (!children.pids) {
         perror("calloc");
+        close(root_fd);
         close(listener);
         return EXIT_FAILURE;
     }
     printf("READY port=%d max_children=%d idle=%d grace=%d\n", port, limit, idle, grace);
     fflush(stdout);
 
-    int result = run_parent(listener, &children, idle, &wait_mask);
+    int result = run_parent(listener, root_fd, &children, idle, &wait_mask);
     close(listener);
+    close(root_fd);
     if (shutdown_children(&children, grace) != EXIT_SUCCESS)
         result = EXIT_FAILURE;
     free(children.pids);
