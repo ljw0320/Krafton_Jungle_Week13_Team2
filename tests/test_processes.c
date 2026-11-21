@@ -35,9 +35,7 @@ static int fake_kill(pid_t pid, int signo)
 
 #define waitpid fake_waitpid
 #define kill fake_kill
-#define main server_main
-#include "../server.c"
-#undef main
+#include "../server/server.c"
 
 int main(void)
 {

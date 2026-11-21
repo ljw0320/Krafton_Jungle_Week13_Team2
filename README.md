@@ -66,23 +66,26 @@ POST 본문은 현재 기능에서 사용하지 않으므로 16KiB 버퍼로 끝
 
 | 파일 | 역할 |
 |---|---|
-| `http.c` | 연결 반복, 요청 처리 순서, 메서드별 응답 결정 |
-| `http_parse.c` | 요청 라인·헤더 해석과 제약 검증 |
-| `http_io.c` | 시간 제한, 헤더 경계 탐색, 부분 송수신, 본문 소비 |
-| `http_response.c` | 응답 헤더·오류 본문 생성과 전송 |
-| `http_static.c` | 경로 디코딩, 안전한 파일 열기, MIME, 파일 전송 |
-| `http.h` | 서버에서 사용하는 공개 진입점 `serve_http` |
-| `http_internal.h` | HTTP 모듈 사이에서만 공유하는 요청 타입·한도·함수 계약 |
+| `main.c` | CLI 인자 해석·검증과 서버 실행 호출 |
+| `server/server.c` | 서버 초기화, 시그널, 연결 수락, 자식 관리와 종료 |
+| `server/server.h` | 서버 실행 진입점 `server_run` |
+| `http/http.c` | 연결 반복, 요청 처리 순서, 메서드별 응답 결정 |
+| `http/http_parse.c` | 요청 라인·헤더 해석과 제약 검증 |
+| `http/http_io.c` | 시간 제한, 헤더 경계 탐색, 부분 송수신, 본문 소비 |
+| `http/http_response.c` | 응답 헤더·오류 본문 생성과 전송 |
+| `http/http_static.c` | 경로 디코딩, 안전한 파일 열기, MIME, 파일 전송 |
+| `http/http.h` | 서버에서 사용하는 공개 진입점 `serve_http` |
+| `http/http_internal.h` | HTTP 모듈 사이에서만 공유하는 요청 타입·한도·함수 계약 |
 
-1. `server.c/main`: CLI 검증 → 정적 루트 열기 → 시그널 설정 → 리스너 → 부모 루프 → 종료 정리.
-2. `server.c/run_parent`: 자식 회수 → 상한 확인 → pselect → accept → non-blocking 연결 → fork.
-3. `server.c/run_child`: 부모 전용 자원 정리 → 시그널 복원 → serve_http → 연결·루트 fd 정리 → _exit.
-4. `http.c/serve_http`: 연결별 저장소 할당 → `serve_request` 반복 → 저장소 해제. 연결 유지·종료·입출력 실패는 `connection_action`으로 구분합니다.
+1. `main.c/main` → `server/server.c/server_run`: CLI 검증 → 정적 루트 열기 → 시그널 설정 → 리스너 → 부모 루프 → 종료 정리.
+2. `server/server.c/run_parent`: 자식 회수 → 상한 확인 → pselect → accept → non-blocking 연결 → fork.
+3. `server/server.c/run_child`: 부모 전용 자원 정리 → 시그널 복원 → serve_http → 연결·루트 fd 정리 → _exit.
+4. `http/http.c/serve_http`: 연결별 저장소 할당 → `serve_request` 반복 → 저장소 해제. 연결 유지·종료·입출력 실패는 `connection_action`으로 구분합니다.
 5. `serve_request`·`read_request`: 요청 하나 수신·검증 → POST 거부 또는 정적 파일 응답 → 연결 유지 여부 판단. 오류 응답 전송 실패도 실패로 반환합니다.
-6. `http_io.c/receive_header`: 첫 바이트 대기와 요청 기한 시작. `receive_header_content`는 peek → `find_header_end`로 경계 탐색 → `receive_exact`로 현재 헤더만 소비합니다.
-7. `http_parse.c/parse_request`: 요청 초기화 → `parse_request_line` → `parse_headers` → `validate_request_headers`. 개별 문법과 헤더 간 제약을 나눕니다.
-8. `http_io.c/receive_body`·`http_static.c/decode_path`: 본문을 정확히 소비한 뒤 용량을 확인하며 경로를 디코딩합니다.
-9. `http_static.c/open_static`·`serve_static` → `http_response.c/send_headers` → `http_io.c/send_all`: 루트 기준 파일 접근 검사 → 파일 크기·MIME → 헤더 → 부분 송신 처리.
+6. `http/http_io.c/receive_header`: 첫 바이트 대기와 요청 기한 시작. `receive_header_content`는 peek → `find_header_end`로 경계 탐색 → `receive_exact`로 현재 헤더만 소비합니다.
+7. `http/http_parse.c/parse_request`: 요청 초기화 → `parse_request_line` → `parse_headers` → `validate_request_headers`. 개별 문법과 헤더 간 제약을 나눕니다.
+8. `http/http_io.c/receive_body`·`http/http_static.c/decode_path`: 본문을 정확히 소비한 뒤 용량을 확인하며 경로를 디코딩합니다.
+9. `http/http_static.c/open_static`·`serve_static` → `http/http_response.c/send_headers` → `http/http_io.c/send_all`: 루트 기준 파일 접근 검사 → 파일 크기·MIME → 헤더 → 부분 송신 처리.
 
 `request_storage`는 연결 동안 헤더·경로 버퍼를 소유합니다. 요청의 method·target은 헤더 버퍼를
 빌려 쓰는 읽기 전용 포인터이며 다음 요청 수신 전까지만 유효합니다. 헤더 수신과 경로 디코딩에는

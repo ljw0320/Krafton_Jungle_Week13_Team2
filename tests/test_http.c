@@ -6,8 +6,8 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include "../http.h"
-#include "../http_internal.h"
+#include "../http/http.h"
+#include "../http/http_internal.h"
 
 static void receive_exact(int fd, char *buffer, size_t length)
 {

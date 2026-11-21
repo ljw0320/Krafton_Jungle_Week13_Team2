@@ -13,7 +13,8 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
-#include "http.h"
+#include "server.h"
+#include "../http/http.h"
 
 static volatile sig_atomic_t stopping;
 
@@ -36,18 +37,6 @@ static int check_call(int result, const char *operation)
     if (result == -1)
         perror(operation);
     return result;
-}
-
-static int parse_positive_integer(const char *text, int maximum)
-{
-    char *end;
-    errno = 0;
-    long n = strtol(text, &end, 10);
-    if (errno || !*text || *end || n < 1 || n > maximum) {
-        fprintf(stderr, "Invalid positive integer: %s\n", text);
-        return -1;
-    }
-    return (int)n;
 }
 
 static int reap_children(struct child_processes *children)
@@ -261,21 +250,8 @@ static int shutdown_children(struct child_processes *children, int grace_seconds
     }
 }
 
-int main(int argc, char **argv)
+int server_run(int port, const char *root, int limit, int idle, int grace)
 {
-    if (argc > 6) {
-        fprintf(stderr, "Usage: %s [port [root [max_children [idle_seconds [grace_seconds]]]]]\n", argv[0]);
-        return EXIT_FAILURE;
-    }
-
-    int port = argc > 1 ? parse_positive_integer(argv[1], 65535) : 8080; /* 서버 포트 */
-    const char *root = argc > 2 ? argv[2] : "public";
-    int limit = argc > 3 ? parse_positive_integer(argv[3], 4096) : 64; /* 최대 자식 수 */
-    int idle = argc > 4 ? parse_positive_integer(argv[4], 86400) : 5; /* 다음 요청 대기 제한 시간 */
-    int grace = argc > 5 ? parse_positive_integer(argv[5], 3600) : 5; /* 종료 시 자식에게 주는 유예 시간 */
-    if (port < 0 || limit < 0 || idle < 0 || grace < 0)
-        return EXIT_FAILURE;
-
     int root_fd = open(root, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
     if (root_fd == -1) {
         perror("open static root");
