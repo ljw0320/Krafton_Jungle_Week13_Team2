@@ -1,0 +1,5 @@
+body { margin: 3rem auto; padding: 0 1rem; max-width: 42rem;
+       font-family: sans-serif; background: #f0f6ef; color: #173e29; }
+main { padding: 2rem; border-radius: 1rem; background: white; }
+input, button { padding: .6rem; margin: .3rem 0; }
+button { color: white; background: #286e43; border: 0; border-radius: .3rem; }

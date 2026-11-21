@@ -1,0 +1,11 @@
+/webserver
+/test_http
+*.o
+__pycache__/
+/tests/.tmp/
+# 비정상 종료 시 생성되는 코어 덤프
+core
+core.*
+
+# 위치와 관계없이 실행 로그 제외
+*.log
