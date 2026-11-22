@@ -23,8 +23,8 @@
 
 | 항목 | 형식 |
 |---|---|
-| 사용법 메시지 | stderr에 `usage: ./server <port>` |
-| 인자 검사 | `argc != 2`, `strtol` 뒤에 남은 문자가 있음(`8080abc`), 1~65535 밖이면 사용법 + `exit(1)`. 정적 루트 인자를 추가할 때 `argc` 조건을 바꾼다 |
+| 사용법 메시지 | stderr에 `usage: ./server <port> <root>` |
+| 인자 검사 | `argc != 3`, `strtol` 뒤에 남은 문자가 있음(`8080abc`), 1~65535 밖이면 사용법 + `exit(1)`. 루트 검사는 `http_init`이 한다 |
 | 1단계 `main` 출력 | stdout에 `port=<번호>` |
 | 로그 | 모두 stderr. `accept fd=N`, `fd=N recv K bytes`, `fd=N send K bytes`, `fd=N EPOLLOUT on` / `off`, `close fd=N conn_count=M`, `accept paused`, `accept resumed`, `fd=N idle timeout` |
 | `/big` 본문 | `'a'` 8388608바이트, `Content-Length: 8388608` |

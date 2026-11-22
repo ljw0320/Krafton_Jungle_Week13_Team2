@@ -89,9 +89,9 @@ Task 1 → Task 2 → Task 3 ─┬─ Task 4 (conn.c/.h, http_test.sh) ─┬�
 **Interfaces:**
 - Produces: `int http_init(const char *root)` → 0 / -1 (메시지는 `http_init`이 찍는다)
 
-- [ ] **Step 1: 실패 확인** — `mkdir -p /tmp/www && ./server 8080 /tmp/www; echo $?` → 지금의 사용법 메시지, `1`
-- [ ] **Step 2: 구현** (설계 1단계. HTTP 처리는 stub 그대로)
-- [ ] **Step 3: 확인**
+- [x] **Step 1: 실패 확인** — `mkdir -p /tmp/www && ./server 8080 /tmp/www; echo $?` → 지금의 사용법 메시지, `1`
+- [x] **Step 2: 구현** (설계 1단계. HTTP 처리는 stub 그대로)
+- [x] **Step 3: 확인**
   - 경고 0개 명령 → 종료 코드 0
   - 아래 각각이 출력 형식 표의 메시지를 stderr에 찍고 `echo $?`가 `1`
     - `./server`, `./server 8080`, `./server 8080 /tmp/www extra`, `./server abc /tmp/www`, `./server 70000 /tmp/www` → `usage: ./server <port> <root>`
@@ -101,8 +101,8 @@ Task 1 → Task 2 → Task 3 ─┬─ Task 4 (conn.c/.h, http_test.sh) ─┬�
   - `./server 8080 /tmp/www` 띄운 뒤 `curl -s localhost:8080/` → `hello`
   - `ln -sfn /tmp/www /tmp/wwwlink && ./server 8080 /tmp/wwwlink`, `./server 8080 /tmp/www/`가 뜬다
   - 루트 오류일 때 포트를 열지 않는다: `./server 8080 /nonexistent` 직후 `ss -tln | grep -c ':8080 '` → `0`
-- [ ] **Step 4: 문서** — 문서 수정 배정 표의 Task 1 줄
-- [ ] **Step 5: 커밋, push** — `feat: 정적 루트 인자와 http_init`
+- [x] **Step 4: 문서** — 문서 수정 배정 표의 Task 1 줄
+- [x] **Step 5: 커밋, push** — `feat: 정적 루트 인자와 http_init`
 
 ### Task 2: `http_parse` + 단위 테스트 (설계 2단계)
 담당: `builder` (고의 결함 검사는 `verifier`) / 강도: 기본
@@ -258,4 +258,4 @@ Task 1 → Task 2 → Task 3 ─┬─ Task 4 (conn.c/.h, http_test.sh) ─┬�
 
 Task마다 verifier가 보고한 Minor를 여기에 한 줄씩 모은다. Task 9에서 한 번에 고친다.
 
-- (없음)
+- (Task 1) `src/main.c:17`: 포트 앞 공백(`" 80"`)을 `strtol`이 통과시킨다. 이전 코드와 같은 동작이다

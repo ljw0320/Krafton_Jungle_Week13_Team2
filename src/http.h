@@ -4,6 +4,9 @@
 #include <stddef.h>
 #include <sys/types.h>
 
+/* 정적 루트를 realpath로 확인해 저장한다. 실패하면 메시지를 stderr에 찍고 -1 */
+int http_init(const char *root);
+
 /* buf 앞에서 완성된 요청 하나의 길이를 반환한다. 덜 왔으면 0, 형식 오류면 -1 */
 ssize_t http_request_len(const char *buf, size_t len);
 

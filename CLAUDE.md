@@ -1,6 +1,6 @@
 # Krafton_Jungle_Week13_Team2
 
-크래프톤 정글 13주차 웹 서버 과제다. C와 POSIX 소켓 API로 HTTP 웹 서버를 만든다. 이번 범위는 TCP 소켓 서버와 `epoll` 기반 동시 요청 처리이고, HTTP 부분은 stub이다.
+크래프톤 정글 13주차 웹 서버 과제다. C와 POSIX 소켓 API로 HTTP 웹 서버를 만든다. 이번 범위는 TCP 소켓 서버와 `epoll` 기반 동시 요청 처리, HTTP 파싱과 정적 파일 서빙이다. HTTP 처리는 구현 중이라 아직 stub이다.
 
 ## 문서
 - 개요: `docs/overview.md`
@@ -22,14 +22,14 @@
 모든 명령은 WSL(Ubuntu 24.04)의 레포 루트에서 실행한다. Windows 쪽 Claude는 `wsl.exe -e bash -lc 'cd /mnt/d/kraftonjungle/kraftonjungle_week13/Krafton_Jungle_Week13_Team2 && <명령>'`로 감싼다.
 - 빌드: `make` (경고 0개여야 한다), `make asan` (`-fsanitize=address,undefined`), `make clean`
 - 테스트: (미정). 지금은 `docs/architecture-tcp.md` "구현 순서"의 단계별 확인 명령으로 검증한다.
-- 실행: `./server <port>` (예: `./server 8080`)
-- 그 밖의 검사: `make asan` 빌드로 같은 시나리오를 돌려 오류 0개, `valgrind --leak-check=full ./server 8080`에서 `definitely lost: 0`
+- 실행: `./server <port> <root>` (예: `./server 8080 /tmp/www`)
+- 그 밖의 검사: `make asan` 빌드로 같은 시나리오를 돌려 오류 0개, `valgrind --leak-check=full ./server 8080 /tmp/www`에서 `definitely lost: 0`
 
 ## 제약
 - C 언어, 표준 C 라이브러리와 POSIX API만 쓴다. `libevent`, `libuv`, `nginx`, `Apache`, `mongoose` 같은 HTTP / 이벤트 루프 라이브러리는 금지다.
 - 빌드는 `Makefile`, 컴파일러는 `gcc -std=gnu11 -Wall -Wextra -g`다 (`accept4` 때문에 `gnu11`).
 - Linux 전용(WSL2)이다. `#ifdef` 이식성 분기를 두지 않는다.
-- HTTP 파싱, 정적 파일, Proxy, 시그널 셧다운은 이번 범위가 아니다.
+- Proxy, CGI, 시그널 셧다운은 이번 범위가 아니다.
 
 ## 설계 결정
 - `epoll` LT, 단일 스레드 이벤트 루프다. `epoll` fd는 `event_loop.c`의 `static` 변수이고 다른 파일은 `loop_watch` / `loop_unwatch`로만 다룬다.

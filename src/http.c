@@ -5,7 +5,36 @@
 
 #include "http.h"
 
+#include <errno.h>
+#include <limits.h>
+#include <sys/stat.h>
+
 #define BIG_SIZE 8388608
+
+static char root_real[PATH_MAX];
+static size_t root_len;
+
+int http_init(const char *root) {
+    if (!realpath(root, root_real)) {
+        fprintf(stderr, "realpath: %s: %s\n", root, strerror(errno));
+        return -1;
+    }
+    struct stat st;
+    if (stat(root_real, &st) < 0) {
+        fprintf(stderr, "stat: %s: %s\n", root, strerror(errno));
+        return -1;
+    }
+    if (!S_ISDIR(st.st_mode)) {
+        fprintf(stderr, "root: %s: Not a directory\n", root);
+        return -1;
+    }
+    if (strcmp(root_real, "/") == 0) {
+        fprintf(stderr, "root: /: not allowed\n");
+        return -1;
+    }
+    root_len = strlen(root_real);
+    return 0;
+}
 
 // stub: 헤더 끝까지만 요청으로 본다. HTTP 파서로 바꿀 때 본문 길이를 더한다
 ssize_t http_request_len(const char *buf, size_t len) {
