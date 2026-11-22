@@ -6,6 +6,7 @@
 - 개요: `docs/overview.md`
 - 요구사항: `docs/requirements.md`. 기능을 구현하기 전에 관련 절을 읽는다.
 - 설계: `docs/architecture-tcp.md`. 구현 전에 해당 단계의 관련 절을 읽는다.
+- 설계(HTTP): `docs/architecture-http.md`
 - 계획: `docs/superpowers/plans/`
 - 배운 점: `docs/lessons.md`. 작업 전에 읽는다.
 

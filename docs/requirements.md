@@ -51,6 +51,7 @@ C 언어와 POSIX 소켓 API만으로 HTTP 웹 서버를 처음부터 만들고,
 5. **이식성**: 팀원 개발 환경(WSL / macOS)에 따라 `#ifdef __linux__` 분기 여부
 	- **결정됨**: Linux 전용(WSL2). 분기를 두지 않는다
 6. **`Transfer-Encoding: chunked` 요청**: 지원할지, 411 / 501로 거절할지
+	- **결정됨**: `Transfer-Encoding`이 있으면 501 + 닫기. 이유는 [architecture-http.md](architecture-http.md)의 결정 사항
 
 ---
 # 상태 코드와 엣지 케이스
