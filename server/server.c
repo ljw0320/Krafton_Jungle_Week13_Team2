@@ -25,13 +25,14 @@ struct child_processes {
     int active;
 };
 
-/* SIGCHLD only interrupts the parent's wait; termination signals request shutdown. */
+/* SIGINT·SIGTERM 수신 시 종료를 요청하며, SIGCHLD는 부모의 대기만 중단한다. */
 static void handle_signal(int signo)
 {
     if (signo == SIGINT || signo == SIGTERM)
         stopping = 1;
 }
 
+/* 시스템 호출 실패 시 오류를 출력하고 호출 결과를 그대로 반환한다. */
 static int check_call(int result, const char *operation)
 {
     if (result == -1)
@@ -39,6 +40,7 @@ static int check_call(int result, const char *operation)
     return result;
 }
 
+/* 종료된 자식을 대기 없이 회수하고 PID 배열과 자식 수를 갱신한다. */
 static int reap_children(struct child_processes *children)
 {
     for (;;) {
@@ -61,6 +63,7 @@ static int reap_children(struct child_processes *children)
     }
 }
 
+/* sigaction으로 지정한 시그널의 처리 방식을 등록한다. */
 static int set_signal_handler(int signo, void (*handler)(int))
 {
     struct sigaction action = {.sa_handler = handler};
@@ -71,6 +74,8 @@ static int set_signal_handler(int signo, void (*handler)(int))
     return -1;
 }
 
+/* 부모의 시그널 처리와 차단을 설정하고 pselect 대기용 기존 마스크를 보관한다.
+ * SIGPIPE는 무시한다. */
 static int setup_parent_signals(sigset_t *wait_mask)
 {
     sigset_t blocked;
@@ -86,6 +91,7 @@ static int setup_parent_signals(sigset_t *wait_mask)
     return check_call(sigprocmask(SIG_BLOCK, &blocked, wait_mask), "sigprocmask parent");
 }
 
+/* O_NONBLOCK 플래그를 변경하여 소켓의 blocking/non-blocking 모드를 설정한다. */
 static int set_socket_blocking(int fd, bool blocking)
 {
     int flags = fcntl(fd, F_GETFL);
@@ -97,6 +103,7 @@ static int set_socket_blocking(int fd, bool blocking)
     return 0;
 }
 
+/* 접속 수신 소켓을 생성하고 주소 재사용, bind, listen, non-blocking 모드를 설정한다. */
 static int open_listener(int port)
 {
     int listener = socket(AF_INET, SOCK_STREAM, 0);
@@ -128,6 +135,7 @@ static int open_listener(int port)
     return listener;
 }
 
+/* 불필요한 자원을 정리하고 시그널 설정을 복원한 뒤 HTTP 연결을 처리하고 종료한다. */
 static void run_child(int listener, int client_fd, int root_fd, int idle_seconds,
                       struct child_processes *children, const sigset_t *wait_mask)
 {
@@ -151,6 +159,7 @@ static void run_child(int listener, int client_fd, int root_fd, int idle_seconds
     _exit(status);
 }
 
+/* 자식 수 제한 내에서 접속을 수락하고 처리할 자식을 생성하며, 종료된 자식을 회수한다. */
 static int run_parent(int listener, int root_fd, struct child_processes *children,
                       int idle_seconds, const sigset_t *wait_mask)
 {
@@ -194,6 +203,7 @@ static int run_parent(int listener, int root_fd, struct child_processes *childre
     return EXIT_SUCCESS;
 }
 
+/* 지정한 시간 동안 자식들을 회수하면서 자연 종료를 기다린다. */
 static int wait_for_children(struct child_processes *children, int seconds)
 {
     if (!children->active)
@@ -215,6 +225,7 @@ static int wait_for_children(struct child_processes *children, int seconds)
     return 0;
 }
 
+/* 관리 중인 모든 자식 프로세스에 지정한 시그널을 전송한다. */
 static int signal_children(const struct child_processes *children, int signo)
 {
     int result = 0;
@@ -227,6 +238,7 @@ static int signal_children(const struct child_processes *children, int signo)
     return result;
 }
 
+/* 유예 시간 후 남은 자식에 SIGTERM, SIGKILL을 차례로 전송하고 최종 회수한다. */
 static int shutdown_children(struct child_processes *children, int grace_seconds)
 {
     int result = EXIT_SUCCESS;
@@ -250,6 +262,7 @@ static int shutdown_children(struct child_processes *children, int grace_seconds
     }
 }
 
+/* 서버 자원을 준비하고 부모 루프를 실행한 뒤 자식과 자원을 정리한다. */
 int server_run(int port, const char *root, int limit, int idle, int grace)
 {
     int root_fd = open(root, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
