@@ -27,8 +27,7 @@
 | 인자 검사 | `argc != 3`, `strtol` 뒤에 남은 문자가 있음(`8080abc`), 1~65535 밖이면 사용법 + `exit(1)`. 루트 검사는 `http_init`이 한다 |
 | 1단계 `main` 출력 | stdout에 `port=<번호>` |
 | 로그 | 모두 stderr. `accept fd=N`, `fd=N recv K bytes`, `fd=N send K bytes`, `fd=N EPOLLOUT on` / `off`, `close fd=N conn_count=M`, `accept paused`, `accept resumed`, `fd=N idle timeout` |
-| `/big` 본문 | `'a'` 8388608바이트, `Content-Length: 8388608` |
-| stub 응답 헤더 | `HTTP/1.1 200 OK\r\nContent-Length: <n>\r\nConnection: keep-alive\r\n\r\n` (이 순서, `Content-Type` 없음) |
+| `/big` 본문, stub 응답 헤더 | (HTTP 3단계에서 제거됨. 응답 형식은 [architecture-http.md](architecture-http.md) "출력 형식") |
 
 ---
 # 파일 구조

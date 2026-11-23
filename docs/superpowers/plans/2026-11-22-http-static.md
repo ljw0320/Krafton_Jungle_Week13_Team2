@@ -137,10 +137,10 @@ Task 1 → Task 2 → Task 3 ─┬─ Task 4 (conn.c/.h, http_test.sh) ─┬�
 - Produces: `int http_handle(const struct http_req *req, struct http_resp *resp)`, `static int conn_respond(struct conn *c, const struct http_req *req)`
 - 이 Task의 GET은 경로를 보지 않고 모두 404다. `resp.file_fd`는 항상 -1이고, `struct conn`에 파일 필드가 아직 없어서 `conn_respond`는 설계 코드의 `file_fd`/`file_len`/`file_off` 줄을 빼고 쓴다(Task 4에서 넣는다)
 
-- [ ] **Step 1: 실패 확인** — `printf 'GET / HTTP/1.1\r\nHost: x\r\n\r\n' | nc -N 127.0.0.1 8080 | head -1` → `HTTP/1.1 200 OK` (stub)
-- [ ] **Step 2: 구현** (검사 순서 8~10번, 연결 유지 판단, 헤더 순서, `Date`, 오류 본문. `conn_process`의 순서는 `http_parse` → `http_handle` → `memmove` → `conn_send`. "rbuf가 찼는데 미완성이면 닫기" 줄은 남긴다)
-- [ ] **Step 3: `tests/http_test.sh`** — `mktemp -d` 루트, 서버 띄움(`$SERVER_WRAP`, 포트 대기) → 케이스 → `kill $SP`, 출력 형식은 위 "테스트 출력"
-- [ ] **Step 4: 확인** — `make test` 종료 코드 0. 설계 3단계 "확인"의 항목이 모두 케이스로 들어 있다
+- [x] **Step 1: 실패 확인** — `printf 'GET / HTTP/1.1\r\nHost: x\r\n\r\n' | nc -N 127.0.0.1 8080 | head -1` → `HTTP/1.1 200 OK` (stub)
+- [x] **Step 2: 구현** (검사 순서 8~10번, 연결 유지 판단, 헤더 순서, `Date`, 오류 본문. `conn_process`의 순서는 `http_parse` → `http_handle` → `memmove` → `conn_send`. "rbuf가 찼는데 미완성이면 닫기" 줄은 남긴다)
+- [x] **Step 3: `tests/http_test.sh`** — `mktemp -d` 루트, 서버 띄움(`$SERVER_WRAP`, 포트 대기) → 케이스 → `kill $SP`, 출력 형식은 위 "테스트 출력"
+- [x] **Step 4: 확인** — `make test` 종료 코드 0. 설계 3단계 "확인"의 항목이 모두 케이스로 들어 있다
   - 404, 헤더 순서, `Date` 정규식
   - 닫는 응답 400(`Host : x`) / 505(`HTTP/2.0`) / 501(`BREW`) / 501(TE) / 411(POST, CL 없음): `Connection: close`, 서버가 닫음
   - 413(헤더만 `Content-Length: 1000000`), 414 / 431(정확히 8192바이트)
@@ -148,8 +148,8 @@ Task 1 → Task 2 → Task 3 ─┬─ Task 4 (conn.c/.h, http_test.sh) ─┬�
   - 1.0 + 헤더 없음 → `close`, 1.0 + `Keep-Alive` → `keep-alive`
   - `curl -sv localhost:8080/ localhost:8080/ 2>&1 | grep -c 'Re-using existing connection'` → `1`
   - `make asan && bash tests/http_test.sh` → 종료 코드 0, 서버 로그에 `AddressSanitizer`, `runtime error`가 없다 (Review Focus 5)
-- [ ] **Step 5: 문서** — 문서 수정 배정 표의 Task 3 줄
-- [ ] **Step 6: 커밋, push** — `feat: HTTP 응답 생성과 연결 교체`
+- [x] **Step 5: 문서** — 문서 수정 배정 표의 Task 3 줄
+- [x] **Step 6: 커밋, push** — `feat: HTTP 응답 생성과 연결 교체`
 
 ### Task 4: `sendfile` 전송 (설계 4단계 중 결정 12) — Task 5와 병렬
 담당: `builder` / `model: opus`, `effort: high` (`conn_close` 순서, fd 소유권, 상태 전이) / `isolation: worktree`
@@ -261,3 +261,5 @@ Task마다 verifier가 보고한 Minor를 여기에 한 줄씩 모은다. Task 9
 - (Task 1) `src/main.c:17`: 포트 앞 공백(`" 80"`)을 `strtol`이 통과시킨다. 이전 코드와 같은 동작이다
 - (Task 2) `src/http.c:166`: `cap - head_len`은 `len > cap`이면 언더플로한다. 지금 호출자는 `len <= RBUF_SIZE`를 지킨다. 전제를 `http.h` 주석에 적거나 파서에서 막는다
 - (Task 2) 계획 Task 2 Step 4 "`make test`가 1로 끝남": 테스트 바이너리는 1이고 `make`는 2로 끝난다. 문구를 "0이 아닌 값"으로 고친다
+- (Task 3) `tests/http_test.sh`: 413을 POST로만 검사한다. Review Focus 4의 모르는 메서드(`BREW`) + `CL: 1000000` → 413, 뒤 바이트 미해석 케이스를 넣는다 (메인 세션이 직접 확인: 통과)
+- (Task 3) `tests/http_test.sh`: 파이프라인은 요청 2개만 검사한다. 한 번의 send에 3개 케이스를 넣는다 (메인 세션이 직접 확인: 통과)

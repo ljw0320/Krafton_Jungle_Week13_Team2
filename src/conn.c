@@ -105,20 +105,35 @@ static int conn_send(struct conn *c) {
     return 1;
 }
 
+// 0: WRITING 준비됨, -1: 닫음
+static int conn_respond(struct conn *c, const struct http_req *req) {
+    struct http_resp r;
+    if (http_handle(req, &r) < 0) {
+        conn_close(c);
+        return -1;
+    }
+    c->wbuf = r.head;
+    c->wlen = r.head_len;
+    c->woff = 0;
+    c->keep_alive = r.keep_alive;
+    c->state = CONN_WRITING;
+    return 0;
+}
+
 // rbuf의 완성된 요청을 차례로 처리한다. 재귀 대신 루프로 파이프라이닝을 처리한다
 static int conn_process(struct conn *c) {
     for (;;) {
-        ssize_t n = http_request_len(c->rbuf, c->rlen);
+        struct http_req req;
+        ssize_t n = http_parse(c->rbuf, c->rlen, RBUF_SIZE, &req);  // rlen <= RBUF_SIZE
         if (n == 0) break;
-        if (n < 0 || http_handle(c->rbuf, (size_t)n, &c->wbuf, &c->wlen,
-                                 &c->keep_alive) < 0) {
-            conn_close(c);
-            return -1;
+        if (conn_respond(c, &req) < 0) return -1;
+        // req가 rbuf를 가리키므로 응답을 만든 뒤에 지운다
+        if (n > 0) {
+            c->rlen -= (size_t)n;
+            memmove(c->rbuf, c->rbuf + n, c->rlen);
+        } else {
+            c->rlen = 0;  // 형식 오류는 닫는 응답이므로 남은 바이트는 쓰지 않는다
         }
-        c->rlen -= (size_t)n;
-        memmove(c->rbuf, c->rbuf + n, c->rlen);
-        c->woff = 0;
-        c->state = CONN_WRITING;
         int r = conn_send(c);
         if (r <= 0) return r;
     }

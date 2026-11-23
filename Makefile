@@ -6,6 +6,6 @@ server:
 asan:
 	gcc $(CFLAGS) -fsanitize=address,undefined -o server src/*.c
 test: server
-	gcc $(CFLAGS) -o tests/test_http tests/test_http.c && ./tests/test_http
+	gcc $(CFLAGS) -o tests/test_http tests/test_http.c && ./tests/test_http && bash tests/http_test.sh
 clean:
 	rm -f server tests/test_http

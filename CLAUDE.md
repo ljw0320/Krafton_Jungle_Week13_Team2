@@ -36,7 +36,7 @@
 - 연결 핸들러는 살아 있으면 0, `conn_close`로 닫았으면 -1을 반환한다. -1을 받은 쪽은 `c`를 다시 건드리지 않는다.
 - `conn_close` 순서: `loop_unwatch` → `close` → `free(wbuf)` → 리스트 제거 → `free(c)`.
 - WRITING 동안 `EPOLLIN`을 감시하지 않는다. 응답을 다 보낸 뒤 rbuf에 남은 바이트가 있으면 바로 다시 처리한다.
-- HTTP는 `http_request_len`, `http_handle` 두 함수로만 붙는다. 지금은 stub이다.
+- HTTP는 `http_init`, `http_parse`, `http_handle` 세 함수로만 붙는다.
 - `SIGPIPE`는 무시하고 `EPIPE`로 처리한다.
 
 ## 작업 방식

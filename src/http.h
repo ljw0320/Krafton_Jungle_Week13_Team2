@@ -23,12 +23,15 @@ struct http_req {
    >0: 요청 길이(헤더 + 본문), 0: 덜 왔다, -1: 형식 오류(req->status에 코드) */
 ssize_t http_parse(const char *buf, size_t len, size_t cap, struct http_req *req);
 
-/* buf 앞에서 완성된 요청 하나의 길이를 반환한다. 덜 왔으면 0, 형식 오류면 -1 */
-ssize_t http_request_len(const char *buf, size_t len);
+struct http_resp {
+    char  *head;  size_t head_len;    /* malloc. 상태 라인 + 헤더 + 오류 본문. conn이 free */
+    int    file_fd;                   /* 보낼 파일, 없으면 -1 */
+    off_t  file_len;
+    int    keep_alive;
+};
 
-/* 요청 하나로 응답을 만든다. *out은 malloc한 버퍼로 conn이 free한다.
-   *keep_alive는 응답 후 연결 유지 여부다. 실패하면 -1 */
-int http_handle(const char *req, size_t req_len,
-                char **out, size_t *out_len, int *keep_alive);
+/* req로 응답을 만든다. req->status가 0이 아니면 그 오류 응답을 만든다.
+   -1이면 응답을 만들지 못한 것이다 */
+int http_handle(const struct http_req *req, struct http_resp *resp);
 
 #endif
