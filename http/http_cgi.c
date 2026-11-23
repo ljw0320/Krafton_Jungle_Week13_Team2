@@ -102,22 +102,15 @@ child_failure:;
         _exit(127);
     }
     process->pid = pid;
-    /* Also set the group here so cleanup cannot race the child's setpgid. */
-    if (setpgid(pid, pid) == -1 && errno != EACCES && errno != ESRCH) {
-        close_fd(&input[0]);
-        close_fd(&output[1]);
-        close_fd(&error[1]);
-        process->input = input[1];
-        process->output = output[0];
-        process->exec_error = error[0];
-        return -1;
-    }
     close(input[0]);
     close(output[1]);
     close(error[1]);
     process->input = input[1];
     process->output = output[0];
     process->exec_error = error[0];
+    /* Also set the group here so cleanup cannot race the child's setpgid. */
+    if (setpgid(pid, pid) == -1 && errno != EACCES && errno != ESRCH)
+        return -1;
     return nonblocking(process->input) == -1 || nonblocking(process->output) == -1 ? -1 : 0;
 failure:
     for (int i = 0; i < 2; ++i) {

@@ -158,10 +158,10 @@ HTML·CSS·JS·PNG·JPG·SVG 등을 확장자로 MIME 매핑합니다. 알 수 �
 | `server/server.c` | 서버 초기화, 시그널, 연결 수락, 자식 관리와 종료 |
 | `server/server.h` | 서버 실행 진입점 `server_run` |
 | `http/http.c` | 연결 반복, 요청 처리 순서, 메서드별 응답 결정 |
-| `http/http_parse.c` | 요청 라인·헤더 해석과 제약 검증 |
+| `http/http_parse.c` | 요청 라인·헤더 해석, 경로 디코딩과 제약 검증 |
 | `http/http_io.c` | 시간 제한, 헤더 경계 탐색, 부분 송수신, 본문 소비 |
 | `http/http_response.c` | 응답 헤더·오류 본문 생성과 전송 |
-| `http/http_static.c` | 경로 디코딩, 안전한 파일 열기, MIME, 파일 전송 |
+| `http/http_static.c` | 안전한 파일 열기, MIME, 파일 전송 |
 | `http/http_cgi.c` | CGI 실행·파이프 입출력·기한·출력 검증·회수 |
 | `cgi/adder.c` | CGI 입력 해석·정수 검증·덧셈·CGI 응답 출력 |
 | `http/http.h` | 서버에서 사용하는 공개 진입점 `serve_http` |
@@ -184,7 +184,7 @@ HTML·CSS·JS·PNG·JPG·SVG 등을 확장자로 MIME 매핑합니다. 알 수 �
    연결별 저장소를 할당하고 `serve_request`를 반복한 뒤 저장소를 해제합니다. 연결 유지·종료·입출력 실패는 `connection_action`으로 구분합니다.
 
 2. **`serve_request`·`read_request`**  
-   요청 하나를 수신·검증하고, CGI·정적 파일·오류 응답으로 분기한 뒤 연결 유지 여부를 판단합니다. 오류 응답 전송 실패도 실패로 반환합니다.
+   디코딩한 경로의 요청 종류를 한 번 결정하고, 본문 수신 정책과 CGI·정적 파일·오류 응답에 같은 분류를 사용합니다. 응답 후 연결 유지 여부를 판단하며, 오류 응답 전송 실패도 실패로 반환합니다.
 
 3. **`http/http_io.c/receive_header`**  
    첫 바이트를 기다리고 요청 기한을 시작합니다. `receive_header_content`는 peek → `find_header_end`로 경계 탐색 → `receive_exact`로 현재 헤더만 소비합니다.
@@ -192,7 +192,7 @@ HTML·CSS·JS·PNG·JPG·SVG 등을 확장자로 MIME 매핑합니다. 알 수 �
 4. **`http/http_parse.c/parse_request`**  
    요청 초기화 → `parse_request_line` → `parse_headers` → `validate_request_headers` 순서로 처리합니다. 개별 문법과 헤더 간 제약을 나눕니다.
 
-5. **`http/http_static.c/decode_path` → `http/http_io.c/receive_body`·`receive_body_into`**
+5. **`http/http_parse.c/decode_path` → `http/http_io.c/receive_body`·`receive_body_into`**
    경로 디코딩과 CGI 크기·형식 검증 후 본문을 정확히 소비합니다. CGI POST만 본문을 보관합니다.
 
 6. **`http/http_static.c/open_static`·`serve_static` → `http/http_response.c/send_headers` → `http/http_io.c/send_all`**  
@@ -202,7 +202,7 @@ HTML·CSS·JS·PNG·JPG·SVG 등을 확장자로 MIME 매핑합니다. 알 수 �
 
 | 대상 | 소유권과 유효 범위 |
 |---|---|
-| `request_storage` | 연결 동안 헤더·경로 버퍼를 소유합니다. |
+| `request_storage` | 연결 동안 헤더·경로·CGI 본문 버퍼를 소유하며 요청마다 경로 분류를 갱신합니다. |
 | 요청의 `method`·`target`·`content_type` | 헤더 버퍼를 빌려 쓰는 읽기 전용 포인터입니다. 다음 요청 수신 전까지만 유효합니다. |
 | `open_static` | 경로 버퍼를 변경합니다. 성공할 때만 파일 fd 소유권을 호출자에게 넘깁니다. |
 | `serve_static` | 파일 fd를 닫습니다. |
@@ -280,6 +280,19 @@ CGI 계산은 고정 시드 정수 40쌍의 GET·POST 결과를 Python 정수 �
 | 시간 제한 | 유휴·전송 정지·전체 요청 기한 |
 | 프로세스 수명 | 연결 리셋, 자식 회수·강제 종료·재시작 |
 | CGI | GET·POST·정수 범위·폼 디코딩, 실행 실패·충돌·잘못된 출력, 출력 한도·전체 기한·EOF 후 생존, 양방향 파이프, 혼합 파이프라이닝·fd·자식 회수·종료 |
+
+### 부하 측정 준비
+
+처리량 측정 전에는 저장소 루트에서 일반 빌드를 새로 만듭니다. 기본 빌드 옵션은 `-O2`이며 sanitizer를 사용하지 않습니다.
+
+```sh
+make clean && make
+./build/web-server 8080 public 64 5 5
+```
+
+`make sanitize`는 같은 경로에 검사 옵션이 적용된 실행 파일을 남깁니다. Makefile은 컴파일 옵션 변경만으로 재빌드하지 않으므로, 이후 `make`만 실행해도 일반 빌드로 바뀌지 않을 수 있습니다.
+
+측정 결과에는 커밋, 컴파일러 버전·빌드 옵션, 실행 환경, 서버 인자, 요청 대상·본문 크기, 부하 도구·동시 접속 수·측정 시간을 함께 기록합니다. 일반 빌드와 sanitizer 빌드를 비교할 때도 각 결과의 빌드 조건을 구분합니다.
 
 ### 보안 검토 범위
 

@@ -7,43 +7,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-static int hex_digit(unsigned char c)
-{
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-    return -1;
-}
-
-int decode_path(const char *target, char *path, size_t capacity)
-{
-    if (*target != '/' || strchr(target, '#'))
-        return 400;
-    size_t n = 0;
-    for (size_t i = 0; target[i] && target[i] != '?'; ++i) {
-        unsigned char c = (unsigned char)target[i];
-        if (c == '%') {
-            if (!target[i + 1] || !target[i + 2])
-                return 400;
-            int high = hex_digit((unsigned char)target[i + 1]);
-            int low = hex_digit((unsigned char)target[i + 2]);
-            if (high < 0 || low < 0)
-                return 400;
-            c = (unsigned char)(high * 16 + low);
-            i += 2;
-        }
-        if (c == 0 || c < 32 || c == 127 || c == '\\')
-            return 400;
-        if (n + 1 >= capacity)
-            return 414;
-        path[n++] = (char)c;
-    }
-    if (n >= capacity)
-        return 414;
-    path[n] = '\0';
-    return 0;
-}
-
 static int file_error(void)
 {
     if (errno == ENOENT)

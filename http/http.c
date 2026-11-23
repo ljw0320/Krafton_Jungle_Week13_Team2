@@ -5,10 +5,17 @@
 #include <string.h>
 #include <strings.h>
 
+enum request_route {
+    ROUTE_STATIC,
+    ROUTE_CGI,
+    ROUTE_CGI_NOT_FOUND,
+};
+
 struct request_storage {
     char header[HEADER_LIMIT + 1];
     char path[URI_LIMIT + 1];
     char body[CGI_BODY_LIMIT];
+    enum request_route route;
 };
 
 enum connection_action {
@@ -17,11 +24,15 @@ enum connection_action {
     CONNECTION_KEEP = 1,
 };
 
-static bool cgi_namespace(const char *path)
+static enum request_route select_route(const char *path)
 {
+    if (strcmp(path, "/cgi-bin/adder") == 0)
+        return ROUTE_CGI;
     while (*path == '/')
         ++path;
-    return strncmp(path, "cgi-bin", 7) == 0 && (path[7] == '/' || path[7] == '\0');
+    if (strncmp(path, "cgi-bin", 7) == 0 && (path[7] == '/' || path[7] == '\0'))
+        return ROUTE_CGI_NOT_FOUND;
+    return ROUTE_STATIC;
 }
 
 static int read_request(int fd, int idle_seconds, struct request_storage *storage,
@@ -39,7 +50,8 @@ static int read_request(int fd, int idle_seconds, struct request_storage *storag
     status = decode_path(request->target, storage->path, sizeof(storage->path));
     if (status)
         return status;
-    bool cgi_post = strcmp(storage->path, "/cgi-bin/adder") == 0 &&
+    storage->route = select_route(storage->path);
+    bool cgi_post = storage->route == ROUTE_CGI &&
         strcmp(request->method, "POST") == 0;
     if (cgi_post) {
         if (request->content_length > CGI_BODY_LIMIT)
@@ -73,9 +85,9 @@ static enum connection_action serve_request(int fd, int root_fd, int idle_second
         return CONNECTION_DONE;
     }
     int sent;
-    if (strcmp(storage->path, "/cgi-bin/adder") == 0)
+    if (storage->route == ROUTE_CGI)
         sent = serve_cgi(fd, &request, storage->body);
-    else if (cgi_namespace(storage->path))
+    else if (storage->route == ROUTE_CGI_NOT_FOUND)
         sent = send_error(fd, &request, 404);
     else if (strcmp(request.method, "POST") == 0)
         sent = send_error(fd, &request, 501);

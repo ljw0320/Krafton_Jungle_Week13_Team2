@@ -95,7 +95,11 @@ class AdderTests(CgiTestCase):
                  expected_body=b'5\n')
 
     def test_decodes_form_fields(self):
-        self.assert_cgi_response(packet('/cgi-bin/%61dder?%61=%2B2&b=-3'), expected_body=b'-1\n')
+        form = '%61=%2B2&b=-3'
+        for data in [packet('/cgi-bin/%61dder?' + form),
+                     packet('/cgi-bin/%61dder', form.encode())]:
+            with self.subTest(request=data):
+                self.assert_cgi_response(data, expected_body=b'-1\n')
 
     def test_supports_http10(self):
         assert self.assert_cgi_response(packet(version='1.0'), expected_body=b'30\n')[2] == 10
@@ -194,15 +198,22 @@ class AdderTests(CgiTestCase):
             assert len(list(Path(f'/proc/{worker}/fd').iterdir())) == 5
 
     def test_pipelines_post_static_and_cgi_requests(self):
-        # Pipeline POST body and subsequent static/CGI requests on one connection.
+        # Each request must refresh its route and preserve the next request's bytes.
         with connect(self.port) as client:
             client.sendall(packet('/cgi-bin/adder', b'a=2&b=3', close=False) +
+                           packet('/cgi-bin/missing', b'a=2&b=3', close=False) +
+                           packet('/', b'a=2&b=3', close=False) +
                            packet('/', close=False) + packet())
             with client.makefile('rb') as stream:
-                for expected, connection in [(b'5\n', 'keep-alive'),
-                                             (b'static', 'keep-alive'), (b'30\n', 'close')]:
+                for expected_status, expected, connection in [
+                    (200, b'5\n', 'keep-alive'),
+                    (404, b'404 Not Found\n', 'keep-alive'),
+                    (501, b'501 Not Implemented\n', 'keep-alive'),
+                    (200, b'static', 'keep-alive'),
+                    (200, b'30\n', 'close'),
+                ]:
                     status, headers, body = pipeline_response(stream)
-                    assert status == 200 and body == expected
+                    assert status == expected_status and body == expected
                     assert headers['Connection'] == connection
                 assert stream.read(1) == b''
 
