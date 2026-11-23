@@ -201,15 +201,15 @@ Task 1 → Task 2 → Task 3 ─┬─ Task 4 (conn.c/.h, http_test.sh) ─┬�
 
 **Interfaces:** 변경 없음
 
-- [ ] **Step 1: 픽스처** — 설계 4단계 목록을 스크립트가 임시 루트에 만든다(저장소에 넣지 않음). `out` 링크의 대상과 형제 디렉토리(`<루트>2`)도 임시 경로에 만든다
-- [ ] **Step 2: 확인** — `make test` 종료 코드 0. 설계 4단계 "확인"의 항목이 모두 케이스로 들어 있다
+- [x] **Step 1: 픽스처** — 설계 4단계 목록을 스크립트가 임시 루트에 만든다(저장소에 넣지 않음). `out` 링크의 대상과 형제 디렉토리(`<루트>2`)도 임시 경로에 만든다
+- [x] **Step 2: 확인** — `make test` 종료 코드 0. 설계 4단계 "확인"의 항목이 모두 케이스로 들어 있다
   - 파일마다 `curl -s -o <파일> -w '%{http_code} %{content_type}'` → 200과 MIME, `cmp`로 원본과 같다. `zero` → `Content-Length: 0`
   - 엣지 케이스 표의 경로 행(400/403/404/200) 전부, `curl --path-as-is`
   - FIFO 요청을 연 채로 다른 `curl localhost:8080/`이 1초 안에 200
   - `--limit-rate 200k`로 `big.bin`을 받는 중에 `curl localhost:8080/`이 1초 안에 200, 로그에 `EPOLLOUT on` → `off`, `curl -s localhost:8080/big.bin | wc -c` → `8388608`
   - `curl --max-time 0.1 --limit-rate 1M localhost:8080/big.bin` 뒤 `ls /proc/$SP/fd | wc -l`이 처음 값 (Review Focus 3)
   - `make asan && bash tests/http_test.sh` → 종료 코드 0, ASan 오류 없음
-- [ ] **Step 3: 커밋, push** — `test: 정적 파일 기능 테스트`
+- [x] **Step 3: 커밋, push** — `test: 정적 파일 기능 테스트`
 
 ### Task 7: 요청 타이머와 408 (설계 5단계)
 담당: `builder` / `model: opus`, `effort: high` (`req_start` 기록 시점, sweep 중 응답과 닫기)
@@ -268,3 +268,4 @@ Task마다 verifier가 보고한 Minor를 여기에 한 줄씩 모은다. Task 9
 - (Task 5) `docs/architecture-http.md`: 경로를 만드는 `snprintf`의 잘림(음수 포함)은 404, 응답 헤더의 잘림은 500이라고 구분해 적는다
 - (Task 5) `docs/architecture-http.md` 엣지 케이스: `/index.html/`(일반 파일 + 끝 `/`) → 200, `/docs/.` → 404, 권한 111 디렉토리의 `/dir/` → 403을 적는다
 - (Task 4) CLAUDE.md 첫 문단 "HTTP 처리는 구현 중이라 아직 stub이다"를 고친다 (Task 3에서 넘어옴)
+- (Task 6) `tests/http_test.sh`: 전송 중 파일이 줄어듦(`sendfile` 0 → 닫힘) 케이스를 넣는다 (메인 세션이 실제 서버로 직접 확인: 4194304바이트로 줄이면 서버가 닫고 fd 수 5 → 5). `realpath`와 `open` 사이 삭제는 시점을 맞출 수 없어 범위 밖이다 (Task 5 verifier가 `ENOENT` 주입으로 확인)
