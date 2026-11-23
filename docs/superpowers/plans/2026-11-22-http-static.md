@@ -159,15 +159,15 @@ Task 1 → Task 2 → Task 3 ─┬─ Task 4 (conn.c/.h, http_test.sh) ─┬�
 
 **Interfaces:** 공개 함수 변경 없음
 
-- [ ] **Step 1: 실패 확인** — 없음. 파일을 여는 쪽이 Task 5라 이 Task만으로는 관찰할 동작이 없다. `sendfile` 경로는 Task 6에서 확인한다
-- [ ] **Step 2: 구현** (설계 "연결 상태 전이"의 WRITING ①②, 이벤트 하나에 `send`/`sendfile` 한 번, `sendfile` 0 반환 → `conn_close`, 다 보내면 `close(file_fd)` → `file_fd = -1` → `free(wbuf)`. 0바이트 파일은 `sendfile`을 부르지 않는다)
-- [ ] **Step 3: 확인**
+- [x] **Step 1: 실패 확인** — 없음. 파일을 여는 쪽이 Task 5라 이 Task만으로는 관찰할 동작이 없다. `sendfile` 경로는 Task 6에서 확인한다
+- [x] **Step 2: 구현** (설계 "연결 상태 전이"의 WRITING ①②, 이벤트 하나에 `send`/`sendfile` 한 번, `sendfile` 0 반환 → `conn_close`, 다 보내면 `close(file_fd)` → `file_fd = -1` → `free(wbuf)`. 0바이트 파일은 `sendfile`을 부르지 않는다)
+- [x] **Step 3: 확인**
   - 경고 0개 명령 → 종료 코드 0
   - `make test` → 종료 코드 0. 새 케이스: 404 응답을 3개 보낸 뒤 `[ -e /proc/$SP/fd/0 ]` (Review Focus 2)
   - `make asan && bash tests/http_test.sh` → 종료 코드 0, ASan 오류 없음
-- [ ] **Step 4: verifier** — `conn_send`/`conn_close`를 상태 전이 그림과 대조한다. 고의 결함: `conn_new`의 `file_fd = -1`을 지우면 fd 0 케이스가 `FAIL`인지 확인하고 되돌린다
-- [ ] **Step 5: 문서** — 문서 수정 배정 표의 Task 4 줄
-- [ ] **Step 6: 커밋, merge, push** — `feat: sendfile로 파일 본문 전송`
+- [x] **Step 4: verifier** — `conn_send`/`conn_close`를 상태 전이 그림과 대조한다. 고의 결함: `conn_new`의 `file_fd = -1`을 지우면 fd 0 케이스가 `FAIL`인지 확인하고 되돌린다
+- [x] **Step 5: 문서** — 문서 수정 배정 표의 Task 4 줄
+- [x] **Step 6: 커밋, merge, push** — `feat: sendfile로 파일 본문 전송`
 
 ### Task 5: 경로 해석과 MIME (설계 4단계 중 결정 9~11) — Task 4와 병렬
 담당: `builder` / `model: opus`, `effort: high` (경로 안전) / `isolation: worktree`
@@ -179,9 +179,9 @@ Task 1 → Task 2 → Task 3 ─┬─ Task 4 (conn.c/.h, http_test.sh) ─┬�
 - `http_handle`의 GET이 경로를 해석해 200(`resp.file_fd`, `resp.file_len`) / 400 / 403 / 404 / 500을 낸다. 오류를 정했으면 연 fd를 닫는다
 - `static` 함수 이름은 builder가 정하고 보고한다
 
-- [ ] **Step 1: 실패 확인** — 단위 테스트 케이스를 먼저 쓰고 `make test` → 종료 코드가 0이 아니다
-- [ ] **Step 2: 구현** (경로 처리 표 그대로. 검사는 디코딩한 뒤, 디코딩은 한 번, index.html도 6~7번을 다시 거친다)
-- [ ] **Step 3: 확인**
+- [x] **Step 1: 실패 확인** — 단위 테스트 케이스를 먼저 쓰고 `make test` → 종료 코드가 0이 아니다
+- [x] **Step 2: 구현** (경로 처리 표 그대로. 검사는 디코딩한 뒤, 디코딩은 한 번, index.html도 6~7번을 다시 거친다)
+- [x] **Step 3: 확인**
   - 경고 0개 명령 → 종료 코드 0
   - `make test` → 종료 코드 0. 단위 케이스:
     - 바이트·디코딩: `0x80` 이상, `#`, 공백 → 400 / `%20` → 공백 / `%zz`, 끝의 `%`, `%0`, `%00` → 400 / `%2f` → `/` / `%252e` → `%2e` / `?` 뒤 제거
@@ -190,8 +190,8 @@ Task 1 → Task 2 → Task 3 ─┬─ Task 4 (conn.c/.h, http_test.sh) ─┬�
     - MIME: `.html .HTML .css .js .png .PNG .jpg .jpeg`, 확장자 없음, `/v1.2/readme`, `notes..txt` → 기본값
   - `make clean && make test CFLAGS='... -fsanitize=address,undefined'` → 종료 코드 0
   - 기존 기능 테스트(빈 루트라 `GET /`는 계속 404)가 그대로 통과한다
-- [ ] **Step 4: verifier** — 경로 처리 표와 한 줄씩 대조한다. 고의 결함: 접두사 비교의 `real[n] == '/'` 조건을 지우면 형제 디렉토리 케이스가 잡히는지(Task 6 전이면 단위 테스트에 `http_init`으로 임시 루트를 두고 확인) 확인하고 되돌린다
-- [ ] **Step 5: 커밋, merge, push** — `feat: 요청 경로 해석과 MIME`
+- [x] **Step 4: verifier** — 경로 처리 표와 한 줄씩 대조한다. 고의 결함: 접두사 비교의 `real[n] == '/'` 조건을 지우면 형제 디렉토리 케이스가 잡히는지(Task 6 전이면 단위 테스트에 `http_init`으로 임시 루트를 두고 확인) 확인하고 되돌린다
+- [x] **Step 5: 커밋, merge, push** — `feat: 요청 경로 해석과 MIME`
 
 ### Task 6: 정적 파일 기능 테스트 (설계 4단계 확인)
 담당: `builder` / 강도: 기본
@@ -263,3 +263,8 @@ Task마다 verifier가 보고한 Minor를 여기에 한 줄씩 모은다. Task 9
 - (Task 2) 계획 Task 2 Step 4 "`make test`가 1로 끝남": 테스트 바이너리는 1이고 `make`는 2로 끝난다. 문구를 "0이 아닌 값"으로 고친다
 - (Task 3) `tests/http_test.sh`: 413을 POST로만 검사한다. Review Focus 4의 모르는 메서드(`BREW`) + `CL: 1000000` → 413, 뒤 바이트 미해석 케이스를 넣는다 (메인 세션이 직접 확인: 통과)
 - (Task 3) `tests/http_test.sh`: 파이프라인은 요청 2개만 검사한다. 한 번의 send에 3개 케이스를 넣는다 (메인 세션이 직접 확인: 통과)
+- (Task 4) `docs/architecture-tcp.md:98`과 "`conn_close` 순서" 절: `file_fd`를 아직 없는 것으로 적었다. `close(file_fd)` 줄을 더한다
+- (Task 5) `tests/test_http.c`: `PATH_MAX` 경계의 4095와 4096이 둘 다 404라 `n >= sizeof(full)`의 off-by-one을 구분하지 못한다. 4095바이트짜리 실제 파일 200 케이스를 넣는다 (verifier가 직접 확인: 4095 → 200, 4096 → 404)
+- (Task 5) `docs/architecture-http.md`: 경로를 만드는 `snprintf`의 잘림(음수 포함)은 404, 응답 헤더의 잘림은 500이라고 구분해 적는다
+- (Task 5) `docs/architecture-http.md` 엣지 케이스: `/index.html/`(일반 파일 + 끝 `/`) → 200, `/docs/.` → 404, 권한 111 디렉토리의 `/dir/` → 403을 적는다
+- (Task 4) CLAUDE.md 첫 문단 "HTTP 처리는 구현 중이라 아직 stub이다"를 고친다 (Task 3에서 넘어옴)
