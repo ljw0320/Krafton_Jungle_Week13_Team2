@@ -32,7 +32,7 @@ sys.stdout.buffer.write(out)
 sys.exit(code)' "${1:-3}"
 }
 
-$SERVER_WRAP ./server $PORT "$ROOT" 2>"$LOG" &
+$SERVER_WRAP ./server $PORT "$ROOT" </dev/null 2>"$LOG" &
 SP=$!
 for _ in $(seq 100); do
     (exec 3<>/dev/tcp/127.0.0.1/$PORT) 2>/dev/null && break
@@ -99,6 +99,15 @@ check "1.1 Connection close" 0 "$rc"
 
 # curl이 연결을 재사용한다
 check "curl reuse" 1 "$(curl -sv http://127.0.0.1:$PORT/ http://127.0.0.1:$PORT/ 2>&1 | grep -c 'Re-using existing connection')"
+
+# 파일 없는 연결이 서버의 fd 0을 닫지 않는다. 포트 대기 연결도 요청 없이 끊으므로
+# 시작 값을 읽지 않고 서버에 준 /dev/null과 비교한다
+(exec 3<>/dev/tcp/127.0.0.1/$PORT)
+for _ in 1 2 3; do
+    o=$(printf 'GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n' | xchg)
+    check "fd 0 404" "HTTP/1.1 404 Not Found" "$(status "$o")"
+done
+check "fd 0 kept" /dev/null "$(readlink /proc/$SP/fd/0)"
 
 kill $SP
 wait $SP 2>/dev/null

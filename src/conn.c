@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/epoll.h>
+#include <sys/sendfile.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -23,6 +24,7 @@ struct conn *conn_new(int fd) {
         return NULL;
     }
     c->fd = fd;
+    c->file_fd = -1;  // calloc의 0은 stdin이라 conn_close가 fd 0을 닫는다
     c->state = CONN_READING;
     c->last_active = time(NULL);  // 아무것도 안 보내는 연결도 유휴로 닫히게
     c->next = head;
@@ -40,6 +42,7 @@ void conn_close(struct conn *c) {
     loop_unwatch(c);  // close 전에 해야 한다
     close(c->fd);
     free(c->wbuf);
+    if (c->file_fd >= 0) close(c->file_fd);
     if (c->prev) c->prev->next = c->next;
     else head = c->next;
     if (c->next) c->next->prev = c->prev;
@@ -65,20 +68,29 @@ int conn_on_readable(struct conn *c) {
     return conn_process(c);
 }
 
-// send 한 번. -1: 닫힘, 0: 남음(WRITING 유지), 1: 다 보내고 READING으로 돌아옴
+// send나 sendfile 한 번. -1: 닫힘, 0: 남음(WRITING 유지), 1: 다 보내고 READING으로 돌아옴
 static int conn_send(struct conn *c) {
-    ssize_t n = send(c->fd, c->wbuf + c->woff, c->wlen - c->woff, 0);
+    ssize_t n;
+    if (c->woff < c->wlen) {
+        n = send(c->fd, c->wbuf + c->woff, c->wlen - c->woff, 0);
+        if (n > 0) c->woff += (size_t)n;
+    } else {
+        n = sendfile(c->fd, c->file_fd, &c->file_off, (size_t)(c->file_len - c->file_off));
+        if (n == 0) {  // 전송 중 파일이 줄어듦. Content-Length를 채울 수 없다
+            conn_close(c);
+            return -1;
+        }
+    }
     if (n < 0) {
         if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
             conn_close(c);
             return -1;
         }
     } else {
-        c->woff += (size_t)n;
         c->last_active = time(NULL);
         fprintf(stderr, "fd=%d send %zd bytes\n", c->fd, n);
     }
-    if (c->woff < c->wlen) {
+    if (c->woff < c->wlen || c->file_off < c->file_len) {
         if (!(c->events & EPOLLOUT)) {
             if (loop_watch(c, EPOLLOUT) < 0) {
                 conn_close(c);
@@ -88,6 +100,8 @@ static int conn_send(struct conn *c) {
         }
         return 0;
     }
+    if (c->file_fd >= 0) close(c->file_fd);
+    c->file_fd = -1;
     free(c->wbuf);
     c->wbuf = NULL;
     if (!c->keep_alive) {
@@ -115,6 +129,9 @@ static int conn_respond(struct conn *c, const struct http_req *req) {
     c->wbuf = r.head;
     c->wlen = r.head_len;
     c->woff = 0;
+    c->file_fd = r.file_fd;
+    c->file_len = r.file_len;
+    c->file_off = 0;
     c->keep_alive = r.keep_alive;
     c->state = CONN_WRITING;
     return 0;
