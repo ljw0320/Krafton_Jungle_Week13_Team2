@@ -115,16 +115,16 @@ Task 1 → Task 2 → Task 3 ─┬─ Task 4 (conn.c/.h, http_test.sh) ─┬�
 - Produces: `ssize_t http_parse(const char *buf, size_t len, size_t cap, struct http_req *req)` (설계 "HTTP 인터페이스")
 - 연결은 아직 stub `http_request_len`을 쓴다
 
-- [ ] **Step 1: 실패 확인** — `tests/test_http.c`를 먼저 쓰고 `make test` → 종료 코드가 0이 아니다
-- [ ] **Step 2: 구현** (검사 순서 1~7번, 숫자 세기 루프로 CL 파싱, `cap - head_len` 비교)
-- [ ] **Step 3: 확인**
+- [x] **Step 1: 실패 확인** — `tests/test_http.c`를 먼저 쓰고 `make test` → 종료 코드가 0이 아니다
+- [x] **Step 2: 구현** (검사 순서 1~7번, 숫자 세기 루프로 CL 파싱, `cap - head_len` 비교)
+- [x] **Step 3: 확인**
   - 경고 0개 명령 → 종료 코드 0
   - `make test` → 종료 코드 0, 마지막 줄 `N passed, 0 failed`
   - `make clean && make test CFLAGS='-std=gnu11 -Wall -Wextra -g -fsanitize=address,undefined'` → 종료 코드 0, 출력에 `AddressSanitizer`, `runtime error`가 없다
   - 케이스: 엣지 케이스 표의 `http_parse` 행 전부. 경계값으로 헤더 + 본문 8192 / 8193바이트, 정확히 8192바이트의 414 / 431, 정상 요청의 모든 앞부분(길이 1 ~ n-1)이 0을 반환
-- [ ] **Step 4: verifier 고의 결함 검사** — 기대값 하나를 틀리게 바꿈 → `make test`가 1로 끝남, bare LF 검사를 지움 → 해당 케이스가 `FAIL`. 둘 다 되돌린다
-- [ ] **Step 5: 문서** — 문서 수정 배정 표의 Task 2 줄
-- [ ] **Step 6: 커밋, push** — `feat: HTTP 요청 파서와 단위 테스트`
+- [x] **Step 4: verifier 고의 결함 검사** — 기대값 하나를 틀리게 바꿈 → `make test`가 1로 끝남, bare LF 검사를 지움 → 해당 케이스가 `FAIL`. 둘 다 되돌린다
+- [x] **Step 5: 문서** — 문서 수정 배정 표의 Task 2 줄
+- [x] **Step 6: 커밋, push** — `feat: HTTP 요청 파서와 단위 테스트`
 
 ### Task 3: 응답 생성과 연결 교체 (설계 3단계)
 담당: `builder` / 강도: 기본
@@ -259,3 +259,5 @@ Task 1 → Task 2 → Task 3 ─┬─ Task 4 (conn.c/.h, http_test.sh) ─┬�
 Task마다 verifier가 보고한 Minor를 여기에 한 줄씩 모은다. Task 9에서 한 번에 고친다.
 
 - (Task 1) `src/main.c:17`: 포트 앞 공백(`" 80"`)을 `strtol`이 통과시킨다. 이전 코드와 같은 동작이다
+- (Task 2) `src/http.c:166`: `cap - head_len`은 `len > cap`이면 언더플로한다. 지금 호출자는 `len <= RBUF_SIZE`를 지킨다. 전제를 `http.h` 주석에 적거나 파서에서 막는다
+- (Task 2) 계획 Task 2 Step 4 "`make test`가 1로 끝남": 테스트 바이너리는 1이고 `make`는 2로 끝난다. 문구를 "0이 아닌 값"으로 고친다

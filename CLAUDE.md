@@ -21,7 +21,7 @@
 ## 명령어
 모든 명령은 WSL(Ubuntu 24.04)의 레포 루트에서 실행한다. Windows 쪽 Claude는 `wsl.exe -e bash -lc 'cd /mnt/d/kraftonjungle/kraftonjungle_week13/Krafton_Jungle_Week13_Team2 && <명령>'`로 감싼다.
 - 빌드: `make` (경고 0개여야 한다), `make asan` (`-fsanitize=address,undefined`), `make clean`
-- 테스트: (미정). 지금은 `docs/architecture-tcp.md` "구현 순서"의 단계별 확인 명령으로 검증한다.
+- 테스트: `make test` (파서 단위 테스트 `tests/test_http.c`. 기능 테스트 `tests/http_test.sh`는 이후 Task에서 추가). ASan: `make clean && make test CFLAGS='-std=gnu11 -Wall -Wextra -g -fsanitize=address,undefined'`
 - 실행: `./server <port> <root>` (예: `./server 8080 /tmp/www`)
 - 그 밖의 검사: `make asan` 빌드로 같은 시나리오를 돌려 오류 0개, `valgrind --leak-check=full ./server 8080 /tmp/www`에서 `definitely lost: 0`
 

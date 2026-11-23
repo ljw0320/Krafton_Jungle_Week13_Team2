@@ -96,7 +96,8 @@ tests/
 ```
 
 - `event_loop.c`, `server.c`는 바뀌지 않는다.
-- `make test`: `gcc $(CFLAGS) -o tests/test_http tests/test_http.c && ./tests/test_http && bash tests/http_test.sh`. 단위 테스트는 `src/http.c`를 `#include`하므로 `src/*.c`와 함께 링크하지 않는다.
+- `make test`: `test: server` 의존 → `gcc $(CFLAGS) -o tests/test_http tests/test_http.c && ./tests/test_http && bash tests/http_test.sh`. 단위 테스트는 `src/http.c`를 `#include`하므로 `src/*.c`와 함께 링크하지 않는다. (2단계에서는 `http_test.sh`가 없어 단위 테스트만 돈다.) `make clean`은 `tests/test_http`도 지운다.
+- 테스트 출력(`test_http.c`, `http_test.sh` 공통): 실패마다 stderr에 `FAIL <케이스 이름>: 기대 <값>, 실제 <값>`, 끝에 `N passed, M failed`, 실패가 있으면 종료 코드 1.
 - 상수: `conn.h`에 `REQ_TIMEOUT_SEC 10`을 추가한다. `RBUF_SIZE`는 `http_parse`의 `cap` 인자로 넘긴다(`http.c`가 `conn.h`를 포함하지 않는다).
 
 ---
