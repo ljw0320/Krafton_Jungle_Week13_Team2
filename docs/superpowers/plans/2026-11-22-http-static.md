@@ -273,4 +273,4 @@ Task마다 verifier가 보고한 Minor를 여기에 한 줄씩 모은다. Task 9
 - (Task 7) `src/http.h`: `status` 주석의 코드 목록에 408을 더한다
 - (Task 7) `tests/http_test.sh`: 타이머 구간에서 SIGTERM으로 중단하면 python 클라이언트가 최대 20초쯤 남는다. `cleanup`에서 같이 끝낸다
 - (Task 7) `tests/http_test.sh`: `t0`을 `connect` 뒤에 재서 초 경계에서 10초 하한에 못 미칠 수 있다(추정). `t0`을 `connect` 앞으로 옮긴다
-- (Task 8) `tests/http_test.sh`: 서버 로그를 지워서 UBSan `runtime error`(출력만 하고 계속 실행)가 있어도 종료 코드가 0이다. 끝에서 로그에 `AddressSanitizer`/`runtime error`가 있으면 실패로 센다 (메인 세션이 `ASAN_OPTIONS=log_path`로 직접 확인: 0건)
+- (Task 8) `tests/http_test.sh`: 서버 로그를 지워서 UBSan `runtime error`(출력만 하고 계속 실행)가 있어도 종료 코드가 0이다. 끝에서 로그에 `AddressSanitizer`/`runtime error`가 있으면 실패로 센다 (메인 세션이 서버 stderr를 따로 저장해 직접 확인: 0건)

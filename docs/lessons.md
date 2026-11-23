@@ -10,3 +10,4 @@
 
 ## valgrind
 - WSL에 `sudo` 비밀번호가 없어도 Windows에서 `wsl.exe -u root -e bash -lc '...'`로 설치할 수 있다. PowerShell에서는 `$?`가 먼저 확장되지 않게 작은따옴표로 감싼다.
+- "0건"은 같은 방법으로 일부러 낸 오류가 잡히는지 확인한 뒤에 믿는다. `ASAN_OPTIONS`/`UBSAN_OPTIONS`의 `log_path`는 이 빌드에서 UBSan 출력을 파일로 보내지 않았다. UBSan은 서버 stderr를 저장해 `runtime error`를 찾는다.
