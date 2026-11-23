@@ -1,6 +1,6 @@
 # Krafton_Jungle_Week13_Team2
 
-크래프톤 정글 13주차 웹 서버 과제다. C와 POSIX 소켓 API로 HTTP 웹 서버를 만든다. 이번 범위는 TCP 소켓 서버와 `epoll` 기반 동시 요청 처리, HTTP 파싱과 정적 파일 서빙이다. HTTP 처리는 구현 중이라 아직 stub이다.
+크래프톤 정글 13주차 웹 서버 과제다. C와 POSIX 소켓 API로 HTTP 웹 서버를 만든다. 이번 범위는 TCP 소켓 서버와 `epoll` 기반 동시 요청 처리, HTTP 파싱과 정적 파일 서빙이다.
 
 ## 문서
 - 개요: `docs/overview.md`
@@ -21,7 +21,7 @@
 ## 명령어
 모든 명령은 WSL(Ubuntu 24.04)의 레포 루트에서 실행한다. Windows 쪽 Claude는 `wsl.exe -e bash -lc 'cd /mnt/d/kraftonjungle/kraftonjungle_week13/Krafton_Jungle_Week13_Team2 && <명령>'`로 감싼다.
 - 빌드: `make` (경고 0개여야 한다), `make asan` (`-fsanitize=address,undefined`), `make clean`
-- 테스트: `make test` (파서 단위 테스트 `tests/test_http.c`. 기능 테스트 `tests/http_test.sh`는 이후 Task에서 추가). ASan: `make clean && make test CFLAGS='-std=gnu11 -Wall -Wextra -g -fsanitize=address,undefined'`
+- 테스트: `make test` (파서 단위 테스트 `tests/test_http.c`와 기능 테스트 `tests/http_test.sh`를 둘 다 실행한다). ASan: `make clean && make test CFLAGS='-std=gnu11 -Wall -Wextra -g -fsanitize=address,undefined'`
 - 실행: `./server <port> <root>` (예: `./server 8080 /tmp/www`)
 - 그 밖의 검사: `make asan` 빌드로 같은 시나리오를 돌려 오류 0개, `valgrind --leak-check=full ./server 8080 /tmp/www`에서 `definitely lost: 0`
 

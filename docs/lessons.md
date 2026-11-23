@@ -7,7 +7,9 @@
 - 비대화형 bash에서 `&`로 띄운 프로세스는 SIGINT를 무시한다. `valgrind ... & SP=$!; kill -INT $SP; wait $SP`는 영원히 멈춘다. `kill $SP`(SIGTERM)로 끝내도 valgrind는 HEAP/LEAK 요약을 출력한다.
 - 확인용 스크립트는 `cd <사본> || exit 1`로 시작하고, 출력 문구의 `->`는 따옴표로 감싼다. `cd`가 실패하거나 `echo fds 6 -> 0`이 리다이렉션이 되어 저장소 루트에 파일이 생겼다(Task 6, 7). WSL이 종료되면 `/tmp`가 비워진다. 끝에 `git status`를 본다.
 - `pkill -f <패턴>`은 그 패턴이 들어 있는 `bash -lc` 자신도 죽인다(종료 코드 15). `kill $SP`처럼 PID로 끝내거나 `pkill -x <이름>`을 쓴다.
+- WSL 벽시계가 약 32초마다 0.4~0.5초 앞으로 뛰었다. 서버가 `time()`을 쓰면 테스트도 `time.time()`으로 잰다. `time.monotonic()`으로 재서 10초 하한이 9.8초로 나와 드물게 실패했다.
 
 ## valgrind
 - WSL에 `sudo` 비밀번호가 없어도 Windows에서 `wsl.exe -u root -e bash -lc '...'`로 설치할 수 있다. PowerShell에서는 `$?`가 먼저 확장되지 않게 작은따옴표로 감싼다.
-- "0건"은 같은 방법으로 일부러 낸 오류가 잡히는지 확인한 뒤에 믿는다. `ASAN_OPTIONS`/`UBSAN_OPTIONS`의 `log_path`는 이 빌드에서 UBSan 출력을 파일로 보내지 않았다. UBSan은 서버 stderr를 저장해 `runtime error`를 찾는다.
+- `tests/http_test.sh`는 서버 로그에서 `AddressSanitizer`/`runtime error`를 이미 검사하므로 스크립트 종료 코드로 충분하다. 다른 방법(`log_path` 등)으로 "0건"을 확인할 때는 일부러 낸 오류가 잡히는지(양성 대조) 먼저 본다.
+- 테스트 코드에 검사가 없다고 적기 전에 `grep`으로 그 검사를 찾는다(Task 8에서 있는 검사를 없다고 적었다).

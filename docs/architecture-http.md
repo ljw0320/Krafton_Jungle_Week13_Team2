@@ -141,10 +141,11 @@ int http_handle(const struct http_req *req, struct http_resp *resp);
 // conn_process와 conn_sweep_idle(408)이 같이 쓴다. 0: WRITING 준비됨, -1: 닫음
 static int conn_respond(struct conn *c, const struct http_req *req) {
     struct http_resp r;
-    if (http_handle(req, &r) < 0) { conn_close(c); return -1; }   // 500도 못 만듦
+    if (http_handle(req, &r) < 0) { conn_close(c); return -1; }   // 응답을 만들지 못함
     c->wbuf = r.head; c->wlen = r.head_len; c->woff = 0;
     c->file_fd = r.file_fd; c->file_len = r.file_len; c->file_off = 0;
     c->keep_alive = r.keep_alive;
+    c->outq = 0;                  // 앞 응답의 값이 남지 않게
     c->state = CONN_WRITING;
     return 0;
 }
@@ -173,6 +174,7 @@ struct conn {
     int    file_fd;           // 보낼 파일, 없으면 -1 (conn_new에서 -1로 둔다)
     off_t  file_off, file_len;// sendfile이 file_off를 보낸 만큼 늘린다
     time_t req_start;         // rbuf 맨 앞 요청의 첫 바이트 시각
+    int    outq;              // 지난 sweep의 SIOCOUTQ(WRITING). 줄었으면 클라이언트가 읽는 중이다
 };
 ```
 
@@ -209,15 +211,18 @@ accept4 ──▶ READING (EPOLLIN 감시)
 
 sweep (1초마다)
   READING && rlen > 0 && now - req_start > REQ_TIMEOUT_SEC → req.status = 408 → conn_respond
-  그 밖에 now - last_active > IDLE_TIMEOUT_SEC            → 응답 없이 conn_close (지금과 같음)
+  WRITING이면 ioctl(SIOCOUTQ)로 outq를 읽어 지난 sweep보다 줄었으면 last_active = now (outq 갱신)
+  그 밖에 now - last_active > IDLE_TIMEOUT_SEC            → 응답 없이 conn_close
 
 모든 상태 ──▶ conn_close
   recv 0, ECONNRESET/EPIPE 등 오류, EPOLLHUP/EPOLLERR,
-  유휴 타임아웃, http_handle 실패(500도 못 만듦), malloc 실패
+  유휴 타임아웃, http_handle 실패(응답 버퍼 malloc 실패 등)
 ```
 
 - WRITING 동안 `EPOLLIN`을 끄는 규칙, 핸들러 반환 규칙(0 / -1), `SIGPIPE` 무시는 그대로다. `enum conn_state`도 늘지 않는다. 헤더 단계와 본문 단계는 오프셋으로 구분한다.
 - 이벤트 하나에 `send`/`sendfile`을 한 번만 한다. 큰 파일 하나가 루프를 독차지하지 않는다.
+- 유휴 활동 정의 변경(Task 9, 사용자 승인): `last_active`는 `recv`/`send` 성공에 더해, WRITING 연결의 `SIOCOUTQ`(클라이언트가 아직 확인하지 않은 송신 바이트 수)가 지난 sweep보다 줄어들 때도 갱신한다. 이유: 송신 버퍼가 약 1/3 빌 때까지 `EPOLLOUT`이 오지 않아, 계속 읽는 느린 클라이언트(8MB를 50KB/s로)가 유휴 타이머에 잘렸다. 결과: 50KB/s는 완료, 10KB/s는 100초 동안 유지, 4KB/s는 수신 창 갱신이 10초보다 드물어 여전히 닫힌다. 완전히 멈춘 연결은 응답 직후 `SIOCOUTQ`가 한 번 줄 수 있어 10~13초에 닫힌다.
+- 변경(Task 9, 사용자 결정): `conn_new`에서 `TCP_NODELAY`를 켠다. 실패하면 느려질 뿐이라 `perror`만 하고 계속한다. 이유: 헤더와 본문이 따로 나가면 Nagle + 지연 ACK로 keep-alive의 두 번째 파일 응답부터 약 44ms 늦었다. 결과: 헤더와 본문 사이, 마지막 조각의 Nagle 대기가 없어진다. 헤더 `send`의 `MSG_MORE`만으로는 150KB 이상 파일에서 약 44ms가 드물게 남았다.
 
 ## `conn_close` 순서
 
@@ -252,7 +257,8 @@ sweep (1초마다)
 | 11 | handle: 경로 | 대상 바이트가 `0x21`~`0x7E` 밖이거나 `#`, 퍼센트 인코딩 오류, `%00` | 400 |
 | 12 | | 정규화 중 루트 위로 `..`, 접두사 불일치, `EACCES`/`ELOOP`, 일반 파일 아님 | 403 |
 | 13 | | `ENOENT`/`ENOTDIR`/`ENAMETOOLONG`, `/`로 끝나지 않는 디렉토리, index.html 없음 | 404 |
-| 어디서든 | handle | `malloc`, `open`·`realpath`의 그 밖 오류, `fstat` 실패, `snprintf` 잘림 | 500 |
+| 어디서든 | handle | 경로 버퍼 `malloc` 실패, `open`·`realpath`의 그 밖 오류, `fstat` 실패 | 500 |
+| 어디서든 | handle | 응답 버퍼 `malloc` 실패, 응답 헤더 `snprintf` 잘림 | 응답 없이 닫음 |
 | 어디서든 | sweep | 요청이 `REQ_TIMEOUT_SEC` 안에 완성되지 않음 | 408 |
 
 - 원칙은 개념 노트와 같다: 메시지를 믿을 수 있는지 먼저(1~7), 의미는 나중(8~13).
@@ -288,7 +294,7 @@ sweep (1초마다)
 | 2 | 첫 `?`에서 자른다 | |
 | 3 | 퍼센트 디코딩을 한 번, 별도 버퍼에 한다. 디코딩 결과가 `/`로 끝나는지 기록한다 | `%` 뒤에 16진수 2자리가 없으면 400, `%00`이면 400 |
 | 4 | 디코딩 결과를 `/`로 나눠 정규화한다. 빈 칸과 `.`은 무시, `..`이면 하나 꺼낸다 | 비어 있는데 `..` → 403 |
-| 5 | `root_real + "/" + 정규화 결과` | `PATH_MAX` 초과 → 404 |
+| 5 | `root_real + "/" + 정규화 결과` | 경로를 만드는 `snprintf`가 잘리거나(`PATH_MAX` 초과) 음수를 반환하면 → 404 (응답 헤더의 `snprintf` 잘림은 응답 없이 닫음) |
 | 6 | `realpath(full, real)` | `ENOENT`, `ENOTDIR`, `ENAMETOOLONG` → 404 / `EACCES`, `ELOOP` → 403 / 그 밖 → 500 |
 | 7 | `strncmp(real, root_real, n) == 0 && (real[n] == '/' \|\| real[n] == '\0')` | 403 |
 | 8 | `open(real, O_RDONLY \| O_NONBLOCK)` | `ENOENT` → 404, `EACCES`, `ENXIO`(유닉스 소켓. 10번의 소켓 → 403과 맞춘다) → 403, 그 밖 → 500 |
@@ -344,6 +350,9 @@ sweep (1초마다)
 | `/../etc/passwd`, `/%2e%2e/%2e%2e/etc/passwd`, `/img/../../x` | 경로 | 403 |
 | `/%252e%252e/etc/passwd` | 경로 | 한 번만 디코딩되어 `%2e%2e`라는 이름의 디렉토리가 된다 → 404 |
 | `/img/../index.html`, `/notes..txt`, `//index.html`, `/./index.html` | 경로 | 200 |
+| `/index.html/` (일반 파일 + 끝 `/`) | 경로 | 200 |
+| `/docs/.` | 경로 | 404 (`.`이 무시되어 끝 `/`가 아니므로 디렉토리 + `/` 없음) |
+| 권한 111 디렉토리의 `/dir/` | 경로 | 403 (디렉토리를 `O_RDONLY`로 여는 것이 `EACCES`다. `/dir/index.html`은 200) |
 | 루트 밖을 가리키는 심볼릭 링크, 형제 디렉토리(`/srv/www2`)로 가는 링크 | 경로 | 403 |
 | 루트 안을 가리키는 심볼릭 링크 | 경로 | 200 |
 | FIFO | 경로 | `O_NONBLOCK`이라 `open`이 바로 돌아오고 403. 다른 연결이 멈추지 않는다 |
@@ -359,9 +368,11 @@ sweep (1초마다)
 | 전송 중 파일이 줄어듦 | `conn_send` | `sendfile`이 0 반환 → `conn_close` (클라이언트는 잘린 응답을 안다) |
 | 파일 없는 응답 | `conn_new`, `conn_close` | `file_fd = -1`이라 `close(0)`을 하지 않는다 |
 | 파일을 연 뒤 응답 생성 실패 | `http_handle` | 열린 fd를 닫고 -1 |
-| 500 응답을 담을 `malloc`도 실패 | `conn_respond` | 응답 없이 `conn_close` |
+| 응답 버퍼 `malloc` 실패 | `http_handle`, `conn_respond` | 응답 없이 `conn_close` |
 | 1바이트씩 4초 간격으로 보냄 (Slowloris) | sweep | 요청 시작 후 10~11초에 408 + 닫기 |
 | 아무것도 안 보내는 연결, 응답 후 다음 요청 없는 keep-alive | sweep | 유휴 10~11초에 응답 없이 닫기 (지금과 같음) |
+| 느리게 계속 읽는 클라이언트 (8MB를 50KB/s로) | sweep | `SIOCOUTQ`가 줄어들면 `last_active = now`라 끝까지 전송 |
+| 응답 중 완전히 멈춘 클라이언트 | sweep | `SIOCOUTQ`가 그대로라 닫기. 응답 직후 한 번 줄 수 있어 10~13초 |
 | 큰 파일을 오래 보낸 뒤 파이프라인으로 남은 요청 | `conn_send` | READING으로 돌아올 때 `req_start = now`라 408이 아니다 |
 | sweep에서 408을 보내다가 연결이 닫힘 | sweep | `next`를 먼저 저장하므로 순회가 안전하다 |
 | 닫는 응답 뒤 수신 버퍼에 남은 본문 | `conn_close` | RST가 나갈 수 있다(알려진 한계). 테스트는 헤더만 보낸다 |
@@ -422,7 +433,7 @@ sweep (1초마다)
 - 확인
 	- `(printf 'G'; sleep 4; printf 'E'; sleep 4; printf 'T'; sleep 4) | nc 127.0.0.1 8080`이 요청 시작 후 10~11초에 `408 Request Timeout`을 받고 끝난다.
 	- `nc 127.0.0.1 8080`에 아무것도 보내지 않으면 10~11초 후 응답 없이 끝난다.
-	- `python3`로 `GET /big.bin`과 `GET /index.html`을 한 번에 보내고 15초에 걸쳐 천천히 읽으면, 두 번째 응답이 200이다(408이 아님).
+	- `python3`로 `GET /big.bin`과 `GET /index.html`의 앞부분을 한 번에 보내고, 15초에 걸쳐 천천히 읽은 뒤 두 번째 요청의 나머지를 나눠 보내면 두 번째 응답이 200이다(408이 아님). 완전한 두 번째 요청은 `req_start = now`를 지워도 통과하므로 이 결함을 잡지 못한다.
 
 ### 6단계: 종합 확인
 - `make test` 종료 코드 0.
@@ -443,7 +454,7 @@ sweep (1초마다)
 - URI가 길고 헤더도 붙어서 8192를 넘으면 414가 아니라 431이 나간다. 둘 다 닫는 응답이라 경계 문제는 없다.
 - 시작할 때 구한 루트 `realpath`는 실행 중 루트가 바뀌거나 지워져도 갱신되지 않는다.
 - 일반 파일에는 `O_NONBLOCK`이 효과가 없다. 페이지 캐시에 없는 파일이면 `sendfile`이 디스크 읽기만큼 루프를 멈춘다.
-- 1바이트씩 느리게 읽는 클라이언트(slow read)는 `last_active`가 계속 갱신되어 막지 못한다.
+- 느리게 읽는 클라이언트(slow read)는 `SIOCOUTQ`가 줄어드는 동안 유휴로 닫지 않는다. 그래서 극단적으로 천천히 읽어도(10KB/s까지 확인) 연결 하나를 오래 붙잡을 수 있다. 반대로 4KB/s처럼 수신 창 갱신이 10초보다 드물면 `SIOCOUTQ`가 줄지 않아 정상 클라이언트도 닫힌다.
 - HEAD를 지원하지 않는다(RFC 9110은 범용 서버에 MUST). 405로 답한다.
 - 모르는 메서드의 501도 연결을 닫는다. 클라이언트가 다시 연결하는 비용이 든다.
 - 헤더와 본문이 별도 시스템 콜로 나가 패킷이 하나 더 생길 수 있다.

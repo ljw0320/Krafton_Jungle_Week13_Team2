@@ -10,7 +10,7 @@ int http_init(const char *root);
 enum http_method { M_GET, M_POST, M_KNOWN /* 알지만 구현 안 함 */, M_UNKNOWN };
 
 struct http_req {
-    int status;                       /* 0: 형식 정상. 아니면 400/413/414/431/501/505 */
+    int status;                       /* 0: 형식 정상. 아니면 400/408/413/414/431/501/505 */
     enum http_method method;
     const char *target; size_t target_len;   /* buf 안을 가리킨다. memmove 전까지만 유효 */
     int minor;                        /* HTTP/1.x의 x */
@@ -19,7 +19,7 @@ struct http_req {
     size_t content_length, head_len;
 };
 
-/* buf 앞의 요청 하나를 파싱한다.
+/* buf 앞의 요청 하나를 파싱한다. len <= cap이어야 한다(cap - 헤더 길이가 언더플로하지 않게).
    >0: 요청 길이(헤더 + 본문), 0: 덜 왔다, -1: 형식 오류(req->status에 코드) */
 ssize_t http_parse(const char *buf, size_t len, size_t cap, struct http_req *req);
 

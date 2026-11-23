@@ -1,8 +1,12 @@
 #include <errno.h>
+#include <linux/sockios.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/epoll.h>
+#include <sys/ioctl.h>
 #include <sys/sendfile.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -23,6 +27,9 @@ struct conn *conn_new(int fd) {
         close(fd);
         return NULL;
     }
+    // 헤더와 본문이 따로 나가면 Nagle + 지연 ACK로 약 44ms 늦는다. 실패해도 느려질 뿐이다
+    int on = 1;
+    if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on)) < 0) perror("setsockopt");
     c->fd = fd;
     c->file_fd = -1;  // calloc의 0은 stdin이라 conn_close가 fd 0을 닫는다
     c->state = CONN_READING;
@@ -136,6 +143,7 @@ static int conn_respond(struct conn *c, const struct http_req *req) {
     c->file_len = r.file_len;
     c->file_off = 0;
     c->keep_alive = r.keep_alive;
+    c->outq = 0;  // 앞 응답의 값이 남으면 첫 sweep이 줄어든 것으로 잘못 본다
     c->state = CONN_WRITING;
     return 0;
 }
@@ -170,6 +178,12 @@ void conn_sweep_idle(time_t now) {
     struct conn *next;
     for (struct conn *c = head; c; c = next) {
         next = c->next;  // conn_close가 c를 해제하므로 먼저 저장
+        // 송신 버퍼가 1/3쯤 비기 전에는 EPOLLOUT이 오지 않아, 느리게 읽는 중인지는 줄어든 양으로 안다
+        int q;
+        if (c->state == CONN_WRITING && ioctl(c->fd, SIOCOUTQ, &q) == 0) {
+            if (q < c->outq) c->last_active = now;
+            c->outq = q;
+        }
         // 유휴보다 먼저 본다. 한 바이트 보내고 멈춘 연결도 408을 받는다
         if (c->state == CONN_READING && c->rlen > 0 && now - c->req_start > REQ_TIMEOUT_SEC) {
             fprintf(stderr, "fd=%d request timeout\n", c->fd);

@@ -7,14 +7,13 @@ ROOT=$TMP/www
 SIB=${ROOT}2        # 루트 이름으로 시작하는 형제 디렉토리 (/srv/www2 유형)
 OUT=$TMP/outside
 LOG=$(mktemp)
-SP=
 pass=0
 fail=0
 # 느린 서버(valgrind)에서 1초 제한이 헛되이 실패하지 않게 넓힌다
 LIM=1; [ -n "$SERVER_WRAP" ] && LIM=5
 
 cleanup() {
-    [ -n "$SP" ] && kill $SP 2>/dev/null
+    kill $(jobs -p) 2>/dev/null   # 서버와 백그라운드 클라이언트
     chmod -R u+rwx "$TMP" 2>/dev/null   # chmod 000 항목도 지워지게
     rm -rf "$TMP" "$LOG"
 }
@@ -101,6 +100,7 @@ closing() {   # 이름 코드 이유 입력
     check "$1 status" "HTTP/1.1 $2 $3" "$(status "$o")"
     check "$1 close header" 1 "$(grep -ac '^Connection: close' <<<"$o")"
     check "$1 closed" 0 "$rc"
+    check "$1 one response" 1 "$(grep -ac '^HTTP/' <<<"$o")"   # 뒤 바이트를 요청으로 해석하지 않는다
 }
 closing "400 Host space" 400 "Bad Request" 'GET / HTTP/1.1\r\nHost : x\r\n\r\n'
 closing "505 HTTP/2.0" 505 "HTTP Version Not Supported" 'GET / HTTP/2.0\r\nHost: x\r\n\r\n'
@@ -108,6 +108,8 @@ closing "501 BREW" 501 "Not Implemented" 'BREW / HTTP/1.1\r\nHost: x\r\n\r\n'
 closing "501 TE" 501 "Not Implemented" 'GET / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n'
 closing "411 POST no CL" 411 "Length Required" 'POST / HTTP/1.1\r\nHost: x\r\n\r\n'
 closing "413 CL 1000000" 413 "Content Too Large" 'POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 1000000\r\n\r\n'
+closing "413 BREW" 413 "Content Too Large" \
+    'BREW / HTTP/1.1\r\nHost: x\r\nContent-Length: 1000000\r\n\r\nGET / HTTP/1.1\r\nHost: x\r\n\r\n'
 
 o=$(printf 'GET /%s' "$(head -c 8187 /dev/zero | tr '\0' a)" | xchg); rc=$?
 check "414 status" "HTTP/1.1 414 URI Too Long" "$(status "$o")"
@@ -225,12 +227,18 @@ check "fifo other curl" 200 "$(curl -s -o /dev/null -m $LIM -w '%{http_code}' $U
 read -r -t 3 -u 5 line; check "fifo 403" "HTTP/1.1 403 Forbidden" "$(tr -d '\r' <<<"$line")"
 exec 5>&-
 
-# 느린 클라이언트가 받는 중에도 다른 연결이 멈추지 않는다
-curl -s --limit-rate 200k -m 3 -o /dev/null $U/big.bin & CP=$!
+# 로그 $1줄 뒤에서 send가 가장 많은 fd의 횟수. 헤더와 본문이 따로라 3번 이상이어야 부분 전송이다
+sends() {
+    tail -n +$(($1 + 1)) "$LOG" | grep -ao '^fd=[0-9]* send' | sort | uniq -c | sort -rn | awk 'NR == 1 { print $1 }'
+}
+
+# 느린 클라이언트가 받는 중에도 다른 연결이 멈추지 않는다. 1M: 3초 안에 송신 버퍼가 1/3 비어 다시 보낸다
+L0=$(wc -l <"$LOG")
+curl -s --limit-rate 1M -m 3 -o /dev/null $U/big.bin & CP=$!
 sleep 0.5
 check "slow other curl" 200 "$(curl -s -o /dev/null -m $LIM -w '%{http_code}' $U/)"
 wait $CP; check "slow curl timed out" 28 $?
-grep -aq 'EPOLLOUT on' "$LOG"; check "EPOLLOUT on logged" 0 $?
+[ "$(sends $L0)" -ge 3 ]; check "slow partial sends" 0 $?
 
 # 8MB를 다 받는다. 로그에 EPOLLOUT on -> off
 L0=$(wc -l <"$LOG")
@@ -239,11 +247,31 @@ check "big size" 8388608 "$(wc -c <"$D")"
 cmp -s "$D" "$ROOT/big.bin"; check "big cmp" 0 $?
 seq=$(tail -n +$((L0 + 1)) "$LOG" | grep -a EPOLLOUT | sed 's/fd=[0-9]* //' | paste -sd,)
 [[ $seq == "EPOLLOUT on,"*"EPOLLOUT off" ]]; check "EPOLLOUT on then off" 0 $?
+[ "$(sends $L0)" -ge 3 ]; check "big partial sends" 0 $?
 
 # 같은 연결에서 파일 두 개 (keep-alive)
 check "two files reuse" 1 "$(curl -sv -o "$D" -o "$D.2" $U/index.html $U/style.css 2>&1 | grep -c 'Re-using existing connection')"
 cmp -s "$D" "$ROOT/index.html"; check "two files cmp 1" 0 $?
 cmp -s "$D.2" "$ROOT/style.css"; check "two files cmp 2" 0 $?
+
+# 한 keep-alive 연결의 작은 파일 20번. Nagle + 지연 ACK에 걸리면 요청마다 약 40ms라 중앙값으로 본다
+o=$(python3 -c '
+import socket, statistics, time
+s = socket.create_connection(("127.0.0.1", 8080))
+s.settimeout(5)
+ts = []
+for _ in range(20):
+    t = time.monotonic()
+    s.sendall(b"GET /style.css HTTP/1.1\r\nHost: x\r\n\r\n")
+    out = b""
+    while not out.endswith(b"body{}\n"):
+        d = s.recv(4096)
+        if not d: raise SystemExit("closed")
+        out += d
+    ts.append(time.monotonic() - t)
+m = statistics.median(ts)
+print("ok" if m < 0.02 else "median=%.1fms" % (m * 1000))' 2>&1)
+check "keep-alive latency" ok "$o"
 
 # 파일 + 404 파이프라인
 o=$(printf 'GET /style.css HTTP/1.1\r\nHost: x\r\n\r\nGET /nope HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n' | xchg); rc=$?
@@ -251,6 +279,13 @@ check "pipeline statuses" "HTTP/1.1 200 OK|HTTP/1.1 404 Not Found" "$(tr -d '\r'
 check "pipeline lengths" "Content-Length: 7|Content-Length: 23" "$(tr -d '\r' <<<"$o" | grep -a '^Content-Length' | paste -sd'|')"
 check "pipeline order body" "body{}|<h1>404 Not Found</h1>" "$(tr -d '\r' <<<"$o" | grep -a -e '^body{}' -e '^<h1>' | paste -sd'|')"
 check "pipeline closed" 0 "$rc"
+# 한 번의 send에 요청 3개
+o=$(printf 'GET /style.css HTTP/1.1\r\nHost: x\r\n\r\nGET /nope HTTP/1.1\r\nHost: x\r\n\r\nGET /app.js HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n' | xchg); rc=$?
+check "pipeline 3 statuses" "HTTP/1.1 200 OK|HTTP/1.1 404 Not Found|HTTP/1.1 200 OK" \
+    "$(tr -d '\r' <<<"$o" | grep -a '^HTTP/' | paste -sd'|')"
+check "pipeline 3 bodies" "body{}|<h1>404 Not Found</h1>|var a=1;" \
+    "$(tr -d '\r' <<<"$o" | grep -a -e '^body{}' -e '^<h1>' -e '^var' | paste -sd'|')"
+check "pipeline 3 closed" 0 "$rc"
 # 8MB 파일 + 404: 부분 전송이 끝난 뒤 다음 응답이 이어서 나온다
 printf 'GET /big.bin HTTP/1.1\r\nHost: x\r\n\r\nGET /nope HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n' | xchg 5 >"$D"; rc=$?
 check "big pipeline closed" 0 $rc
@@ -266,20 +301,44 @@ n0=$(ls /proc/$SP/fd | wc -l)
 for i in 1 2 3; do
     curl -s --max-time 0.1 --limit-rate 1M -o /dev/null $U/big.bin; check "abort rc $i" 28 $?
 done
-n1=
-for _ in $(seq 30); do
-    n1=$(ls /proc/$SP/fd | wc -l)
-    [ "$n1" == "$n0" ] && break
-    sleep 0.1
-done
-check "fd count after abort" "$n0" "$n1"
+fdback() {   # 이름. fd 수가 n0으로 돌아오는지 3초까지 본다
+    local n1
+    for _ in $(seq 30); do
+        n1=$(ls /proc/$SP/fd | wc -l)
+        [ "$n1" == "$n0" ] && break
+        sleep 0.1
+    done
+    check "$1" "$n0" "$n1"
+}
+fdback "fd count after abort"
+
+# 전송 중 파일이 줄어들면 서버가 닫고 fd가 새지 않는다
+truncate -s 8388608 "$ROOT/shrink.bin"
+o=$(python3 -c '
+import os, socket, sys
+s = socket.socket()
+s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)
+s.settimeout(5)
+s.connect(("127.0.0.1", 8080))
+s.sendall(b"GET /shrink.bin HTTP/1.1\r\nHost: x\r\n\r\n")
+out = s.recv(65536)
+os.truncate(sys.argv[1], 4194304)
+while True:
+    d = s.recv(65536)
+    if not d: break
+    out += d
+print(out[:15].decode(), "cut" if len(out) < 8388608 else "full")' "$ROOT/shrink.bin" 2>&1)
+check "shrink closed" "HTTP/1.1 200 OK cut" "$o"
+fdback "fd count after shrink"
 
 # --- 요청 타이머 ---
 # 출력: 응답 상태 라인들|마지막 응답의 Connection|끝(EOF나 오류)|시간(범위 안이면 ok).
-# 408과 유휴는 time()이 초 단위이고 sweep이 최대 1초 늦어 10초 이상 12초 미만이다.
-# 느린 읽기는 서버 송신 버퍼(최대 4MB)에 응답이 다 들어가지 않게 수신 버퍼를 줄이고 읽는 속도를 정한다
-timer() {   # 케이스 이름
-    python3 -c '
+# 408과 유휴는 time()이 초 단위이고 sweep이 최대 1초 늦어 10초 이상 12초 미만인데, 벽시계 점프까지 봐서 13초 미만으로 한다.
+# slow, slowsplit은 서버 송신 버퍼(최대 4MB)에 응답이 다 들어가지 않게 수신 버퍼를 줄이고 읽는 속도를 정한다.
+# drain은 EPOLLOUT이 오지 않게 송신 버퍼의 1/3보다 적게(약 290KB) 14초 동안 읽은 뒤 나머지를 다 읽는다.
+# stuck은 읽지 않고, 서버 쪽 소켓이 FIN_WAIT1(04)이 되는 때를 닫힌 시각으로 본다
+timer() {   # 케이스 이름. exec라서 $!가 python의 PID다 (cleanup이 끝낼 수 있게)
+    exec python3 -c '
 import socket, sys, time
 case = sys.argv[1]
 G = b"GET /index.html HTTP/1.1\r\nHost: x\r\n"
@@ -289,10 +348,11 @@ BIG = b"GET /big.bin HTTP/1.1\r\nHost: x\r\n\r\n"
 BIGLEN = 8388608
 s = socket.socket()
 s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)
+# 서버와 같은 벽시계로 잰다. WSL 벽시계는 약 32초마다 0.4초쯤 앞으로 뛴다
+t0 = time.time()
 s.connect(("127.0.0.1", 8080))
 s.settimeout(20)
-t0 = time.monotonic()
-el = lambda: time.monotonic() - t0
+el = lambda: time.time() - t0
 out = b""
 end = "EOF"
 first = None    # 첫 응답 바이트가 온 시각
@@ -308,6 +368,16 @@ if case == "drip":
     s.settimeout(20)
 elif case == "stall": s.sendall(b"G")
 elif case == "keepalive": s.sendall(GET)
+elif case == "drain":
+    s.sendall(BIG[:-2] + b"Connection: close\r\n\r\n")
+    while el() < 14:
+        out += s.recv(4096)
+        time.sleep(0.2)
+elif case == "stuck":
+    s.sendall(BIG)
+    row = "0100007F:1F90 0100007F:%04X 04" % s.getsockname()[1]
+    while row not in open("/proc/net/tcp").read() and el() < 20: time.sleep(0.1)
+    first = el()
 elif case in ("slow", "slowsplit"):
     dur = 15 if case == "slow" else 13
     s.sendall(BIG + (LAST if case == "slow" else LAST[:12]))
@@ -331,21 +401,25 @@ try:
         out += d
 except OSError as e: end = repr(e)
 t = el()
+got = len(out) - out.find(b"\r\n\r\n") - 4    # 응답이 하나일 때 본문 길이
 heads = []
 while out:
     h, _, out = out.partition(b"\r\n\r\n")
     heads.append(h.decode("latin-1").split("\r\n"))
     cl = [int(x.split(":")[1]) for x in heads[-1] if x.startswith("Content-Length:")]
     out = out[cl[0]:] if cl else b""
-if case in ("drip", "stall"): ok = first is not None and 10 <= first <= t < 12
-elif case in ("silent", "keepalive"): ok = 10 <= t < 12
+if case in ("drip", "stall"): ok = first is not None and 10 <= first <= t < 13
+elif case in ("silent", "keepalive"): ok = 10 <= t < 13
+elif case == "drain": ok = t >= 14 and got == BIGLEN
+# stuck: send 직후 outq가 한 번 더 줄어 last_active가 늦게 갱신될 수 있어 상한이 14초다
+elif case == "stuck": ok = 10 <= first < 14 and got < BIGLEN
 else: ok = t >= 12                 # 12초를 넘겨야 req_start 갱신을 확인한 것이 된다
 print(",".join(h[0] for h in heads),
       ",".join(x for x in (heads[-1] if heads else []) if x.startswith("Connection:")),
-      end, "ok" if ok else "first=%s end=%.2f" % (first, t), sep="|")' "$1" >"$TMP/timer.$1" 2>&1
+      end, "ok" if ok else "first=%s end=%.2f got=%d" % (first, t, got), sep="|")' "$1" >"$TMP/timer.$1" 2>&1
 }
 TP=
-for c in drip stall silent keepalive slow slowsplit; do timer $c & TP="$TP $!"; done
+for c in drip stall silent keepalive slow slowsplit drain stuck; do timer $c & TP="$TP $!"; done
 wait $TP    # 인자 없는 wait는 서버까지 기다린다
 R200='HTTP/1.1 200 OK'
 R408='HTTP/1.1 408 Request Timeout|Connection: close|EOF|ok'
@@ -355,10 +429,11 @@ check "timer silent" "||EOF|ok" "$(<"$TMP/timer.silent")"
 check "timer keepalive idle" "$R200|Connection: keep-alive|EOF|ok" "$(<"$TMP/timer.keepalive")"
 check "timer slow read" "$R200,$R200|Connection: close|EOF|ok" "$(<"$TMP/timer.slow")"
 check "timer slow read, split request" "$R200,$R200|Connection: close|EOF|ok" "$(<"$TMP/timer.slowsplit")"
+check "timer slow drain" "$R200|Connection: close|EOF|ok" "$(<"$TMP/timer.drain")"
+check "timer stuck reader" "$R200|Connection: keep-alive|EOF|ok" "$(<"$TMP/timer.stuck")"
 
 kill $SP
 wait $SP 2>/dev/null
-SP=
 if grep -qE 'AddressSanitizer|runtime error' "$LOG"; then
     fail=$((fail + 1)); echo "FAIL sanitizer: 기대 오류 없음, 실제 서버 로그에 있음" >&2
     grep -E 'AddressSanitizer|runtime error' "$LOG" >&2

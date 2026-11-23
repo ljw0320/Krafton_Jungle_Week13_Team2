@@ -462,14 +462,21 @@ static void test_handle(void) {
     for (int i = 0; i < 7900; i++) lng[i] = "/."[i % 2];
     strcpy(lng + 7900, "/index.html");
     get(lng, 200, html, 9);
-    // 전체 길이가 PATH_MAX - 1(받음), PATH_MAX(넘음)인 경계는 둘 다 404다
-    for (size_t full = PATH_MAX - 1; full <= PATH_MAX; full++) {
-        size_t n = full - root_len;
-        for (size_t i = 0; i < n; i++) lng[i] = i % 2 ? 'a' : '/';
-        lng[n - 1] = 'a';
-        lng[n] = '\0';
-        get(lng, 404, NULL, 0);
+    // 전체 길이 PATH_MAX - 1인 파일은 200. PATH_MAX는 404다(잘린 채로 열면 바로 그 파일이 된다)
+    strcpy(lng, "www");
+    char *t = lng + 3;
+    size_t n = PATH_MAX - 1 - root_len;
+    for (size_t i = 0; i < n; i++) {
+        t[i] = '\0';
+        if (i > 0 && i % 200 == 0 && i < n - 1) must(mkdir(at(lng), 0755), "mkdir");
+        t[i] = i % 200 || i == n - 1 ? 'a' : '/';
     }
+    t[n] = '\0';
+    put(lng, "x");
+    check("PATH_MAX - 1 경로 길이", PATH_MAX - 1, (long long)strlen(at(lng)));
+    get(t, 200, bin, 1);
+    strcpy(t + n, "a");
+    get(t, 404, NULL, 0);
 
     int after = open("/dev/null", O_RDONLY);
     close(after);

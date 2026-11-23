@@ -6,15 +6,14 @@
 
 | 항목 | 내용 |
 |---|---|
-| 구현 | ① TCP 소켓 서버, ② 동시 요청 처리 (`epoll` LT, 단일 스레드 이벤트 루프) |
+| 구현 | ① TCP 소켓 서버, ② 동시 요청 처리 (`epoll` LT, 단일 스레드 이벤트 루프), HTTP 요청 파싱, 정적 파일 서빙, 오류 응답 |
 | 담당 | 한 명이 혼자 맡는다 (`shw` 브랜치) |
-| HTTP | `http.c`는 고정 응답을 돌려주는 stub이다. 인터페이스 두 함수는 이번 범위 안에서 정한 경계이고, HTTP 단계에서 바꿀 수 있다 |
-| 설계 | [architecture-tcp.md](architecture-tcp.md) |
+| HTTP | `http_init`, `http_parse`, `http_handle` 세 함수로 붙는다 |
+| 설계 | [architecture-tcp.md](architecture-tcp.md), [architecture-http.md](architecture-http.md) |
 | 개발 환경 | WSL2 Ubuntu 24.04, gcc 13.3. Linux 전용이다 |
 
 # 이번 범위에서 빠지는 것
 
-- HTTP 요청 파싱, 정적 파일 서빙, 오류 응답(400/404 등)
 - Proxy / Reverse Proxy
 - 시그널 셧다운 (`SIGINT` / `SIGTERM`)
 - Dockerfile, 부하 테스트 도구(`ab` / `wrk`), 설정 파일

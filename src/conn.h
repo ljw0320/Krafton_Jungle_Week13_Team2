@@ -23,7 +23,8 @@ struct conn {
     off_t  file_off, file_len; // sendfile이 file_off를 보낸 만큼 늘린다
     int    keep_alive;        // 응답 후 READING으로 돌아갈지
     uint32_t events;          // 지금 epoll에 등록된 이벤트 (0이면 미등록)
-    time_t last_active;       // recv/send 성공 시각
+    int    outq;              // 지난 sweep의 SIOCOUTQ 값 (아직 ACK 안 된 바이트)
+    time_t last_active;       // recv/send 성공 시각, 또는 sweep이 outq가 준 것을 본 시각
     time_t req_start;         // rbuf 맨 앞 요청의 첫 바이트 시각
     struct conn *prev, *next; // 유휴 검사용 리스트
 };

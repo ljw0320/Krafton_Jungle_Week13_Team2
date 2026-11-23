@@ -122,7 +122,7 @@ Task 1 → Task 2 → Task 3 ─┬─ Task 4 (conn.c/.h, http_test.sh) ─┬�
   - `make test` → 종료 코드 0, 마지막 줄 `N passed, 0 failed`
   - `make clean && make test CFLAGS='-std=gnu11 -Wall -Wextra -g -fsanitize=address,undefined'` → 종료 코드 0, 출력에 `AddressSanitizer`, `runtime error`가 없다
   - 케이스: 엣지 케이스 표의 `http_parse` 행 전부. 경계값으로 헤더 + 본문 8192 / 8193바이트, 정확히 8192바이트의 414 / 431, 정상 요청의 모든 앞부분(길이 1 ~ n-1)이 0을 반환
-- [x] **Step 4: verifier 고의 결함 검사** — 기대값 하나를 틀리게 바꿈 → `make test`가 1로 끝남, bare LF 검사를 지움 → 해당 케이스가 `FAIL`. 둘 다 되돌린다
+- [x] **Step 4: verifier 고의 결함 검사** — 기대값 하나를 틀리게 바꿈 → `make test`가 0이 아닌 값으로 끝남, bare LF 검사를 지움 → 해당 케이스가 `FAIL`. 둘 다 되돌린다
 - [x] **Step 5: 문서** — 문서 수정 배정 표의 Task 2 줄
 - [x] **Step 6: 커밋, push** — `feat: HTTP 요청 파서와 단위 테스트`
 
@@ -224,7 +224,7 @@ Task 1 → Task 2 → Task 3 ─┬─ Task 4 (conn.c/.h, http_test.sh) ─┬�
 - [x] **Step 3: 확인** — `make test` 종료 코드 0. 세 케이스를 백그라운드로 동시에 돌리고 `wait`로 모은다. 시간은 python `recv`로 잰다
   - 1바이트씩 4초 간격 → 요청 시작 후 10~11초에 `HTTP/1.1 408 Request Timeout`, 이어서 `b''`
   - 아무것도 보내지 않음 → 10~11초에 응답 없이 `b''`
-  - `GET /big.bin`과 `GET /index.html`을 한 번에 보내고 15초에 걸쳐 천천히 읽음 → 두 번째 응답이 200 (Review Focus 6)
+  - `GET /big.bin`과 `GET /index.html`의 앞부분을 한 번에 보내고 15초에 걸쳐 천천히 읽은 뒤 두 번째 요청의 나머지를 나눠 보냄 → 두 번째 응답이 200 (Review Focus 6)
   - `make asan && bash tests/http_test.sh` → 종료 코드 0, ASan 오류 없음
 - [x] **Step 4: verifier** — 고의 결함: READING으로 돌아올 때의 `req_start = now`를 지우면 세 번째 케이스가 `FAIL`인지 확인하고 되돌린다
 - [x] **Step 5: 커밋, push** — `feat: 요청 타이머와 408`
@@ -247,10 +247,10 @@ Task 1 → Task 2 → Task 3 ─┬─ Task 4 (conn.c/.h, http_test.sh) ─┬�
 
 **Files:** 리뷰에서 지적된 파일
 
-- [ ] **Step 1: 최종 리뷰** — `final-reviewer`에게 `git diff 5758386..HEAD` 범위를 맡긴다
-- [ ] **Step 2: 판단** — 메인 세션이 지적마다 수정, 문서화, 범위 밖 중 하나로 정한다. Critical/Important와 아래 "Minor 모음"을 `builder`에게 한 번에 맡긴다
-- [ ] **Step 3: 확인** — 경고 0개 명령, `make test`, `make asan && bash tests/http_test.sh` → 모두 종료 코드 0. `verifier`가 고친 범위만 다시 본다
-- [ ] **Step 4: 커밋, push** — `fix: 최종 리뷰 Minor 정리`
+- [x] **Step 1: 최종 리뷰** — `final-reviewer`에게 `git diff 5758386..HEAD` 범위를 맡긴다
+- [x] **Step 2: 판단** — 메인 세션이 지적마다 수정, 문서화, 범위 밖 중 하나로 정한다. Critical/Important와 아래 "Minor 모음"을 `builder`에게 한 번에 맡긴다
+- [x] **Step 3: 확인** — 경고 0개 명령, `make test`, `make asan && bash tests/http_test.sh` → 모두 종료 코드 0. `verifier`가 고친 범위만 다시 본다
+- [x] **Step 4: 커밋, push** — `fix: 최종 리뷰 Minor 정리`
 
 ---
 
@@ -258,7 +258,9 @@ Task 1 → Task 2 → Task 3 ─┬─ Task 4 (conn.c/.h, http_test.sh) ─┬�
 
 Task마다 verifier가 보고한 Minor를 여기에 한 줄씩 모은다. Task 9에서 한 번에 고친다.
 
-- (Task 1) `src/main.c:17`: 포트 앞 공백(`" 80"`)을 `strtol`이 통과시킨다. 이전 코드와 같은 동작이다
+아래 항목은 "범위 밖"이라고 적은 것을 빼고 모두 Task 9에서 고쳤다.
+
+- (Task 1) `src/main.c:17`: 포트 앞 공백(`" 80"`)을 `strtol`이 통과시킨다. 이전 코드와 같은 동작이다 → 범위 밖(설계의 인자 검사 그대로이고 해가 없다)
 - (Task 2) `src/http.c:166`: `cap - head_len`은 `len > cap`이면 언더플로한다. 지금 호출자는 `len <= RBUF_SIZE`를 지킨다. 전제를 `http.h` 주석에 적거나 파서에서 막는다
 - (Task 2) 계획 Task 2 Step 4 "`make test`가 1로 끝남": 테스트 바이너리는 1이고 `make`는 2로 끝난다. 문구를 "0이 아닌 값"으로 고친다
 - (Task 3) `tests/http_test.sh`: 413을 POST로만 검사한다. Review Focus 4의 모르는 메서드(`BREW`) + `CL: 1000000` → 413, 뒤 바이트 미해석 케이스를 넣는다 (메인 세션이 직접 확인: 통과)
@@ -273,4 +275,8 @@ Task마다 verifier가 보고한 Minor를 여기에 한 줄씩 모은다. Task 9
 - (Task 7) `src/http.h`: `status` 주석의 코드 목록에 408을 더한다
 - (Task 7) `tests/http_test.sh`: 타이머 구간에서 SIGTERM으로 중단하면 python 클라이언트가 최대 20초쯤 남는다. `cleanup`에서 같이 끝낸다
 - (Task 7) `tests/http_test.sh`: `t0`을 `connect` 뒤에 재서 초 경계에서 10초 하한에 못 미칠 수 있다(추정). `t0`을 `connect` 앞으로 옮긴다
-- (Task 8) `tests/http_test.sh`: 서버 로그를 지워서 UBSan `runtime error`(출력만 하고 계속 실행)가 있어도 종료 코드가 0이다. 끝에서 로그에 `AddressSanitizer`/`runtime error`가 있으면 실패로 센다 (메인 세션이 서버 stderr를 따로 저장해 직접 확인: 0건)
+
+최종 리뷰 (Task 9)
+- Important 1: 느리게 읽는 클라이언트의 전송이 유휴 타이머에 잘림 → `SIOCOUTQ`로 고침(사용자 결정)
+- keep-alive 파일 응답이 약 44ms 늦음(Nagle + 지연 ACK) → `MSG_MORE` 대신 `TCP_NODELAY`로 고침(사용자 결정)
+- Minor: EPOLLOUT 테스트가 부분 전송을 못 잡음 → `send` 횟수로 고침, 낡은 문서 → 고침, request timeout 로그 → 문서에 추가, Task 8 항목 삭제(`tests/http_test.sh`가 이미 `AddressSanitizer`/`runtime error`를 검사한다)
