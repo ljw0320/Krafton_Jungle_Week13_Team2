@@ -2,17 +2,19 @@
 #include <assert.h>
 #include <errno.h>
 #include <signal.h>
+#include <stddef.h>
 #include <sys/wait.h>
 
 static int wait_step;
 static int wait_error;
 static int kill_error;
 static int kill_calls;
+static pid_t expected_pids[2];
+static int expected_kills;
 
 static pid_t fake_waitpid(pid_t pid, int *status, int options)
 {
-    (void)pid;
-    (void)status;
+    assert(pid == -1 && status == NULL);
     assert(options == WNOHANG);
     if (wait_error) {
         errno = wait_error;
@@ -27,7 +29,8 @@ static pid_t fake_waitpid(pid_t pid, int *status, int options)
 
 static int fake_kill(pid_t pid, int signo)
 {
-    assert(pid > 0 && signo == SIGTERM);
+    assert(kill_calls < expected_kills);
+    assert(pid == expected_pids[kill_calls] && signo == SIGTERM);
     ++kill_calls;
     errno = kill_error;
     return kill_error ? -1 : 0;
@@ -48,10 +51,20 @@ int main(void)
     wait_error = EINVAL;
     assert(reap_children(&children) == -1);
     assert(children.active == 1);
+    expected_pids[0] = 202;
+    expected_kills = 1;
     assert(signal_children(&children, SIGTERM) == 0);
+    assert(kill_calls == 1);
+    kill_calls = 0;
     kill_error = ESRCH;
     assert(signal_children(&children, SIGTERM) == 0);
+    assert(kill_calls == 1);
+    pids[0] = 101;
+    pids[1] = 202;
     children.active = 2;
+    expected_pids[0] = 101;
+    expected_pids[1] = 202;
+    expected_kills = 2;
     kill_calls = 0;
     kill_error = EPERM;
     assert(signal_children(&children, SIGTERM) == -1);

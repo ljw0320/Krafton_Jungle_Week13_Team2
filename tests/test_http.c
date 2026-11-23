@@ -158,6 +158,38 @@ static void test_header_boundaries(void)
     close(pair[1]);
 }
 
+/* Generated cases have known answers; random mutations below check memory safety. */
+static void test_generated_answers(void)
+{
+    for (size_t length = 0; length < 128; ++length) {
+        char header[256];
+        struct request request;
+        snprintf(header, sizeof(header),
+            "POST /form?q=%zu HTTP/1.1\r\nhOsT: x\r\nContent-Length:\t%04zu \t\r\n\r\n",
+            length, length);
+        assert(parse(header, &request) == 0);
+        assert(strcmp(request.method, "POST") == 0);
+        char target[64];
+        snprintf(target, sizeof(target), "/form?q=%zu", length);
+        assert(strcmp(request.target, target) == 0);
+        assert(request.http11 && !request.close && request.content_length == length);
+        snprintf(header, sizeof(header),
+            "POST / HTTP/1.1\r\nHost: x\r\nContent-Length: %zu\r\ncontent-length: %zu\r\n\r\n",
+            length, length);
+        assert(parse(header, &request) == 400);
+    }
+    for (unsigned int byte = 0; byte < 256; ++byte) {
+        char target[16], path[3];
+        snprintf(target, sizeof(target), "/%%%02X", byte);
+        bool forbidden = byte < 32 || byte == 127 || byte == '\\';
+        assert(decode_path(target, path, sizeof(path)) == (forbidden ? 400 : 0));
+        if (!forbidden) {
+            assert(path[0] == '/' && (unsigned char)path[1] == byte && path[2] == '\0');
+            assert(decode_path(target, path, sizeof(path) - 1) == 414);
+        }
+    }
+}
+
 /* Fixed-seed mutations exercise parser and decoder memory boundaries under sanitizers. */
 static void test_mutated_inputs(void)
 {
@@ -200,6 +232,7 @@ int main(void)
     test_content_length();
     test_request_line();
     test_header_boundaries();
+    test_generated_answers();
     test_mutated_inputs();
     test_receive_results();
     test_error_response_failure();

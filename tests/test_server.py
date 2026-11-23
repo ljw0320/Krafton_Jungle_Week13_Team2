@@ -30,11 +30,12 @@ def wait_for(predicate, seconds=4):
     raise AssertionError('condition timed out')
 
 
-def start(port, root, limit=4, idle=2, grace=1):
+def start(port, root, limit=4, idle=2, grace=1, cwd=None):
     proc = subprocess.Popen(
         [str(BINARY), str(port), str(root), str(limit), str(idle), str(grace)],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         start_new_session=True,
+        cwd=cwd,
     )
     assert proc.stdout.readline().startswith('READY'), proc.stderr.read()
     return proc
@@ -275,7 +276,8 @@ def main():
                 assert response(client)[0] == 501
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=12) as pool:
-                list(pool.map(lambda _: request(port, '/image.png'), range(24)))
+                results = list(pool.map(lambda _: request(port, '/image.png'), range(24)))
+                assert all(body == binary for _, body in results)
             wait_for(lambda: not children(proc.pid))
             holders = [connect(port) for _ in range(4)]
             wait_for(lambda: len(children(proc.pid)) == 4)
@@ -294,7 +296,9 @@ def main():
                 client.close()
             wait_for(lambda: not children(proc.pid))
             with connect(port) as idle:
+                started = time.monotonic()
                 assert idle.recv(1) == b''
+                assert 1.8 <= time.monotonic() - started < 4
             with connect(port) as reset:
                 reset.sendall(b'GET /large.bin HTTP/1.1\r\nHost: x\r\n\r\n')
                 reset.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
