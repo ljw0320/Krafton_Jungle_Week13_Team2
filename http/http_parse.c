@@ -125,6 +125,10 @@ static int parse_headers(char *headers, struct request *request, struct header_f
             if (fields->has_content_length || parse_content_length(value, &request->content_length))
                 return 400;
             fields->has_content_length = true;
+        } else if (strcasecmp(line, "Content-Type") == 0) {
+            if (request->content_type || !*value)
+                return 400;
+            request->content_type = value;
         } else if (strcasecmp(line, "Transfer-Encoding") == 0) {
             if (fields->has_transfer_encoding || !*value)
                 return 400;

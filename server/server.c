@@ -191,6 +191,10 @@ static int run_parent(int listener, int root_fd, struct child_processes *childre
             close(fd);
             continue;
         }
+        if (fcntl(fd, F_SETFD, FD_CLOEXEC) == -1) {
+            close(fd);
+            continue;
+        }
         pid_t pid = check_call(fork(), "fork");
         if (pid == 0)
             run_child(listener, fd, root_fd, idle_seconds, children, wait_mask);

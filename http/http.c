@@ -3,10 +3,12 @@
 #include "http_internal.h"
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 struct request_storage {
     char header[HEADER_LIMIT + 1];
     char path[URI_LIMIT + 1];
+    char body[CGI_BODY_LIMIT];
 };
 
 enum connection_action {
@@ -14,6 +16,13 @@ enum connection_action {
     CONNECTION_DONE = 0,
     CONNECTION_KEEP = 1,
 };
+
+static bool cgi_namespace(const char *path)
+{
+    while (*path == '/')
+        ++path;
+    return strncmp(path, "cgi-bin", 7) == 0 && (path[7] == '/' || path[7] == '\0');
+}
 
 static int read_request(int fd, int idle_seconds, struct request_storage *storage,
                         struct request *request)
@@ -27,15 +36,25 @@ static int read_request(int fd, int idle_seconds, struct request_storage *storag
         return status;
     if (strcmp(request->method, "GET") != 0 && strcmp(request->method, "POST") != 0)
         return 405;
+    status = decode_path(request->target, storage->path, sizeof(storage->path));
+    if (status)
+        return status;
+    bool cgi_post = strcmp(storage->path, "/cgi-bin/adder") == 0 &&
+        strcmp(request->method, "POST") == 0;
+    if (cgi_post) {
+        if (request->content_length > CGI_BODY_LIMIT)
+            return 413;
+        if (!request->content_type ||
+            strcasecmp(request->content_type, "application/x-www-form-urlencoded") != 0)
+            return 415;
+    }
     if (request->expect_continue && request->content_length) {
         static const char response[] = "HTTP/1.1 100 Continue\r\n\r\n";
         if (send_all(fd, response, sizeof(response) - 1) == -1)
             return RECEIVE_ERROR;
     }
-    status = receive_body(fd, request->content_length, deadline);
-    if (status)
-        return status;
-    return decode_path(request->target, storage->path, sizeof(storage->path));
+    return cgi_post ? receive_body_into(fd, storage->body, request->content_length, deadline) :
+        receive_body(fd, request->content_length, deadline);
 }
 
 static enum connection_action serve_request(int fd, int root_fd, int idle_seconds,
@@ -54,7 +73,11 @@ static enum connection_action serve_request(int fd, int root_fd, int idle_second
         return CONNECTION_DONE;
     }
     int sent;
-    if (strcmp(request.method, "POST") == 0)
+    if (strcmp(storage->path, "/cgi-bin/adder") == 0)
+        sent = serve_cgi(fd, &request, storage->body);
+    else if (cgi_namespace(storage->path))
+        sent = send_error(fd, &request, 404);
+    else if (strcmp(request.method, "POST") == 0)
         sent = send_error(fd, &request, 501);
     else
         sent = serve_static(fd, root_fd, &request, storage->path);

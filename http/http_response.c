@@ -14,9 +14,12 @@ static const char *reason_phrase(int status)
     case 408: return "Request Timeout";
     case 413: return "Content Too Large";
     case 414: return "URI Too Long";
+    case 415: return "Unsupported Media Type";
     case 417: return "Expectation Failed";
     case 431: return "Request Header Fields Too Large";
     case 501: return "Not Implemented";
+    case 502: return "Bad Gateway";
+    case 504: return "Gateway Timeout";
     case 505: return "HTTP Version Not Supported";
     default: return "Internal Server Error";
     }

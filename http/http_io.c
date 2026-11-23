@@ -171,6 +171,11 @@ int receive_header(int fd, char *header, size_t capacity, int idle_seconds, doub
     return receive_header_content(fd, header, capacity, *deadline);
 }
 
+int receive_body_into(int fd, char *buffer, size_t length, double deadline)
+{
+    return receive_exact(fd, buffer, length, deadline);
+}
+
 /* Discards exactly content_length bytes under the original request deadline. */
 int receive_body(int fd, size_t content_length, double deadline)
 {
