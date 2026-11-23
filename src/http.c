@@ -83,12 +83,14 @@ static int parse_length(const char *value, struct request *request)
             return 400;
 
         unsigned digit = (unsigned)(*value - '0');
-        if (request->content_length > (BODY_LIMIT - digit) / 10)
+        if (request->content_length > (SIZE_MAX - digit) / 10) {
+            request->content_length = 0;
             return 413;
+        }
         request->content_length = request->content_length * 10 + digit;
     }
 
-    return 0;
+    return request->content_length > BODY_LIMIT ? 413 : 0;
 }
 
 static int parse_header(char *line, struct request *request)

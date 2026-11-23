@@ -41,6 +41,7 @@
         <option value="128">128KiB</option>
         <option value="512">512KiB</option>
         <option value="1024">1MiB (1,024KiB)</option>
+        <option value="102400">100MiB (104,857,600 B)</option>
       </select>
 
       <label for="body-size">응답 본문 크기 (GET)</label>
@@ -76,11 +77,13 @@
     <p class="test-note">선택한 크기의 정적 파일을 GET으로 받습니다.
       128KiB도 정상 응답 대상이며, POST 요청 본문의 64KiB 제한과는 별개입니다.</p>
     <p class="test-note">POST는 선택한 크기의 데이터를 /echo로 보냅니다.
-      64KiB 이하는 같은 크기의 응답, 128KiB·512KiB·1MiB는 413 차단이 예상됩니다.
+      64KiB 이하는 같은 크기의 응답, 128KiB·512KiB·1MiB·100MiB는 413 차단이 예상됩니다.
       POST 응답 크기는 요청 크기에 따라 정해지므로 별도로 선택하지 않습니다.</p>
     <p class="test-note">요청 본문 (설정)은 브라우저에 전달한 본문 크기입니다.
       HTTP 헤더는 포함하지 않으며, 서버가 전부 받았다는 의미는 아닙니다.
-      64KiB 초과는 서버가 본문을 읽기 전에 거절하므로 연결 / 수신 실패로 관찰될 수도 있습니다.</p>
+      64KiB 초과는 즉시 413으로 거절하며, 응답 송신 후 남은 데이터를 최대 2초 동안 읽어 버리고 연결을 닫습니다.</p>
+    <p class="test-note">100MiB는 요청 하나당 104,857,600바이트입니다.
+      남은 업로드를 2초 안에 정리하지 못하면 연결 / 수신 실패나 시간 초과로 표시될 수 있습니다.</p>
     <p class="test-note">요청마다 다른 쿼리와 캐시 비활성화 옵션을 사용합니다.
       브라우저가 연결을 나눠 보내거나 대기시킬 수 있으므로,
       요청 수가 서버의 실제 동시 연결 수나 작업자 동시 실행 수를 의미하지는 않습니다.</p>
@@ -100,7 +103,7 @@
   const summary = document.getElementById("test-summary");
   const results = document.getElementById("test-results");
 
-  // GET은 파일을 받고 POST는 A 바이트를 채운 본문을 /echo로 보냅니다.
+  // 선택값과 예상 결과만 계산합니다. 큰 POST 본문은 테스트 시작 시에만 만듭니다.
   function getTestConfig() {
     const method = testMethod.value;
     const requestBytes = method === "POST" ? Number(requestSize.value) * 1024 : 0;
@@ -112,10 +115,21 @@
       expectedBytes: rejected ? new TextEncoder().encode("413 Content Too Large\n").length : responseBytes,
       path: method === "POST" ? "/echo" : `/test-data/body-${bodySize.value}kib.bin`,
       options: method === "POST" ? {
-        method, body: new Uint8Array(requestBytes).fill(65),
+        method,
         headers: { "Content-Type": "application/octet-stream" }
       } : { method }
     };
+  }
+
+  // 1MiB 조각으로 Blob을 한 번 만들고, 동시 요청들이 같은 불변 본문을 공유합니다.
+  function createPayload(size) {
+    const chunk = new Uint8Array(Math.min(size, 1024 * 1024)).fill(65);
+    const parts = [];
+
+    for (let offset = 0; offset < size; offset += chunk.length)
+      parts.push(chunk.subarray(0, Math.min(chunk.length, size - offset)));
+
+    return new Blob(parts, { type: "application/octet-stream" });
   }
 
   function updateExpected() {
@@ -213,6 +227,9 @@
     summary.textContent = `${config.method} ${count}개 요청 진행 중…`;
 
     try {
+      if (config.method === "POST")
+        config.options.body = createPayload(config.requestBytes);
+
       const requests = rows.map((row, index) => runRequest(row, index, config, runId, () => {
         summary.textContent = `${++completed} / ${count}개 완료`;
       }));

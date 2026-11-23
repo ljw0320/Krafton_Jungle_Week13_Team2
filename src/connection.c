@@ -6,6 +6,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+/* 응답 길이와 송신 오프셋을 준비하고 쓰기 단계로 전환합니다. */
 void respond(struct connection *client, int status, off_t size, const char *type)
 {
     int length = http_response(client->header, sizeof(client->header),
@@ -27,6 +28,7 @@ void respond(struct connection *client, int status, off_t size, const char *type
     client->progress = now_ms();
 }
 
+/* 크기 초과 등 오류도 먼저 HTTP 응답을 보내고 공통 종료 절차를 따릅니다. */
 void respond_error(struct connection *client, int status)
 {
     int length = snprintf((char *)client->data, sizeof(client->data),
@@ -52,13 +54,25 @@ static void prepare_get(struct server *server, struct connection *client)
     respond(client, 200, client->file_left, file_type(client->request.target));
 }
 
+/* 크기 초과여도 선언된 길이를 보존해, 이미 읽은 부분을 뺀 남은 업로드만 폐기합니다. */
+static void reject_request(struct connection *client, int status, size_t end)
+{
+    size_t buffered = client->input_length - end;
+    size_t declared = client->request.content_length;
+
+    if (status == 413 && declared > BODY_LIMIT && declared > buffered)
+        client->drain_remaining = declared - buffered;
+
+    respond_error(client, status);
+}
+
 /* 헤더 뒤에 함께 도착한 POST 본문도 보존하고 지정된 길이만 처리합니다. */
 static void prepare_request(struct server *server, struct connection *client,
                             size_t end)
 {
     int status = http_parse(client->input, end, &client->request);
     if (status) {
-        respond_error(client, status);
+        reject_request(client, status, end);
         return;
     }
 
@@ -142,13 +156,92 @@ static bool receive_step(struct server *server, struct connection *client, size_
     return true;
 }
 
-/* 파일 전체를 올리지 않고 최대 16KiB씩 연결 버퍼를 다시 채웁니다. */
-static bool refill_file(struct connection *client)
+/* 응답을 모두 넘겼는지 확인합니다. 상대의 수신 완료를 뜻하지는 않습니다. */
+static bool response_sent(const struct connection *client)
 {
-    if (client->file_left == 0) {
-        client->reason = "response_complete";
+    return client->header_sent == client->header_length &&
+           client->sent == client->length && client->file_left == 0;
+}
+
+/* 송신 종료는 한 번만 수행합니다. 업로드가 남았다면 폐기 후 호출합니다. */
+static bool shutdown_write(struct connection *client)
+{
+    if (shutdown(client->fd, SHUT_WR) == -1) {
+        if (errno == EINTR)
+            return true;
+
+        client->reason = "shutdown_error";
         return false;
     }
+
+    client->write_shutdown = true;
+    return true;
+}
+
+/* 413은 이미 보냈습니다. WSL 전달 호환을 위해 남은 업로드를 먼저 폐기합니다. */
+static bool begin_drain(struct connection *client)
+{
+    client->phase = DRAIN_INPUT;
+    client->drain_deadline = now_ms() + DRAIN_TIMEOUT_MS;
+
+    return client->drain_remaining ? true : shutdown_write(client);
+}
+
+/* 본문을 버린 양만 기록합니다. 상대가 먼저 끝내면 남은 길이에 관계없이 송신도 종료합니다. */
+static bool discard_received(struct connection *client, ssize_t result, size_t *received)
+{
+    if (result > 0) {
+        *received += (size_t)result;
+        if (client->drain_remaining) {
+            client->drain_remaining -= (size_t)result;
+            if (!client->drain_remaining)
+                return shutdown_write(client);
+        }
+        return true;
+    }
+
+    if (result == -1 && errno == EINTR)
+        return true;
+
+    if (result == 0 && !client->write_shutdown) {
+        client->drain_remaining = 0;
+        return shutdown_write(client);
+    }
+    if (result == 0)
+        client->reason = "response_complete";
+    else if (!would_block())
+        client->reason = "drain_error";
+
+    return false;
+}
+
+/* 기한은 연장하지 않습니다. EAGAIN이면 poll에 양보하고, 폐기가 끝나면 반쪽 종료합니다. */
+static bool drain_step(struct connection *client, size_t *received)
+{
+    unsigned char discard[DRAIN_BUFFER_SIZE];
+
+    if (now_ms() >= client->drain_deadline) {
+        client->reason = "drain_timeout";
+        return false;
+    }
+    if (!client->write_shutdown && !client->drain_remaining)
+        return shutdown_write(client);
+
+    size_t size = IO_BUDGET - *received;
+    if (size > sizeof(discard))
+        size = sizeof(discard);
+    if (client->drain_remaining && size > client->drain_remaining)
+        size = client->drain_remaining;
+
+    ssize_t result = recv(client->fd, discard, size, 0);
+    return discard_received(client, result, received);
+}
+
+/* 최대 16KiB씩 채우고, 파일도 모두 보냈으면 반쪽 종료를 시작합니다. */
+static bool refill_file(struct connection *client)
+{
+    if (client->file_left == 0)
+        return begin_drain(client);
 
     size_t size = client->file_left > 16384 ? 16384 : (size_t)client->file_left;
     ssize_t result = read(client->file_fd, client->data, size);
@@ -168,6 +261,7 @@ static bool refill_file(struct connection *client)
     return true;
 }
 
+/* 부분 송신 위치를 보존하며 마지막 바이트를 넘기면 연결 정리 단계를 시작합니다. */
 static bool send_step(struct connection *client, size_t *transmitted)
 {
     bool header = client->header_sent < client->header_length;
@@ -190,10 +284,10 @@ static bool send_step(struct connection *client, size_t *transmitted)
         *transmitted += (size_t)result;
     }
 
-    return true;
+    return response_sent(client) ? begin_drain(client) : true;
 }
 
-/* RUNNING 연결을 독점하며 수신·송신 각각 64KiB/최대 64단계만 처리합니다. */
+/* 정리 수신도 일반 수신과 같은 64KiB/64단계 예산 안에서 처리합니다. */
 void process_turn(struct server *server, struct connection *client)
 {
     size_t received = 0, transmitted = 0;
@@ -201,6 +295,9 @@ void process_turn(struct server *server, struct connection *client)
     for (int calls = 0; calls < CALL_BUDGET && !client->reason; calls++) {
         if (client->phase == WRITE_RESPONSE) {
             if (transmitted == IO_BUDGET || !send_step(client, &transmitted))
+                break;
+        } else if (client->phase == DRAIN_INPUT) {
+            if (received == IO_BUDGET || !drain_step(client, &received))
                 break;
         } else {
             if (received == IO_BUDGET || !receive_step(server, client, &received))

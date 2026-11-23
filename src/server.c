@@ -70,14 +70,32 @@ static void accept_clients(struct server *server, int listener)
     }
 }
 
+/* 정리 단계는 마지막 수신 시각 대신 최초에 정한 절대 마감 시각을 사용합니다. */
+static int64_t connection_deadline(const struct connection *client)
+{
+    if (client->phase == DRAIN_INPUT)
+        return client->drain_deadline;
+
+    int limit = client->phase == WRITE_RESPONSE ? SEND_TIMEOUT_MS : RECV_TIMEOUT_MS;
+    return client->progress + limit;
+}
+
+static const char *timeout_reason(const struct connection *client)
+{
+    if (client->phase == DRAIN_INPUT)
+        return "drain_timeout";
+
+    return client->phase == WRITE_RESPONSE ? "send_timeout" : "recv_timeout";
+}
+
+/* 정리 중에는 POLLIN을 기다리고, 상대가 아무것도 보내지 않아도 기한에 회수합니다. */
 static bool poll_client(struct connection *client, struct pollfd *fd, int *timeout, int64_t now)
 {
     bool writing = client->phase == WRITE_RESPONSE;
-    int limit = writing ? SEND_TIMEOUT_MS : RECV_TIMEOUT_MS;
-    int64_t left = client->progress + limit - now;
+    int64_t left = connection_deadline(client) - now;
 
     if (left <= 0) {
-        client->reason = writing ? "send_timeout" : "recv_timeout";
+        client->reason = timeout_reason(client);
         connection_close(client);
         return false;
     }

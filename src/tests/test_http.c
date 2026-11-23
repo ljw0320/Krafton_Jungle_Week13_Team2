@@ -40,6 +40,9 @@ static void test_post(void)
 
     assert(parse("POST /echo HTTP/1.0\r\n\r\n", &request) == 411);
     assert(parse("POST /echo HTTP/1.0\r\nContent-Length: 65537\r\n\r\n", &request) == 413);
+    assert(request.content_length == 65537);
+    assert(parse("POST /echo HTTP/1.0\r\nContent-Length: 999999999999999999999\r\n\r\n", &request) == 413);
+    assert(request.content_length == 0);
 
     puts("PASS POST / body length boundary");
 }

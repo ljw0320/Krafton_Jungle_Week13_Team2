@@ -18,7 +18,9 @@ enum {
     ACCEPT_BUDGET = 16,
 
     RECV_TIMEOUT_MS = 5000,
-    SEND_TIMEOUT_MS = 3000
+    SEND_TIMEOUT_MS = 3000,
+    DRAIN_TIMEOUT_MS = 2000,
+    DRAIN_BUFFER_SIZE = 4096
 };
 
 enum state {
@@ -32,7 +34,8 @@ enum state {
 enum phase {
     READ_HEADER,
     READ_BODY,
-    WRITE_RESPONSE
+    WRITE_RESPONSE,
+    DRAIN_INPUT
 };
 
 /* 작업자가 바뀌어도 요청과 부분 송신 위치는 연결에 남습니다. */
@@ -57,6 +60,9 @@ struct connection {
     size_t sent;
 
     int64_t progress;
+    int64_t drain_deadline;
+    size_t drain_remaining;
+    bool write_shutdown;
     const char *reason;
 };
 

@@ -14,8 +14,12 @@ webserver: $(SOURCES) $(HEADERS)
 test_http: src/tests/test_http.c src/http.c src/files.c src/http.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc src/tests/test_http.c src/http.c src/files.c -o $@
 
-test: test_http
+test_drain: src/tests/test_drain.c src/connection.c src/platform.c src/http.c src/files.c $(HEADERS)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc src/tests/test_drain.c src/connection.c src/platform.c src/http.c src/files.c -o $@ $(LDLIBS)
+
+test: test_http test_drain
 	./test_http www
+	./test_drain
 
 clean:
-	rm -f webserver test_http
+	rm -f webserver test_http test_drain

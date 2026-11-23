@@ -14,7 +14,7 @@ FREE --accept--> WAITING --poll 준비--> QUEUED --worker--> RUNNING
 
 작업자 하나가 연결의 전체 수명을 맡지 않습니다. 유휴 소켓은 메인 poll에서 기다리고, 작업자는 준비된 연결을 제한된 한 차례만 처리합니다. 연결당 큐 항목은 하나이며 큐 용량이 연결 슬롯 수 이상이므로 중복 배정이 없으면 큐가 넘치지 않습니다. 최대 연결은 8개이며 이를 넘으면 accept한 소켓을 즉시 닫습니다.
 
-메인은 mutex를 가진 상태에서 WAITING 연결만 poll 목록에 넣습니다. RUNNING의 버퍼·오프셋·시각은 작업자 하나만 접근합니다. 작업자는 차례를 마친 뒤 mutex 아래에서 WAITING 또는 FINISHED를 공개하고 eventfd를 씁니다. 공개 후에는 해당 연결에 접근하지 않습니다. 메인은 FINISHED만 닫고 슬롯을 재사용합니다.
+메인은 mutex를 가진 상태에서 WAITING 연결만 poll 목록에 넣습니다. RUNNING의 버퍼·오프셋·시각은 작업자 하나만 접근합니다. 작업자는 차례를 마친 뒤 mutex 아래에서 WAITING 또는 FINISHED를 공개하고 eventfd를 씁니다. 공개 후에는 해당 연결에 접근하지 않습니다. 메인은 FINISHED 또는 WAITING 중 기한이 만료된 연결을 닫고 슬롯을 재사용합니다.
 
 poll이 감시하는 기존 연결은 작업 중이 아니므로, poll 이후 작업 큐에 넣을 때도 해당 연결의 소유권이 유지됩니다. 작업자가 완료한 다른 연결은 eventfd 알림으로 다음 poll 목록 작성에 반영됩니다.
 
@@ -27,14 +27,18 @@ READ_HEADER --GET 완료-----------------------> WRITE_RESPONSE
      |
      +--파싱/경로 오류-----------------------> WRITE_RESPONSE
                                                   |
-                                            전송 완료 / 오류
+                                               전송 완료
+                                                  v
+                                              DRAIN_INPUT
+                                                  |
+                                             EOF / 오류 / 기한
                                                   v
                                                FINISHED
 ```
 
 `READ_HEADER`는 요청 줄·헤더·마지막 빈 줄까지 최대 16KiB를 누적합니다. `http_header_end()`가 경계를 찾으면 `http_parse()`가 헤더 부분만 별도 복사해 파싱합니다. 본문에 NUL 바이트가 있어도 헤더 파싱에 섞이지 않습니다.
 
-POST는 헤더와 함께 도착한 본문을 연결의 본문 버퍼로 옮기고, Content-Length에 부족한 바이트만 추가 수신합니다. 본문은 최대 64KiB이며 초과 데이터·후속 요청은 처리하지 않고 첫 응답 후 닫습니다. 본문이 덜 도착하면 응답하지 않고 수신 준비를 기다리다가 무진행 타임아웃이나 EOF 시 연결을 정리합니다.
+POST는 헤더와 함께 도착한 본문을 연결의 본문 버퍼로 옮기고, Content-Length에 부족한 바이트만 추가 수신합니다. 본문은 최대 64KiB이며 한도 초과면 즉시 413을 준비합니다. 응답 뒤의 초과 데이터·후속 요청은 HTTP 요청으로 처리하지 않고 정리 단계에서 읽어 버립니다. 정상 요청 본문이 덜 도착하면 응답하지 않고 수신 준비를 기다리다가 무진행 타임아웃이나 EOF 시 연결을 정리합니다.
 
 GET은 `openat()`을 이용해 문서 루트 fd 기준으로 파일을 엽니다. URL은 쿼리를 먼저 제외하고 한 번 디코딩합니다. 경로 조각별 `.`·`..`·빈 조각을 거부하고 모든 조각에 `O_NOFOLLOW`를 적용합니다. 중간 디렉터리는 `O_DIRECTORY`, 최종 파일은 `fstat()`으로 일반 파일 여부를 검사합니다. FIFO 등을 열다 멈추지 않도록 `O_NONBLOCK`도 사용합니다.
 
@@ -56,9 +60,15 @@ GET은 `openat()`을 이용해 문서 루트 fd 기준으로 파일을 엽니다
 
 `progress`는 연결 등록 및 성공한 recv/send 시 갱신됩니다. 응답 준비 시 송신 타이머를 새로 시작합니다. WAITING에서 수신 단계면 5초, 송신 단계면 3초의 무진행 기한을 검사합니다. 메인 poll의 timeout은 가장 가까운 연결 기한입니다. QUEUED/RUNNING 중에도 시간은 흐르지만 검사는 WAITING으로 반환된 뒤 수행하므로 스케줄링에 따른 지연이 있습니다.
 
+GET·POST·오류 응답을 모두 송신하면 `begin_drain()`이 DRAIN_INPUT으로 전환하고 `drain_deadline`을 현재 단조 시각 + 2초로 한 번 설정합니다. 알려진 남은 본문이 없으면 즉시 `shutdown(fd, SHUT_WR)`를 수행합니다. 한도 초과로 거절한 업로드는 `reject_request()`에서 추적한 `drain_remaining`만큼 먼저 읽어 버리고 송신 방향을 종료합니다. 이는 응답 직후 SHUT_WR가 Windows–WSL localhost 경로에서 응답 수신 정지로 이어지는 현상을 재현한 뒤 적용한 호환 처리입니다. 413 응답은 본문을 기다리지 않고 먼저 보냅니다.
+
+`drain_step()`은 작업자 스택의 4KiB 버퍼로 recv 후 버립니다. 일반 수신과 합산하여 한 차례 최대 64KiB·64단계만 사용하고, EAGAIN이면 WAITING으로 반환합니다. 메인은 POLLIN과 고정된 정리 마감 시각을 감시합니다. 정리 중 받은 데이터는 마감 시각을 연장하지 않으며, 작업자도 각 정리 수신 전에 기한을 검사합니다. 마지막 선언 본문 바이트를 버리면 `shutdown_write()`로 즉시 송신 종료하고 `write_shutdown`을 기록합니다. 상대가 업로드를 중단해 먼저 EOF를 보내도 전체 길이를 기다리지 않습니다. Content-Length가 size_t 범위를 넘으면 오버플로 없이 413으로 거절하되 길이는 추적하지 않습니다.
+
+상대 EOF는 `response_complete`, 수신 오류는 `drain_error`, 기한 초과는 `drain_timeout`으로 종료합니다. 작업자가 감지하면 FINISHED 공개·eventfd 알림 후 메인이 닫고, 메인이 WAITING 기한 만료를 먼저 감지하면 직접 닫습니다. shutdown 실패는 `shutdown_error`입니다. 초기 수신·송신 오류는 즉시 회수될 수 있습니다. 정리 단계가 유지되는 동안 파일 fd·연결 슬롯은 남아 있지만 작업자가 유휴 대기를 독점하지는 않습니다.
+
 SIGINT/SIGTERM 처리기는 플래그를 세우고 eventfd에 write만 합니다. errno는 보존합니다. 작업자는 종료 신호를 차단한 상태를 상속하고 메인만 신호를 받습니다. 종료 플래그 검사와 poll 사이에 신호가 와도 eventfd가 읽기 준비 상태를 유지하므로 종료 알림이 사라지지 않습니다. SIGPIPE는 무시하고 send 실패로 처리합니다.
 
-종료 순서는 리스너 close → 큐 배정 중단 및 조건변수 broadcast → 현재 차례를 마친 작업자 join → 연결과 파일 close → eventfd·문서 루트 close → mutex·조건변수 destroy입니다. 대기 중인 큐 항목은 추가 처리하지 않습니다. 진행 중 HTTP 응답이 끝날 때까지 기다리지는 않습니다. 일반 디스크 read가 오래 걸리면 join도 지연될 수 있습니다.
+서버 프로그램의 종료 순서는 리스너 close → 큐 배정 중단 및 조건변수 broadcast → 현재 차례를 마친 작업자 join → 연결과 파일 close → eventfd·문서 루트 close → mutex·조건변수 destroy입니다. 대기 중인 큐 항목은 추가 처리하지 않고, 진행 중 HTTP 응답이나 DRAIN_INPUT의 2초 기한을 기다리지 않습니다. 일반 디스크 read가 오래 걸리면 join도 지연될 수 있습니다.
 
 ## 메모리와 자원
 

@@ -1,5 +1,6 @@
 /webserver
 /test_http
+/test_drain
 *.o
 __pycache__/
 /tests/.tmp/
