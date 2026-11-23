@@ -291,7 +291,7 @@ sweep (1초마다)
 | 5 | `root_real + "/" + 정규화 결과` | `PATH_MAX` 초과 → 404 |
 | 6 | `realpath(full, real)` | `ENOENT`, `ENOTDIR`, `ENAMETOOLONG` → 404 / `EACCES`, `ELOOP` → 403 / 그 밖 → 500 |
 | 7 | `strncmp(real, root_real, n) == 0 && (real[n] == '/' \|\| real[n] == '\0')` | 403 |
-| 8 | `open(real, O_RDONLY \| O_NONBLOCK)` | `ENOENT` → 404, `EACCES` → 403, 그 밖 → 500 |
+| 8 | `open(real, O_RDONLY \| O_NONBLOCK)` | `ENOENT` → 404, `EACCES`, `ENXIO`(유닉스 소켓. 10번의 소켓 → 403과 맞춘다) → 403, 그 밖 → 500 |
 | 9 | `fstat(fd)` | 500 |
 | 10 | `S_ISREG` → 200, `Content-Length = st_size` | |
 | | `S_ISDIR` + 3번 기록이 `/`로 끝남 → `real + "/index.html"`로 6~9를 **한 번 더**. 또 디렉토리면 403 | index.html 없음 → 404 |
