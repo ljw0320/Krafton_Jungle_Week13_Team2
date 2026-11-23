@@ -274,6 +274,88 @@ for _ in $(seq 30); do
 done
 check "fd count after abort" "$n0" "$n1"
 
+# --- 요청 타이머 ---
+# 출력: 응답 상태 라인들|마지막 응답의 Connection|끝(EOF나 오류)|시간(범위 안이면 ok).
+# 408과 유휴는 time()이 초 단위이고 sweep이 최대 1초 늦어 10초 이상 12초 미만이다.
+# 느린 읽기는 서버 송신 버퍼(최대 4MB)에 응답이 다 들어가지 않게 수신 버퍼를 줄이고 읽는 속도를 정한다
+timer() {   # 케이스 이름
+    python3 -c '
+import socket, sys, time
+case = sys.argv[1]
+G = b"GET /index.html HTTP/1.1\r\nHost: x\r\n"
+GET = G + b"\r\n"
+LAST = G + b"Connection: close\r\n\r\n"
+BIG = b"GET /big.bin HTTP/1.1\r\nHost: x\r\n\r\n"
+BIGLEN = 8388608
+s = socket.socket()
+s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)
+s.connect(("127.0.0.1", 8080))
+s.settimeout(20)
+t0 = time.monotonic()
+el = lambda: time.monotonic() - t0
+out = b""
+end = "EOF"
+first = None    # 첫 응답 바이트가 온 시각
+if case == "drip":
+    s.settimeout(4)
+    for b in (b"G", b"E", b"T", b" "):
+        s.sendall(b)
+        try:
+            out = s.recv(65536)
+            first = el()
+            break
+        except socket.timeout: pass
+    s.settimeout(20)
+elif case == "stall": s.sendall(b"G")
+elif case == "keepalive": s.sendall(GET)
+elif case in ("slow", "slowsplit"):
+    dur = 15 if case == "slow" else 13
+    s.sendall(BIG + (LAST if case == "slow" else LAST[:12]))
+    chunks, n, need = [], 0, BIGLEN    # need: 헤더 + 본문 (첫 recv에서 확정)
+    while n < need:
+        d = s.recv(min(65536, need - n))
+        if not d: break
+        if not chunks: need = d.index(b"\r\n\r\n") + 4 + BIGLEN
+        chunks.append(d)
+        n += len(d)
+        time.sleep(max(0, dur * n / need - el()))
+    out = b"".join(chunks)
+    if case == "slowsplit":
+        first = el()               # 나머지를 보내는 시각
+        s.sendall(LAST[12:])
+try:
+    while True:
+        d = s.recv(65536)
+        if not d: break
+        if first is None: first = el()
+        out += d
+except OSError as e: end = repr(e)
+t = el()
+heads = []
+while out:
+    h, _, out = out.partition(b"\r\n\r\n")
+    heads.append(h.decode("latin-1").split("\r\n"))
+    cl = [int(x.split(":")[1]) for x in heads[-1] if x.startswith("Content-Length:")]
+    out = out[cl[0]:] if cl else b""
+if case in ("drip", "stall"): ok = first is not None and 10 <= first <= t < 12
+elif case in ("silent", "keepalive"): ok = 10 <= t < 12
+else: ok = t >= 12                 # 12초를 넘겨야 req_start 갱신을 확인한 것이 된다
+print(",".join(h[0] for h in heads),
+      ",".join(x for x in (heads[-1] if heads else []) if x.startswith("Connection:")),
+      end, "ok" if ok else "first=%s end=%.2f" % (first, t), sep="|")' "$1" >"$TMP/timer.$1" 2>&1
+}
+TP=
+for c in drip stall silent keepalive slow slowsplit; do timer $c & TP="$TP $!"; done
+wait $TP    # 인자 없는 wait는 서버까지 기다린다
+R200='HTTP/1.1 200 OK'
+R408='HTTP/1.1 408 Request Timeout|Connection: close|EOF|ok'
+check "timer drip" "$R408" "$(<"$TMP/timer.drip")"
+check "timer stall" "$R408" "$(<"$TMP/timer.stall")"
+check "timer silent" "||EOF|ok" "$(<"$TMP/timer.silent")"
+check "timer keepalive idle" "$R200|Connection: keep-alive|EOF|ok" "$(<"$TMP/timer.keepalive")"
+check "timer slow read" "$R200,$R200|Connection: close|EOF|ok" "$(<"$TMP/timer.slow")"
+check "timer slow read, split request" "$R200,$R200|Connection: close|EOF|ok" "$(<"$TMP/timer.slowsplit")"
+
 kill $SP
 wait $SP 2>/dev/null
 SP=

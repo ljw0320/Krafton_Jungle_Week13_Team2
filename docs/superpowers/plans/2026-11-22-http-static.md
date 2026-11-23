@@ -219,15 +219,15 @@ Task 1 → Task 2 → Task 3 ─┬─ Task 4 (conn.c/.h, http_test.sh) ─┬�
 
 **Interfaces:** 공개 함수 변경 없음. `conn_respond`를 sweep도 쓴다
 
-- [ ] **Step 1: 실패 확인** — 타이머 케이스를 먼저 넣고 `make test` → 종료 코드가 0이 아니다 (Slowloris가 408을 받지 못한다)
-- [ ] **Step 2: 구현** (`struct conn` 변경 절의 기록 시점 표, sweep에서 `next`를 먼저 저장)
-- [ ] **Step 3: 확인** — `make test` 종료 코드 0. 세 케이스를 백그라운드로 동시에 돌리고 `wait`로 모은다. 시간은 python `recv`로 잰다
+- [x] **Step 1: 실패 확인** — 타이머 케이스를 먼저 넣고 `make test` → 종료 코드가 0이 아니다 (Slowloris가 408을 받지 못한다)
+- [x] **Step 2: 구현** (`struct conn` 변경 절의 기록 시점 표, sweep에서 `next`를 먼저 저장)
+- [x] **Step 3: 확인** — `make test` 종료 코드 0. 세 케이스를 백그라운드로 동시에 돌리고 `wait`로 모은다. 시간은 python `recv`로 잰다
   - 1바이트씩 4초 간격 → 요청 시작 후 10~11초에 `HTTP/1.1 408 Request Timeout`, 이어서 `b''`
   - 아무것도 보내지 않음 → 10~11초에 응답 없이 `b''`
   - `GET /big.bin`과 `GET /index.html`을 한 번에 보내고 15초에 걸쳐 천천히 읽음 → 두 번째 응답이 200 (Review Focus 6)
   - `make asan && bash tests/http_test.sh` → 종료 코드 0, ASan 오류 없음
-- [ ] **Step 4: verifier** — 고의 결함: READING으로 돌아올 때의 `req_start = now`를 지우면 세 번째 케이스가 `FAIL`인지 확인하고 되돌린다
-- [ ] **Step 5: 커밋, push** — `feat: 요청 타이머와 408`
+- [x] **Step 4: verifier** — 고의 결함: READING으로 돌아올 때의 `req_start = now`를 지우면 세 번째 케이스가 `FAIL`인지 확인하고 되돌린다
+- [x] **Step 5: 커밋, push** — `feat: 요청 타이머와 408`
 
 ### Task 8: 종합 확인 (설계 6단계)
 담당: `verifier` (결함 수정은 `builder`) / 강도: 기본
@@ -269,3 +269,7 @@ Task마다 verifier가 보고한 Minor를 여기에 한 줄씩 모은다. Task 9
 - (Task 5) `docs/architecture-http.md` 엣지 케이스: `/index.html/`(일반 파일 + 끝 `/`) → 200, `/docs/.` → 404, 권한 111 디렉토리의 `/dir/` → 403을 적는다
 - (Task 4) CLAUDE.md 첫 문단 "HTTP 처리는 구현 중이라 아직 stub이다"를 고친다 (Task 3에서 넘어옴)
 - (Task 6) `tests/http_test.sh`: 전송 중 파일이 줄어듦(`sendfile` 0 → 닫힘) 케이스를 넣는다 (메인 세션이 실제 서버로 직접 확인: 4194304바이트로 줄이면 서버가 닫고 fd 수 5 → 5). `realpath`와 `open` 사이 삭제는 시점을 맞출 수 없어 범위 밖이다 (Task 5 verifier가 `ENOENT` 주입으로 확인)
+- (Task 7) 계획 Task 7 Step 4와 `docs/architecture-http.md` 5단계 "확인": "완전한 `GET /index.html`" 케이스는 `req_start = now`를 지워도 통과한다. 두 번째 요청을 나눠 보내는 케이스로 문구를 고친다 (테스트에는 이미 들어 있고, 고의 결함을 이 케이스가 잡는다)
+- (Task 7) `src/http.h`: `status` 주석의 코드 목록에 408을 더한다
+- (Task 7) `tests/http_test.sh`: 타이머 구간에서 SIGTERM으로 중단하면 python 클라이언트가 최대 20초쯤 남는다. `cleanup`에서 같이 끝낸다
+- (Task 7) `tests/http_test.sh`: `t0`을 `connect` 뒤에 재서 초 경계에서 10초 하한에 못 미칠 수 있다(추정). `t0`을 `connect` 앞으로 옮긴다

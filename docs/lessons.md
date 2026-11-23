@@ -5,6 +5,7 @@
 - 파일은 Write/Edit 도구로 쓴다. Bash heredoc으로 쓰다 따옴표가 어긋나면 명령이 입력을 기다리며 백그라운드에 걸리고, 에이전트가 그 작업을 기다리느라 15분 넘게 멈췄다(Task 2).
 - 서버 확인은 run_in_background를 쓰지 않고, 한 번의 `bash -lc` 안에서 띄우기 → 확인 → `kill`로 끝낸다. `pause()`나 이벤트 루프는 스스로 끝나지 않는다.
 - 비대화형 bash에서 `&`로 띄운 프로세스는 SIGINT를 무시한다. `valgrind ... & SP=$!; kill -INT $SP; wait $SP`는 영원히 멈춘다. `kill $SP`(SIGTERM)로 끝내도 valgrind는 HEAP/LEAK 요약을 출력한다.
+- 확인용 스크립트는 `cd <사본> || exit 1`로 시작하고, 출력 문구의 `->`는 따옴표로 감싼다. `cd`가 실패하거나 `echo fds 6 -> 0`이 리다이렉션이 되어 저장소 루트에 파일이 생겼다(Task 6, 7). WSL이 종료되면 `/tmp`가 비워진다. 끝에 `git status`를 본다.
 - `pkill -f <패턴>`은 그 패턴이 들어 있는 `bash -lc` 자신도 죽인다(종료 코드 15). `kill $SP`처럼 PID로 끝내거나 `pkill -x <이름>`을 쓴다.
 
 ## valgrind

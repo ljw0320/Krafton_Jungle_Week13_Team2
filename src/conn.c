@@ -62,8 +62,9 @@ int conn_on_readable(struct conn *c) {
         conn_close(c);
         return -1;
     }
-    c->rlen += (size_t)n;
     c->last_active = time(NULL);
+    if (c->rlen == 0) c->req_start = c->last_active;
+    c->rlen += (size_t)n;
     fprintf(stderr, "fd=%d recv %zd bytes\n", c->fd, n);
     return conn_process(c);
 }
@@ -109,6 +110,8 @@ static int conn_send(struct conn *c) {
         return -1;
     }
     c->state = CONN_READING;
+    // 앞 응답을 보낸 시간이 다음 요청의 타이머에 들어가지 않게 여기서 기록한다
+    if (c->rlen > 0) c->req_start = time(NULL);
     if (c->events != EPOLLIN) {
         if (loop_watch(c, EPOLLIN) < 0) {
             conn_close(c);
@@ -167,7 +170,13 @@ void conn_sweep_idle(time_t now) {
     struct conn *next;
     for (struct conn *c = head; c; c = next) {
         next = c->next;  // conn_close가 c를 해제하므로 먼저 저장
-        if (now - c->last_active > IDLE_TIMEOUT_SEC) {
+        // 유휴보다 먼저 본다. 한 바이트 보내고 멈춘 연결도 408을 받는다
+        if (c->state == CONN_READING && c->rlen > 0 && now - c->req_start > REQ_TIMEOUT_SEC) {
+            fprintf(stderr, "fd=%d request timeout\n", c->fd);
+            struct http_req req = {.status = 408};
+            // 다 못 보내면 WRITING으로 남고 유휴 검사가 맡는다
+            if (conn_respond(c, &req) == 0) conn_send(c);
+        } else if (now - c->last_active > IDLE_TIMEOUT_SEC) {
             fprintf(stderr, "fd=%d idle timeout\n", c->fd);
             conn_close(c);
         }
