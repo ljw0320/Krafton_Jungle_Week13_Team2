@@ -111,14 +111,15 @@ static bool io_result(struct connection *client, ssize_t result, bool writing)
     return false;
 }
 
-static bool receive_step(struct server *server, struct connection *client,
-                          size_t *received)
+static bool receive_step(struct server *server, struct connection *client, size_t *received)
 {
     bool header = client->phase == READ_HEADER;
     size_t size = header ? HEADER_LIMIT - client->input_length :
                           client->request.content_length - client->length;
+
     void *out = header ? (void *)(client->input + client->input_length) :
                          (void *)(client->data + client->length);
+                         
     if (size > IO_BUDGET - *received)
         size = IO_BUDGET - *received;
 

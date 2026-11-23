@@ -13,5 +13,227 @@
     <button>POST /echo</button>
   </form>
   <p>POST 응답은 전송한 원본 바이트를 담은 application/octet-stream입니다.</p>
+
+  <section aria-labelledby="test-title">
+    <h2 id="test-title">동시 HTTP 요청 테스트</h2>
+    <p>같은 서버에 여러 요청을 한꺼번에 보내고, 응답 본문까지 받은 결과를 확인합니다.</p>
+
+    <div class="test-controls">
+      <label for="test-method">테스트 종류</label>
+      <select id="test-method">
+        <option value="GET">GET · 응답 크기 테스트</option>
+        <option value="POST">POST · 요청 크기 테스트</option>
+      </select>
+
+      <label for="request-count">요청 수</label>
+      <select id="request-count">
+        <option value="4">4개</option>
+        <option value="8">8개</option>
+        <option value="12">12개</option>
+        <option value="36">36개</option>
+      </select>
+
+      <label for="request-size">요청 본문 크기 (POST)</label>
+      <select id="request-size" disabled>
+        <option value="4">4KiB</option>
+        <option value="16">16KiB</option>
+        <option value="64">64KiB</option>
+        <option value="128">128KiB</option>
+        <option value="512">512KiB</option>
+        <option value="1024">1MiB (1,024KiB)</option>
+      </select>
+
+      <label for="body-size">응답 본문 크기 (GET)</label>
+      <select id="body-size">
+        <option value="4">4KiB</option>
+        <option value="16">16KiB</option>
+        <option value="64">64KiB</option>
+        <option value="128">128KiB</option>
+      </select>
+      <button id="run-test" type="button">동시 요청 보내기</button>
+    </div>
+
+    <p id="test-expected"></p>
+    <p id="test-summary" role="status" aria-live="polite">테스트를 시작해 주세요.</p>
+
+    <div class="table-scroll">
+      <table>
+        <caption>요청별 응답 결과</caption>
+        <thead>
+          <tr>
+            <th scope="col">번호</th>
+            <th scope="col">HTTP</th>
+            <th scope="col">요청 본문 (설정)</th>
+            <th scope="col">응답 본문 (수신)</th>
+            <th scope="col">소요 시간</th>
+            <th scope="col">결과</th>
+          </tr>
+        </thead>
+        <tbody id="test-results"></tbody>
+      </table>
+    </div>
+
+    <p class="test-note">선택한 크기의 정적 파일을 GET으로 받습니다.
+      128KiB도 정상 응답 대상이며, POST 요청 본문의 64KiB 제한과는 별개입니다.</p>
+    <p class="test-note">POST는 선택한 크기의 데이터를 /echo로 보냅니다.
+      64KiB 이하는 같은 크기의 응답, 128KiB·512KiB·1MiB는 413 차단이 예상됩니다.
+      POST 응답 크기는 요청 크기에 따라 정해지므로 별도로 선택하지 않습니다.</p>
+    <p class="test-note">요청 본문 (설정)은 브라우저에 전달한 본문 크기입니다.
+      HTTP 헤더는 포함하지 않으며, 서버가 전부 받았다는 의미는 아닙니다.
+      64KiB 초과는 서버가 본문을 읽기 전에 거절하므로 연결 / 수신 실패로 관찰될 수도 있습니다.</p>
+    <p class="test-note">요청마다 다른 쿼리와 캐시 비활성화 옵션을 사용합니다.
+      브라우저가 연결을 나눠 보내거나 대기시킬 수 있으므로,
+      요청 수가 서버의 실제 동시 연결 수나 작업자 동시 실행 수를 의미하지는 않습니다.</p>
+    <p class="test-note">개발자 도구의 Network에서 GET은 <code>concurrency=</code>, POST는 <code>echo</code>로 필터링해
+      요청 시간대를 확인하고, 서버 터미널의 accept·close 로그도 함께 살펴보세요.
+      요청별 시간에는 브라우저 대기와 본문 수신 시간이 포함됩니다.</p>
+  </section>
 </main>
+
+<script>
+  const runButton = document.getElementById("run-test");
+  const requestCount = document.getElementById("request-count");
+  const testMethod = document.getElementById("test-method");
+  const requestSize = document.getElementById("request-size");
+  const bodySize = document.getElementById("body-size");
+  const expected = document.getElementById("test-expected");
+  const summary = document.getElementById("test-summary");
+  const results = document.getElementById("test-results");
+
+  // GET은 파일을 받고 POST는 A 바이트를 채운 본문을 /echo로 보냅니다.
+  function getTestConfig() {
+    const method = testMethod.value;
+    const requestBytes = method === "POST" ? Number(requestSize.value) * 1024 : 0;
+    const rejected = requestBytes > 65536;
+    const responseBytes = method === "POST" ? requestBytes : Number(bodySize.value) * 1024;
+
+    return {
+      method, requestBytes, expectedStatus: rejected ? 413 : 200,
+      expectedBytes: rejected ? new TextEncoder().encode("413 Content Too Large\n").length : responseBytes,
+      path: method === "POST" ? "/echo" : `/test-data/body-${bodySize.value}kib.bin`,
+      options: method === "POST" ? {
+        method, body: new Uint8Array(requestBytes).fill(65),
+        headers: { "Content-Type": "application/octet-stream" }
+      } : { method }
+    };
+  }
+
+  function updateExpected() {
+    setControlsDisabled(false);
+
+    const config = getTestConfig();
+    expected.textContent = `요청별 예상: ${config.method} · 요청 본문 ${config.requestBytes} B → ` +
+      `HTTP ${config.expectedStatus} · 응답 본문 ${config.expectedBytes} B`;
+  }
+
+  function setControlsDisabled(disabled) {
+    runButton.disabled = disabled || location.protocol === "file:";
+    requestCount.disabled = disabled;
+    testMethod.disabled = disabled;
+    requestSize.disabled = disabled || testMethod.value !== "POST";
+    bodySize.disabled = disabled || testMethod.value !== "GET";
+  }
+
+  // 요청별 행을 먼저 만들어 응답이 끝나는 순서와 관계없이 번호를 유지합니다.
+  function createRows(count, config) {
+    results.replaceChildren();
+
+    return Array.from({ length: count }, (_, index) => {
+      const row = results.insertRow();
+
+      for (const value of [index + 1, "-", `${config.requestBytes} B`, "-", "-", "대기 중"])
+        row.insertCell().textContent = value;
+
+      return row;
+    });
+  }
+
+  // 정상 POST는 에코 내용까지 검사하고 한도 초과는 예상된 차단인지 검사합니다.
+  function responseResult(response, body, config, started) {
+    const bytes = new Uint8Array(body);
+    const echoed = config.method !== "POST" || config.expectedStatus !== 200 ||
+      bytes.every(value => value === 65);
+    const ok = response.status === config.expectedStatus &&
+      bytes.length === config.expectedBytes && echoed;
+
+    return { status: response.status, bytes: bytes.length, ok,
+      elapsed: performance.now() - started,
+      message: ok ? (response.status === 413 ? "검증 통과 · 413 차단" : "검증 통과") : "예상 응답 불일치" };
+  }
+
+  // Content-Length는 브라우저가 본문 바이트 수에 맞게 설정합니다.
+  async function fetchResult(url, config) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const started = performance.now();
+
+    try {
+      const response = await fetch(url, { ...config.options, cache: "no-store", signal: controller.signal });
+      const body = await response.arrayBuffer();
+
+      return responseResult(response, body, config, started);
+    } catch (error) {
+      return { status: "-", bytes: 0, ok: false, elapsed: performance.now() - started,
+        message: error.name === "AbortError" ? "8초 시간 초과" : "연결 / 수신 실패" };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  function showResult(row, result, config) {
+    const values = [result.status, `${config.requestBytes} B`, `${result.bytes} B`,
+      `${result.elapsed.toFixed(1)} ms`, result.message];
+
+    values.forEach((value, index) => { row.cells[index + 1].textContent = value; });
+    row.className = result.ok ? "request-success" : "request-failure";
+  }
+
+  async function runRequest(row, index, config, runId, completed) {
+    row.cells[5].textContent = "요청 중";
+
+    const url = config.method === "GET" ? `${config.path}?concurrency=${runId}-${index + 1}` : config.path;
+    const result = await fetchResult(url, config);
+
+    showResult(row, result, config);
+    completed();
+    return result;
+  }
+
+  // 모든 fetch를 시작한 후 결과를 모으며, 실행 중 선택값은 고정합니다.
+  async function runConcurrentTest() {
+    setControlsDisabled(true);
+
+    const count = Number(requestCount.value);
+    const config = getTestConfig();
+    const rows = createRows(count, config);
+    const runId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const started = performance.now();
+    let completed = 0;
+
+    summary.textContent = `${config.method} ${count}개 요청 진행 중…`;
+
+    try {
+      const requests = rows.map((row, index) => runRequest(row, index, config, runId, () => {
+        summary.textContent = `${++completed} / ${count}개 완료`;
+      }));
+      const responses = await Promise.all(requests);
+      const success = responses.filter(result => result.ok).length;
+
+      summary.textContent = `검증 통과 ${success} / 실패 ${count - success} · 전체 ${(performance.now() - started).toFixed(1)} ms`;
+    } finally {
+      setControlsDisabled(false);
+    }
+  }
+
+  runButton.addEventListener("click", runConcurrentTest);
+  testMethod.addEventListener("change", updateExpected);
+  requestSize.addEventListener("change", updateExpected);
+  bodySize.addEventListener("change", updateExpected);
+  updateExpected();
+
+  if (location.protocol === "file:") {
+    runButton.disabled = true;
+    summary.textContent = "파일을 직접 열지 말고 실행 중인 서버 주소(http://127.0.0.1:19006/)로 접속해 주세요.";
+  }
+</script>
 </html>
