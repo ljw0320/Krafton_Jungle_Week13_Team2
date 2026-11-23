@@ -26,7 +26,7 @@ build/test-http: tests/test_http.c tests/test_runner.h $(HTTP_SOURCES) $(HTTP_HE
 
 build/test-cgi-io: tests/test_cgi_io.c $(HTTP_SOURCES) $(HTTP_HEADERS)
 	mkdir -p build
-	$(CC) $(CFLAGS) tests/test_cgi_io.c $(HTTP_SOURCES) -o $@ $(LDFLAGS)
+	$(CC) $(CFLAGS) tests/test_cgi_io.c $(HTTP_SOURCES) -o $@ $(LDFLAGS) -Wl,--wrap=write
 
 test: all build/test-processes build/test-http build/test-cgi-io
 	./build/test-processes

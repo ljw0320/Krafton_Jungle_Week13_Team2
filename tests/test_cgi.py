@@ -64,6 +64,23 @@ class CgiTestCase(ServerTestCase):
                 self.assertEqual(body, expected_body)
             return headers, body, version
 
+    def assert_child_first_post_status(self, expected):
+        reader, writer = socket.socketpair()
+        with reader, writer:
+            reader.settimeout(8)
+            with subprocess.Popen(
+                [str(ROOT / 'build/test-cgi-io'), str(writer.fileno()), 'child-first'],
+                pass_fds=(writer.fileno(),), cwd=self.work,
+            ) as helper:
+                writer.close()
+                try:
+                    status, _, _, _ = response(reader)
+                    self.assertEqual(helper.wait(timeout=8), 0)
+                    self.assertEqual(status, expected)
+                finally:
+                    if helper.poll() is None:
+                        helper.kill()
+
 
 class AdderTests(CgiTestCase):
 
@@ -210,6 +227,16 @@ class AdderTests(CgiTestCase):
         self.executable.chmod(0o755)
         self.assert_cgi_response(packet(), 500)
 
+    def test_post_exec_failure_before_input_write_returns_500(self):
+        for failure in ['missing', 'permission', 'format']:
+            with self.subTest(failure=failure):
+                if failure == 'missing':
+                    self.executable.unlink()
+                else:
+                    self.executable.write_text('not executable')
+                    self.executable.chmod(0o644 if failure == 'permission' else 0o755)
+                self.assert_child_first_post_status(500)
+
 
 class CgiOutputTests(CgiTestCase):
     cgi_program = ROOT / 'tests/fixtures/cgi_program.py'
@@ -274,6 +301,16 @@ class CgiOutputTests(CgiTestCase):
                 self.mode_file.write_text(mode)
                 self.assert_cgi_response(packet(), 502)
                 wait_for(lambda: not children(self.proc.pid))
+
+    def test_post_program_exit_before_input_write_returns_502(self):
+        for mode in ['nonzero', 'signal']:
+            with self.subTest(mode=mode):
+                self.mode_file.write_text(mode)
+                self.assert_child_first_post_status(502)
+
+    def test_post_incomplete_input_is_not_success_even_with_valid_output(self):
+        self.set_output(b'Content-Type: text/plain\r\n\r\nfalse success')
+        self.assert_child_first_post_status(502)
 
     def test_rejects_malformed_program_output(self):
         for mode in ['invalid', 'duplicate', 'injection', 'nul',

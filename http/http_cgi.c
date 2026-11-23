@@ -224,6 +224,9 @@ static int exchange_cgi(struct cgi_process *process, int client, const char *bod
                 written += (size_t)n;
                 if (written == length)
                     close_fd(&process->input);
+            } else if (n < 0 && errno == EPIPE) {
+                /* Exec failure can close stdin first; classify after exit/error-pipe checks. */
+                close_fd(&process->input);
             } else if (n < 0 && errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK) {
                 return 502;
             }
