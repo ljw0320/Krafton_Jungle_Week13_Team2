@@ -239,7 +239,7 @@ Task 1 → Task 2 → Task 3 ─┬─ Task 4 (conn.c/.h, http_test.sh) ─┬�
 - [x] **Step 3: valgrind** — `make && SERVER_WRAP='valgrind --leak-check=full --log-file=/tmp/vg.log' bash tests/http_test.sh` → 종료 코드 0, `grep 'definitely lost' /tmp/vg.log` → `0 bytes` (`still reachable`은 허용). 스크립트는 `kill $SP`로 끝낸다 (lessons.md)
 - [x] **Step 4: 동시 접속** — 픽스처 루트로 서버를 띄우고 `seq 200 | xargs -P 100 -I{} curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/ | sort | uniq -c` → `200 200`
 - [x] **Step 5: 원래대로 돌아오는지** — Step 4 전후 `ls /proc/$SP/fd | wc -l`이 같고, 마지막 로그가 `conn_count=0`
-- [ ] **Step 6: 브라우저 (사용자)** — 종료 코드로 판정할 수 없어서 사용자가 직접 한다. 픽스처 루트의 `index.html`을 열고 개발자 도구에서 CSS, JS, PNG가 200이고 `Content-Type`이 MIME 표와 같은지 본다
+- [x] **Step 6: 브라우저 (사용자)** — 종료 코드로 판정할 수 없어서 사용자가 직접 한다. 픽스처 루트의 `index.html`을 열고 개발자 도구에서 CSS, JS, PNG가 200이고 `Content-Type`이 MIME 표와 같은지 본다
 - [ ] **Step 7: 커밋, push** (고친 것이 있을 때) — `fix: 종합 확인에서 찾은 결함`
 
 ### Task 9: 최종 리뷰와 Minor 정리
