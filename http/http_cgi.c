@@ -25,12 +25,14 @@ struct cgi_process {
     bool success;
 };
 
+/* 종료 시그널 수신 시 CGI 처리 중단 플래그를 설정한다. */
 static void cancel_cgi(int signo)
 {
     (void)signo;
     interrupted = 1;
 }
 
+/* CGI 실행 기한 계산에 사용할 단조 시계 시간을 반환한다. */
 static double now_seconds(void)
 {
     struct timespec now;
@@ -39,6 +41,7 @@ static double now_seconds(void)
     return now.tv_sec + now.tv_nsec / 1e9;
 }
 
+/* 유효한 파일 디스크립터를 닫고 값을 -1로 초기화한다. */
 static void close_fd(int *fd)
 {
     if (*fd >= 0)
@@ -46,6 +49,7 @@ static void close_fd(int *fd)
     *fd = -1;
 }
 
+/* exec 시 자동으로 닫히는 파이프를 생성하고 표준 입출력과 디스크립터 번호가 겹치지 않게 한다. */
 static int make_pipe(int fds[2])
 {
     if (pipe(fds) == -1)
@@ -66,6 +70,7 @@ static int make_pipe(int fds[2])
     return 0;
 }
 
+/* 파일 디스크립터를 non-blocking 모드로 설정한다. */
 static int nonblocking(int fd)
 {
     int flags = fcntl(fd, F_GETFL);
@@ -73,6 +78,7 @@ static int nonblocking(int fd)
 }
 
 /* Separate error pipe distinguishes exec/setup failure from the CGI's exit code. */
+/* 파이프와 자식 프로세스를 생성하고 표준 입출력을 연결하여 build/adder를 실행한다. */
 static int start_cgi(struct cgi_process *process, int client, char *const envp[])
 {
     int input[2] = {-1, -1}, output[2] = {-1, -1}, error[2] = {-1, -1};
@@ -121,6 +127,7 @@ failure:
     return -1;
 }
 
+/* CGI 프로세스를 회수하지 않고 종료 여부와 정상 종료 여부를 확인한다. */
 static int check_cgi_exit(struct cgi_process *process)
 {
     if (process->exited)
@@ -136,6 +143,7 @@ static int check_cgi_exit(struct cgi_process *process)
 }
 
 /* A bounded grace period also handles programs that ignore SIGTERM. */
+/* 파이프와 CGI 프로세스 그룹을 정리하고 자식을 회수한다. 중단 시 종료 유예 후 강제 종료한다. */
 static void finish_cgi(struct cgi_process *process, bool aborting)
 {
     close_fd(&process->input);
@@ -158,6 +166,7 @@ static void finish_cgi(struct cgi_process *process, bool aborting)
 }
 
 /* Input and output must progress together: either pipe can fill before the other. */
+/* 본문 전달과 CGI 출력 수신을 함께 진행하고 실행 시간·출력 크기·클라이언트 연결·종료 상태를 검사한다. */
 static int exchange_cgi(struct cgi_process *process, int client, const char *body,
                         size_t length, char *output, size_t *used, double deadline)
 {
@@ -228,6 +237,7 @@ static int exchange_cgi(struct cgi_process *process, int client, const char *bod
 }
 
 /* This endpoint accepts a document response: Content-Type plus optional Status. */
+/* CGI 출력의 Content-Type과 선택적 Status를 검증하여 HTTP 응답으로 전송하고 잘못된 출력에는 502를 응답한다. */
 static int send_cgi_output(int fd, const struct request *request, char *output, size_t length)
 {
     size_t offset = 0;
@@ -274,6 +284,7 @@ static int send_cgi_output(int fd, const struct request *request, char *output, 
     return send_error(fd, request, 502);
 }
 
+/* CGI 환경변수 구성과 실행·입출력·정리를 관리하고 결과 또는 오류 응답을 전송한다. */
 int serve_cgi(int fd, const struct request *request, const char *body)
 {
     char query[URI_LIMIT + 32], method[32], length[64];

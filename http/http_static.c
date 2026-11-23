@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+/* 파일 접근 오류를 404, 403 또는 500 상태 코드로 변환한다. */
 static int file_error(void)
 {
     if (errno == ENOENT)
@@ -17,6 +18,7 @@ static int file_error(void)
     return 500;
 }
 
+/* 파일 확장자로 Content-Type을 결정하며 알 수 없는 형식은 application/octet-stream으로 처리한다. */
 static const char *mime_type(const char *name)
 {
     const char *extension = strrchr(name, '.');
@@ -35,6 +37,7 @@ static const char *mime_type(const char *name)
 }
 
 /* Mutates path; borrows root_fd and transfers file_fd to the caller only on success. */
+/* 정적 루트에서 경로를 열고 숨김 경로·심볼릭 링크를 차단하며 일반 파일인지 검사한다. 디렉터리는 index.html을 선택한다. */
 static int open_static(int root_fd, char *path, int *file_fd, struct stat *info,
                        const char **type)
 {
@@ -100,6 +103,7 @@ static int open_static(int root_fd, char *path, int *file_fd, struct stat *info,
     return 0;
 }
 
+/* 파일을 열고 응답 헤더와 파일 내용을 나누어 전송한 뒤 파일을 닫는다. */
 int serve_static(int fd, int root_fd, const struct request *request, char *path)
 {
     int file_fd;

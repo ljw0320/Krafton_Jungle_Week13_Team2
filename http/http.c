@@ -24,6 +24,7 @@ enum connection_action {
     CONNECTION_KEEP = 1,
 };
 
+/* 요청 경로를 정적 파일, 지원하는 CGI, 존재하지 않는 CGI 경로로 분류한다. */
 static enum request_route select_route(const char *path)
 {
     if (strcmp(path, "/cgi-bin/adder") == 0)
@@ -35,6 +36,7 @@ static enum request_route select_route(const char *path)
     return ROUTE_STATIC;
 }
 
+/* 헤더와 경로를 해석하고 CGI POST의 본문 크기·형식을 검사하며, 본문을 저장하거나 읽어 버린다. */
 static int read_request(int fd, int idle_seconds, struct request_storage *storage,
                         struct request *request)
 {
@@ -69,6 +71,7 @@ static int read_request(int fd, int idle_seconds, struct request_storage *storag
         receive_body(fd, request->content_length, deadline);
 }
 
+/* 요청을 정적 파일 또는 CGI 처리로 연결하고 오류 응답과 연결 유지·종료를 결정한다. */
 static enum connection_action serve_request(int fd, int root_fd, int idle_seconds,
                                             struct request_storage *storage)
 {
@@ -98,6 +101,7 @@ static enum connection_action serve_request(int fd, int root_fd, int idle_second
     return request.close ? CONNECTION_DONE : CONNECTION_KEEP;
 }
 
+/* 요청 저장 공간을 할당하고 연결이 유지되는 동안 요청을 반복 처리한 뒤 해제한다. */
 int serve_http(int fd, int root_fd, int idle_seconds)
 {
     struct request_storage *storage = malloc(sizeof(*storage));

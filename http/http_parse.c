@@ -11,12 +11,14 @@ struct header_fields {
     bool has_expect;
 };
 
+/* HTTP 토큰에 사용할 수 있는 문자인지 검사한다. */
 static bool token_character(unsigned char c)
 {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
         (c >= '0' && c <= '9') || (c && strchr("!#$%&'*+-.^_`|~", c));
 }
 
+/* 헤더 값 앞뒤의 공백과 탭을 제거한다. */
 static char *trim_value(char *value)
 {
     while (*value == ' ' || *value == '\t')
@@ -27,6 +29,7 @@ static char *trim_value(char *value)
     return value;
 }
 
+/* Connection 값을 쉼표 단위로 검사하고 close가 있으면 연결 종료를 설정한다. */
 static int parse_connection(char *value, bool *close)
 {
     for (;;) {
@@ -47,6 +50,7 @@ static int parse_connection(char *value, bool *close)
     }
 }
 
+/* 본문 길이를 정수로 변환하고 숫자 형식과 오버플로를 검사한다. */
 static int parse_content_length(const char *value, size_t *length)
 {
     if (!*value)
@@ -62,6 +66,7 @@ static int parse_content_length(const char *value, size_t *length)
 }
 
 /* Splits the line in place; request strings borrow its storage. */
+/* 요청 라인을 메서드·요청 대상·HTTP 버전으로 분리하고 형식과 길이를 검사한다. */
 static int parse_request_line(char *line, struct request *request)
 {
     char *target = strchr(line, ' ');
@@ -96,6 +101,7 @@ static int parse_request_line(char *line, struct request *request)
     return 0;
 }
 
+/* 헤더 형식을 검사하고 Host, Content-Length, Content-Type 등 주요 값을 저장한다. */
 static int parse_headers(char *headers, struct request *request, struct header_fields *fields)
 {
     char *line_end;
@@ -146,6 +152,7 @@ static int parse_headers(char *headers, struct request *request, struct header_f
     return 0;
 }
 
+/* Host 누락, 길이 관련 헤더 충돌, 미지원 전송 방식과 본문 크기 초과를 검사한다. */
 static int validate_request_headers(const struct request *request, const struct header_fields *fields)
 {
     if ((request->http11 && !fields->has_host) ||
@@ -157,6 +164,7 @@ static int validate_request_headers(const struct request *request, const struct 
 }
 
 /* Resets request and mutates the complete NUL-terminated header it borrows from. */
+/* 요청 구조체를 초기화하고 요청 라인·헤더 파싱과 최종 검증을 수행한다. */
 int parse_request(char *header, struct request *request)
 {
     *request = (struct request){.http11 = true, .close = true};
@@ -174,6 +182,7 @@ int parse_request(char *header, struct request *request)
     return validate_request_headers(request, &fields);
 }
 
+/* 16진수 문자 하나를 숫자로 변환하고 잘못된 문자이면 -1을 반환한다. */
 static int hex_digit(unsigned char c)
 {
     if (c >= '0' && c <= '9') return c - '0';
@@ -182,6 +191,7 @@ static int hex_digit(unsigned char c)
     return -1;
 }
 
+/* 쿼리를 제외한 URL 경로를 디코딩하고 잘못된 인코딩·금지 문자·길이 초과를 검사한다. */
 int decode_path(const char *target, char *path, size_t capacity)
 {
     if (*target != '/' || strchr(target, '#'))

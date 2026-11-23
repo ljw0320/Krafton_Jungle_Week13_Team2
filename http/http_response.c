@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
+/* 상태 코드에 대응하는 설명 문자열을 반환한다. */
 static const char *reason_phrase(int status)
 {
     switch (status) {
@@ -25,6 +26,7 @@ static const char *reason_phrase(int status)
     }
 }
 
+/* 상태 라인과 본문 형식·길이·연결 정책을 포함한 응답 헤더를 생성하여 전송한다. */
 int send_headers(int fd, const struct request *request, int status,
                         const char *type, uintmax_t length)
 {
@@ -40,6 +42,7 @@ int send_headers(int fd, const struct request *request, int status,
     return send_all(fd, header, (size_t)size);
 }
 
+/* 상태 코드와 설명을 담은 텍스트 오류 응답을 전송하며 HEAD 요청에는 본문을 생략한다. */
 int send_error(int fd, const struct request *request, int status)
 {
     char body[80];

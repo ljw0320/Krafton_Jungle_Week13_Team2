@@ -8,6 +8,7 @@
 
 enum { INPUT_LIMIT = 8192, POST_LIMIT = 4096 };
 
+/* 16진수 문자 하나를 숫자로 변환하고 잘못된 문자이면 -1을 반환한다. */
 static int hex_digit(unsigned char c)
 {
     if (c >= '0' && c <= '9') return c - '0';
@@ -17,6 +18,7 @@ static int hex_digit(unsigned char c)
 }
 
 /* Decode each field after splitting, so encoded separators remain field data. */
+/* 폼 필드의 %XX를 디코딩하고 +를 공백으로 변환하며 제어 문자와 비ASCII 문자를 거부한다. */
 static bool decode_field(char *text)
 {
     char *out = text;
@@ -42,6 +44,7 @@ static bool decode_field(char *text)
     return true;
 }
 
+/* 문자열을 부호 있는 64비트 정수로 변환하고 숫자 형식과 범위 초과를 검사한다. */
 static bool parse_integer(const char *text, int64_t *value)
 {
     const char *digits = text;
@@ -60,6 +63,7 @@ static bool parse_integer(const char *text, int64_t *value)
     return true;
 }
 
+/* 폼의 a와 b를 분리·디코딩하여 더하고 누락·중복·알 수 없는 항목과 덧셈 오버플로를 검사한다. */
 static bool add_form(char *form, int64_t *sum)
 {
     bool seen[2] = {false, false};
@@ -90,6 +94,7 @@ static bool add_form(char *form, int64_t *sum)
     return true;
 }
 
+/* GET은 QUERY_STRING에서, POST는 표준 입력에서 읽고 본문 형식·길이와 입력을 검사한다. */
 static bool read_input(char *input)
 {
     const char *method = getenv("REQUEST_METHOD");
@@ -120,6 +125,7 @@ static bool read_input(char *input)
     return true;
 }
 
+/* 입력을 읽어 덧셈을 수행하고 성공 시 합계, 잘못된 입력에는 Status: 400을 포함한 CGI 응답을 출력한다. */
 int main(void)
 {
     char input[INPUT_LIMIT + 1];

@@ -8,6 +8,7 @@
 
 enum { REQUEST_SECONDS = 30, SEND_SECONDS = 10 };
 
+/* 시스템 시각 변경의 영향을 받지 않는 단조 시계 시간을 초 단위로 반환한다. */
 static double monotonic_seconds(void)
 {
     struct timespec now;
@@ -17,6 +18,7 @@ static double monotonic_seconds(void)
 }
 
 /* A fixed deadline prevents trickling bytes from extending the request lifetime. */
+/* 지정한 기한까지 poll로 소켓의 읽기·쓰기 준비를 기다린다. */
 static int wait_ready(int fd, short events, double deadline)
 {
     for (;;) {
@@ -34,6 +36,7 @@ static int wait_ready(int fd, short events, double deadline)
     }
 }
 
+/* 부분 송신을 처리하여 데이터를 모두 전송하고 송신이 진행되지 않는 시간을 제한한다. */
 int send_all(int fd, const void *data, size_t length)
 {
     const char *bytes = data;
@@ -59,6 +62,7 @@ int send_all(int fd, const void *data, size_t length)
     return 0;
 }
 
+/* 기한 내 데이터를 수신하고 성공·연결 종료·시간 초과·오류를 구분한다. */
 static enum receive_result receive_bytes(int fd, void *buffer, size_t capacity,
                                          int flags, double deadline, size_t *received)
 {
@@ -78,6 +82,7 @@ static enum receive_result receive_bytes(int fd, void *buffer, size_t capacity,
     }
 }
 
+/* 수신 시간 초과는 408, 수신 도중 연결 종료는 400, 나머지는 내부 수신 오류로 변환한다. */
 static int receive_error_status(enum receive_result result)
 {
     if (result == RECEIVE_TIMEOUT)
@@ -88,6 +93,7 @@ static int receive_error_status(enum receive_result result)
 }
 
 /* Consumes exactly length bytes, leaving the next request in the socket. */
+/* 지정한 바이트 수만큼 정확히 수신하여 다음 요청의 데이터를 소켓에 남긴다. */
 static int receive_exact(int fd, char *buffer, size_t length, double deadline)
 {
     size_t received = 0;
@@ -103,6 +109,7 @@ static int receive_exact(int fd, char *buffer, size_t length, double deadline)
 }
 
 /* Only the last three old bytes can start a boundary completed by new bytes. */
+/* 누적 데이터에서 나뉘어 도착할 수 있는 헤더 종료 구분자를 찾는다. */
 static size_t find_header_end(const char *header, size_t previous, size_t length)
 {
     size_t start = previous > 3 ? previous - 3 : 0;
@@ -112,6 +119,7 @@ static size_t find_header_end(const char *header, size_t previous, size_t length
     return 0;
 }
 
+/* 수신 중인 요청 대상의 길이를 검사하고 제한 초과 시 414를 반환한다. */
 static int check_target_length(const char *header)
 {
     const char *space = strchr(header, ' ');
@@ -123,6 +131,7 @@ static int check_target_length(const char *header)
 }
 
 /* The first byte is already consumed; capacity includes the terminating NUL. */
+/* 헤더 경계를 미리 확인하여 필요한 바이트만 소비하고 NUL과 크기 제한을 검사한다. */
 static int receive_header_content(int fd, char *header, size_t capacity, double deadline)
 {
     size_t limit = capacity - 1 < HEADER_LIMIT ? capacity - 1 : HEADER_LIMIT;
@@ -153,6 +162,7 @@ static int receive_header_content(int fd, char *header, size_t capacity, double 
 }
 
 /* Returns OK, CLOSED for idle/EOF, ERROR for I/O, or a positive HTTP error. */
+/* 유휴 시간 내 첫 바이트를 기다린 뒤 요청 전체 수신 기한을 설정하고 헤더를 수신한다. */
 int receive_header(int fd, char *header, size_t capacity, int idle_seconds, double *deadline)
 {
     if (capacity < 2)
@@ -171,12 +181,14 @@ int receive_header(int fd, char *header, size_t capacity, int idle_seconds, doub
     return receive_header_content(fd, header, capacity, *deadline);
 }
 
+/* 지정한 길이의 본문을 호출자가 제공한 버퍼에 저장한다. */
 int receive_body_into(int fd, char *buffer, size_t length, double deadline)
 {
     return receive_exact(fd, buffer, length, deadline);
 }
 
 /* Discards exactly content_length bytes under the original request deadline. */
+/* 요청 전체 수신 기한 내에 지정한 길이의 본문을 나누어 읽어 버린다. */
 int receive_body(int fd, size_t content_length, double deadline)
 {
     char buffer[16384];
