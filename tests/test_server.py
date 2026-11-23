@@ -52,11 +52,50 @@ def stop(proc, group=False):
     assert not err, err
 
 
+def response_headers(pairs):
+    headers = {}
+    for name, value in pairs:
+        name = name.lower()
+        assert name not in headers, ('duplicate response header', name, pairs)
+        headers[name] = value
+    assert 'transfer-encoding' not in headers, headers
+    assert {'content-length', 'content-type', 'connection'} <= headers.keys(), headers
+    length = headers['content-length']
+    assert length.isascii() and length.isdecimal(), headers
+    assert headers['connection'] in ('close', 'keep-alive'), headers
+    return {name.title(): value for name, value in headers.items()}
+
+
+class StrictHTTPResponse(http.client.HTTPResponse):
+    def _read_status(self):
+        version, status, reason = super()._read_status()
+        # HTTPResponse otherwise treats HTTP/1.9 as HTTP/1.1.
+        assert version in ('HTTP/1.0', 'HTTP/1.1'), version
+        return version, status, reason
+
+
 def response(client):
-    result = http.client.HTTPResponse(client)
+    result = StrictHTTPResponse(client)
     result.begin()
+    headers = response_headers(result.getheaders())
     body = result.read()
-    return result.status, dict(result.getheaders()), body, result.version
+    assert len(body) == int(headers['Content-Length'])
+    return result.status, headers, body, result.version
+
+
+def pipeline_response(stream):
+    line = stream.readline()
+    version, status, _ = line.split(b' ', 2)
+    assert version == b'HTTP/1.1' and line.endswith(b'\r\n'), line
+    pairs = []
+    while (line := stream.readline()) != b'\r\n':
+        assert line and line.endswith(b'\r\n'), line
+        name, value = line[:-2].decode('ascii').split(':', 1)
+        pairs.append((name, value.strip()))
+    headers = response_headers(pairs)
+    body = stream.read(int(headers['Content-Length']))
+    assert len(body) == int(headers['Content-Length'])
+    return int(status), headers, body
 
 
 def receive_exact(client, length):
@@ -185,7 +224,8 @@ def main():
                     client.sendall(header[:split])
                     time.sleep(.002)
                     client.sendall(header[split:])
-                    assert response(client)[0] == 200
+                    status, _, body, _ = response(client)
+                    assert status == 200 and body == b'<h1>Hello</h1>\n'
 
             with connect(port) as client:
                 for piece in [b'GET / HT', b'TP/1.1\r\nHost: local', b'host\r\n\r', b'\n']:
@@ -214,14 +254,27 @@ def main():
                                b'GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n')
                 # A shared reader preserves read-ahead bytes of the next response.
                 stream = client.makefile('rb')
-                for expected in [501, 200]:
-                    assert int(stream.readline().split()[1]) == expected
-                    headers = {}
-                    while (line := stream.readline()) != b'\r\n':
-                        key, value = line.decode().split(':', 1)
-                        headers[key] = value.strip()
-                    assert len(stream.read(int(headers['Content-Length']))) == int(headers['Content-Length'])
+                for expected, expected_body, connection in [
+                    (501, b'501 Not Implemented\n', 'keep-alive'),
+                    (200, b'<h1>Hello</h1>\n', 'close'),
+                ]:
+                    status, headers, body = pipeline_response(stream)
+                    assert status == expected and body == expected_body
+                    assert headers['Connection'] == connection
+                assert stream.read(1) == b''
                 stream.close()
+
+            # GET bodies must also be consumed without eating the next request.
+            with connect(port) as client:
+                client.sendall(b'GET / HTTP/1.1\r\nHost: x\r\nContent-Length: 4\r\n\r\n\x00abc'
+                               b'GET /docs/ HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n')
+                with client.makefile('rb') as stream:
+                    for expected, connection in [(b'<h1>Hello</h1>\n', 'keep-alive'),
+                                                 (b'docs', 'close')]:
+                        status, headers, body = pipeline_response(stream)
+                        assert status == 200 and body == expected
+                        assert headers['Connection'] == connection
+                    assert stream.read(1) == b''
 
             with connect(port) as client:
                 client.sendall(b'POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 3\r\nExpect: 100-continue\r\n\r\n')
@@ -231,8 +284,9 @@ def main():
 
             with connect(port) as client:
                 client.sendall(b'HEAD / HTTP/1.1\r\nHost: x\r\n\r\n')
-                result = http.client.HTTPResponse(client, method='HEAD')
+                result = StrictHTTPResponse(client, method='HEAD')
                 result.begin()
+                response_headers(result.getheaders())
                 assert result.status == 405 and result.getheader('Allow') == 'GET, POST'
                 assert result.read() == b'' and client.recv(1) == b''
 

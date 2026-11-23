@@ -1,13 +1,17 @@
 import concurrent.futures
+import os
 from pathlib import Path
+import random
 import shutil
+import signal
 import socket
 import struct
 import subprocess
 import tempfile
 import time
 
-from test_server import ROOT, children, connect, receive_exact, response, start, stop, wait_for
+from test_server import (ROOT, children, connect, pipeline_response, receive_exact,
+                         response, start, stop, wait_for)
 
 
 def packet(target='/cgi-bin/adder?a=10&b=20', body=None, headers=b'', close=True,
@@ -79,6 +83,21 @@ elif mode == 'status':
     os.write(1, b'Status: 400 Bad Request\\nContent-Type: text/plain\\n\\ninvalid')
 elif mode == 'binary':
     os.write(1, b'Content-Type: application/octet-stream\\r\\n\\r\\n\\x00\\xff')
+elif mode == 'custom':
+    data = open('output', 'rb').read()
+    while data:
+        data = data[os.write(1, data):]
+elif mode == 'descendant':
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    child = os.fork()
+    if child == 0:
+        os.close(0)
+        os.close(1)
+        time.sleep(60)
+        os._exit(0)
+    with open('descendant.pid', 'w') as file:
+        file.write(str(child))
+    os.write(1, valid + b'clean')
 elif mode == 'duplex':
     data = valid + b'x' * 60000
     while data:
@@ -106,6 +125,14 @@ elif mode == 'fd-check':
 '''
 
 
+def running(pid):
+    try:
+        state = Path(f'/proc/{pid}/status').read_text().split('State:', 1)[1].split()[0]
+        return state != 'Z'
+    except FileNotFoundError:
+        return False
+
+
 def main():
     with socket.socket() as probe:
         probe.bind(('127.0.0.1', 0))
@@ -130,16 +157,29 @@ def main():
             exchange(port, packet('/cgi-bin/%61dder?%61=%2B2&b=-3'), expected_body=b'-1\n')
             assert exchange(port, packet(version='1.0'), expected_body=b'30\n')[2] == 10
             exchange(port, packet(), expected_body=b'30\n', half_close=True)
+            # Python arithmetic supplies an oracle independent of the C adder.
+            random_values = random.Random(20261123)
+            for _ in range(40):
+                a, b = [random_values.randrange(-(2 ** 62), 2 ** 62) for _ in range(2)]
+                form = f'a={a}&b={b}'
+                expected = f'{a + b}\n'.encode()
+                exchange(port, packet('/cgi-bin/adder?' + form), expected_body=expected)
+                exchange(port, packet('/cgi-bin/adder', form.encode()), expected_body=expected)
+            boundary_form = b'a=' + b'0' * (4096 - len(b'a=1&b=2')) + b'1&b=2'
+            assert len(boundary_form) == 4096
+            exchange(port, packet('/cgi-bin/adder', boundary_form), expected_body=b'3\n')
             for form, result in [
                 ('a=-9223372036854775808&b=0', b'-9223372036854775808\n'),
                 ('b=9223372036854775807&a=0', b'9223372036854775807\n'),
                 ('a=0002&b=-2', b'0\n'),
             ]:
                 exchange(port, packet('/cgi-bin/adder?' + form), expected_body=result)
-            bad_forms = ['', 'a=1', 'a=1&a=2&b=3', 'a=1&b=2&x=3', 'a=1&b=2&',
+            bad_forms = ['', 'a=1', 'b=2', 'a=1&a=2&b=3', 'a=1&b=2&b=3',
+                         'a=1&b=2&x=3', 'a=1&b=2&',
                          'a=&b=2', 'a=+1&b=2', 'a=%201&b=2', 'a=1x&b=2',
                          'a=%00&b=2', 'a=%xx&b=2', 'a=%&b=2', 'a=%0a1&b=2',
                          'a=1%262&b=3', 'a=9223372036854775808&b=0',
+                         'a=-9223372036854775809&b=0',
                          'a=9223372036854775807&b=1', 'a=-9223372036854775808&b=-1']
             for form in bad_forms:
                 exchange(port, packet('/cgi-bin/adder?' + form), 400)
@@ -183,15 +223,16 @@ def main():
                 client.sendall(packet('/cgi-bin/adder', b'a=2&b=3', close=False) +
                                packet('/', close=False) + packet())
                 with client.makefile('rb') as stream:
-                    for expected in [b'5\n', b'static', b'30\n']:
-                        assert int(stream.readline().split()[1]) == 200
-                        headers = {}
-                        while (line := stream.readline()) != b'\r\n':
-                            key, value = line.decode().split(':', 1)
-                            headers[key.lower()] = value.strip()
-                        assert stream.read(int(headers['content-length'])) == expected
+                    for expected, connection in [(b'5\n', 'keep-alive'),
+                                                 (b'static', 'keep-alive'), (b'30\n', 'close')]:
+                        status, headers, body = pipeline_response(stream)
+                        assert status == 200 and body == expected
+                        assert headers['Connection'] == connection
+                    assert stream.read(1) == b''
             with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
-                list(pool.map(lambda _: exchange(port, packet(), expected_body=b'30\n'), range(16)))
+                list(pool.map(lambda i: exchange(
+                    port, packet(f'/cgi-bin/adder?a={i}&b={i * i}'),
+                    expected_body=f'{i + i * i}\n'.encode()), range(16)))
             wait_for(lambda: not children(proc.pid))
 
             # Missing executable, permission failure and exec format failure are server errors.
@@ -206,6 +247,40 @@ def main():
             executable.write_text(FIXTURE)
             executable.chmod(0o755)
             mode_file = work / 'mode'
+            mode_file.write_text('custom')
+            output_file = work / 'output'
+            plain_header = b'Content-Type: text/plain\r\n\r\n'
+            for status in [200, 400, 403, 404, 405, 413, 415, 500]:
+                output_file.write_bytes(f'Status: {status} Fixture\r\nContent-Type: text/plain\r\n\r\n'.encode() + b'fixture')
+                exchange(port, packet(), status, b'fixture', expected_type='text/plain')
+            for output in [
+                b'Status: 200 OK\r\n\r\nsecret',  # Content-Type is required.
+                b'Content-Type: \r\n\r\nsecret',
+                b'Content-Type: text/plain\r\nContent-Length: 6\r\n\r\nsecret',
+                b'Content-Type: text/plain\r\nLocation: /\r\n\r\nsecret',
+                b'Status: 200 OK\r\nStatus: 400 Bad Request\r\nContent-Type: text/plain\r\n\r\nsecret',
+                b'Status: 302 Found\r\nContent-Type: text/plain\r\n\r\nsecret',
+                b'Status: 20x Invalid\r\nContent-Type: text/plain\r\n\r\nsecret',
+                b'Content-Type: text/plain\r\n',
+                b'Content-Type: ' + b'x' * 128 + b'\r\n\r\nsecret',
+                plain_header + b'x' * (65537 - len(plain_header)),
+            ]:
+                output_file.write_bytes(output)
+                exchange(port, packet(), 502)
+            output_file.write_bytes(b'Content-Type: ' + b'x' * 127 + b'\r\n\r\nbody')
+            exchange(port, packet(), 200, b'body', expected_type='x' * 127)
+            mode_file.write_text('descendant')
+            try:
+                exchange(port, packet(), 200, b'clean', expected_type='text/plain')
+                descendant = int((work / 'descendant.pid').read_text())
+                # Orphan zombies belong to init; the server must stop execution.
+                wait_for(lambda: not running(descendant))
+            finally:
+                pid_file = work / 'descendant.pid'
+                if pid_file.exists():
+                    descendant = int(pid_file.read_text())
+                    if running(descendant):
+                        os.kill(descendant, signal.SIGKILL)
             for mode in ['invalid', 'nonzero', 'signal', 'duplicate', 'injection', 'nul',
                          'header-overflow', 'overflow']:
                 mode_file.write_text(mode)
