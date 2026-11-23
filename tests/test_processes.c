@@ -39,29 +39,76 @@ static int fake_kill(pid_t pid, int signo)
 #define waitpid fake_waitpid
 #define kill fake_kill
 #include "../server/server.c"
+#undef waitpid
+#undef kill
+#include "test_runner.h"
 
-int main(void)
+static void reset_mocks(void)
 {
+    wait_step = 0;
+    wait_error = 0;
+    kill_error = 0;
+    kill_calls = 0;
+    expected_kills = 0;
+}
+
+static void test_reap_retries_interruption_and_removes_exited_pid(void)
+{
+    reset_mocks();
     pid_t pids[] = {101, 202};
     struct child_processes children = {.pids = pids, .capacity = 2, .active = 2};
     assert(reap_children(&children) == 0);
     assert(children.active == 1 && children.pids[0] == 202);
+}
+
+static void test_reap_accepts_no_children(void)
+{
+    reset_mocks();
+    pid_t pids[] = {202};
+    struct child_processes children = {.pids = pids, .capacity = 1, .active = 1};
     wait_error = ECHILD;
     assert(reap_children(&children) == 0);
+    assert(children.active == 1);
+}
+
+static void test_reap_reports_unexpected_error(void)
+{
+    reset_mocks();
+    pid_t pids[] = {202};
+    struct child_processes children = {.pids = pids, .capacity = 1, .active = 1};
     wait_error = EINVAL;
     assert(reap_children(&children) == -1);
     assert(children.active == 1);
+}
+
+static void test_signal_targets_active_child(void)
+{
+    reset_mocks();
+    pid_t pids[] = {202};
+    struct child_processes children = {.pids = pids, .capacity = 1, .active = 1};
     expected_pids[0] = 202;
     expected_kills = 1;
     assert(signal_children(&children, SIGTERM) == 0);
     assert(kill_calls == 1);
-    kill_calls = 0;
+}
+
+static void test_signal_accepts_already_exited_child(void)
+{
+    reset_mocks();
+    pid_t pids[] = {202};
+    struct child_processes children = {.pids = pids, .capacity = 1, .active = 1};
+    expected_pids[0] = 202;
+    expected_kills = 1;
     kill_error = ESRCH;
     assert(signal_children(&children, SIGTERM) == 0);
     assert(kill_calls == 1);
-    pids[0] = 101;
-    pids[1] = 202;
-    children.active = 2;
+}
+
+static void test_signal_continues_after_permission_error(void)
+{
+    reset_mocks();
+    pid_t pids[] = {101, 202};
+    struct child_processes children = {.pids = pids, .capacity = 2, .active = 2};
     expected_pids[0] = 101;
     expected_pids[1] = 202;
     expected_kills = 2;
@@ -69,6 +116,17 @@ int main(void)
     kill_error = EPERM;
     assert(signal_children(&children, SIGTERM) == -1);
     assert(kill_calls == 2);
-    puts("PASS: process error handling (expected diagnostics above)");
-    return 0;
+}
+
+int main(int argc, char **argv)
+{
+    const struct test_case tests[] = {
+        TEST_CASE(test_reap_retries_interruption_and_removes_exited_pid),
+        TEST_CASE(test_reap_accepts_no_children),
+        TEST_CASE(test_reap_reports_unexpected_error),
+        TEST_CASE(test_signal_targets_active_child),
+        TEST_CASE(test_signal_accepts_already_exited_child),
+        TEST_CASE(test_signal_continues_after_permission_error),
+    };
+    return run_tests(argc, argv, tests, sizeof(tests) / sizeof(tests[0]));
 }

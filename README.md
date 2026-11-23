@@ -237,6 +237,19 @@ make sanitize
 
 `make sanitize`는 AddressSanitizer와 UndefinedBehaviorSanitizer로 같은 테스트를 실행합니다. 테스트에는 Python 3 표준 라이브러리와 Linux `/proc`를 사용합니다.
 
+Python 테스트는 `unittest`로 행동별 실행·실패를 보고합니다. 각 테스트는 새 임시 디렉터리와 서버를 준비하고, 실패해도 등록된 정리를 수행합니다. 같은 동작의 입력 변형은 `subTest`로 구분합니다. 공통 통신·서버 수명 관리는 `tests/support.py`, CGI 모의 프로그램은 `tests/fixtures/cgi_program.py`에 있습니다.
+
+C 테스트는 각 테스트를 별도 자식 프로세스에서 실행하므로 전역 모의 상태와 단언 실패가 다른 테스트에 영향을 주지 않습니다. 일부러 실패를 재현하는 프로세스 테스트의 오류 진단은 정상 출력입니다. 특정 테스트만 실행할 수도 있습니다.
+
+```sh
+python3 tests/test_server.py ServerTests.test_preserves_request_after_get_body
+python3 tests/test_cgi.py CgiOutputTests.test_parent_shutdown_reaps_worker_and_cgi
+./build/test-http test_path_decoder_removes_query
+./build/test-processes test_signal_targets_active_child
+```
+
+위 명령은 `make test`로 테스트 실행 파일을 빌드한 뒤 사용할 수 있습니다. Python 전체 테스트는 `python3 -m unittest discover -s tests -v`로도 실행합니다.
+
 ### 단위 테스트
 
 파서·경로 디코딩·MIME·프로세스 오류를 검증합니다.

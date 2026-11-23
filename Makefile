@@ -16,11 +16,11 @@ build/web-server: main.c $(SERVER_SOURCES) $(SERVER_HEADERS) $(HTTP_SOURCES) $(H
 	mkdir -p build
 	$(CC) $(CFLAGS) main.c $(SERVER_SOURCES) $(HTTP_SOURCES) -o $@ $(LDFLAGS)
 
-build/test-processes: tests/test_processes.c $(SERVER_SOURCES) $(SERVER_HEADERS) $(HTTP_SOURCES) $(HTTP_HEADERS)
+build/test-processes: tests/test_processes.c tests/test_runner.h $(SERVER_SOURCES) $(SERVER_HEADERS) $(HTTP_SOURCES) $(HTTP_HEADERS)
 	mkdir -p build
 	$(CC) $(CFLAGS) tests/test_processes.c $(HTTP_SOURCES) -o $@ $(LDFLAGS)
 
-build/test-http: tests/test_http.c $(HTTP_SOURCES) $(HTTP_HEADERS)
+build/test-http: tests/test_http.c tests/test_runner.h $(HTTP_SOURCES) $(HTTP_HEADERS)
 	mkdir -p build
 	$(CC) $(CFLAGS) tests/test_http.c $(HTTP_SOURCES) -o $@ $(LDFLAGS)
 
