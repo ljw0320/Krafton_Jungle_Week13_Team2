@@ -178,7 +178,7 @@ static bool receive_step(struct server *server, struct connection *client, size_
 
     void *out = header ? (void *)(client->context->input + client->input_length) :
                          (void *)(client->context->data + client->length);
-                         
+
     if (size > IO_BUDGET - *received)
         size = IO_BUDGET - *received;
 

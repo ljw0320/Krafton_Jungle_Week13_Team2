@@ -18,3 +18,5 @@ core.*
 /www/test-data
 
 /src/tests/verify_stage2_failure.py
+
+/test_scheduler

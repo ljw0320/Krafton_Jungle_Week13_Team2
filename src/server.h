@@ -11,7 +11,7 @@
 enum {
     WORKERS = 4,
     MAX_CONNECTIONS = 16,
-    QUEUE_CAPACITY = 16,
+    QUEUE_CAPACITY = 4,
     CONTEXT_CAPACITY = 8,
     CONTEXT_WAIT_TIMEOUT_MS = 2000,
 
@@ -64,6 +64,11 @@ struct request_context {
 
 /* 작업자가 바뀌어도 상태·진행 위치·context 소유권은 연결에 남습니다. */
 struct connection {
+    struct server *server;
+    struct connection *free_next;
+    struct connection *timer_next;
+    int64_t expires;
+    bool pending;
     enum state state;
     enum phase phase;
 
@@ -103,6 +108,9 @@ struct context_pool {
 struct server {
     struct connection clients[MAX_CONNECTIONS];
     struct context_pool contexts;
+    struct connection *free_clients;
+    struct connection *timers;
+    bool slots_initialized;
 
     struct connection *jobs[QUEUE_CAPACITY];
     size_t head, tail, count;
@@ -138,6 +146,11 @@ void drain_notifications(int fd);
 void signals_start(int wake_fd);
 void signals_unblock(void);
 void signals_detach(void);
+
+void timer_cancel(struct server *server, struct connection *client);
+void timer_update(struct server *server, struct connection *client);
+int timer_expire(struct server *server);
+void slots_init(struct server *server);
 
 void pool_start(struct server *server);
 void pool_stop(struct server *server);

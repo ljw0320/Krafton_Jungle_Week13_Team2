@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-_Static_assert(QUEUE_CAPACITY >= MAX_CONNECTIONS, "queue must hold all clients");
+
 
 static struct connection *take_job(struct server *server)
 {
@@ -36,6 +36,7 @@ static void *worker_main(void *argument)
 
         check_thread(pthread_mutex_lock(&server->mutex));
         client->state = client->reason ? FINISHED : WAITING;
+        timer_update(server, client);
         check_thread(pthread_mutex_unlock(&server->mutex));
 
         notify_main(server->wake_fd);
@@ -47,10 +48,14 @@ static void *worker_main(void *argument)
 /* 메인이 mutex를 보유하고 WAITING 연결만 큐에 넣습니다. */
 void enqueue_turn(struct server *server, struct connection *client)
 {
-    if (server->count == QUEUE_CAPACITY || client->state != WAITING) {
-        fprintf(stderr, "invalid job queue state\n");
-        abort();
+    if (client->state != WAITING)
+        return;
+    if (server->count == QUEUE_CAPACITY) {
+        client->pending = true;
+        return;
     }
+    client->pending = false;
+    timer_cancel(server, client);
 
     server->jobs[server->tail] = client;
     server->tail = (server->tail + 1) % QUEUE_CAPACITY;

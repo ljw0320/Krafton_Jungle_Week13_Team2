@@ -9,6 +9,10 @@
 /* 연결 소켓은 메인만 close합니다. RUNNING 자원은 join 전까지 건드리지 않습니다. */
 void connection_close(struct connection *client)
 {
+    if (client->state == FREE)
+        return;
+    if (client->server)
+        timer_cancel(client->server, client);
     cgi_close(client);
     if (client->file_fd >= 0)
         close(client->file_fd);
@@ -21,6 +25,10 @@ void connection_close(struct connection *client)
 
     client->fd = client->file_fd = -1;
     client->state = FREE;
+    if (client->server) {
+        client->free_next = client->server->free_clients;
+        client->server->free_clients = client;
+    }
 }
 
 static void register_client(struct server *server, int fd)
@@ -31,19 +39,20 @@ static void register_client(struct server *server, int fd)
         return;
     }
 
-    for (int i = 0; i < MAX_CONNECTIONS; i++) {
-        struct connection *client = &server->clients[i];
-        if (client->state != FREE)
-            continue;
-
+    if (!server->slots_initialized)
+        slots_init(server);
+    struct connection *client = server->free_clients;
+    if (client) {
+        server->free_clients = client->free_next;
         memset(client, 0, sizeof(*client));
+        client->server = server;
         client->context_pool = &server->contexts;
         client->state = WAITING;
         client->phase = READ_HEADER;
         client->fd = fd;
         client->file_fd = -1;
         client->progress = now_ms();
-
+        timer_update(server, client);
         printf("[accept fd=%d]\n", fd);
         return;
     }
@@ -73,32 +82,6 @@ static void accept_clients(struct server *server, int listener)
     }
 }
 
-/* 정리 단계는 마지막 수신 시각 대신 최초에 정한 절대 마감 시각을 사용합니다. */
-static int64_t connection_deadline(const struct connection *client)
-{
-    if (client->context_wait_deadline)
-        return client->context_wait_deadline;
-    if (client->phase == DRAIN_INPUT)
-        return client->drain_deadline;
-    if (connection_idle(client))
-        return client->progress + KEEP_ALIVE_TIMEOUT_MS;
-
-    int limit = client->phase == WRITE_RESPONSE ? SEND_TIMEOUT_MS : RECV_TIMEOUT_MS;
-    return client->progress + limit;
-}
-
-static const char *timeout_reason(const struct connection *client)
-{
-    if (client->context_wait_deadline)
-        return "context_wait_timeout";
-    if (client->phase == DRAIN_INPUT)
-        return "drain_timeout";
-    if (connection_idle(client))
-        return "keep_alive_timeout";
-
-    return client->phase == WRITE_RESPONSE ? "send_timeout" : "recv_timeout";
-}
-
 /* CGI stdout 준비와 자식 종료 재확인 시각 중 먼저 도착하는 사건을 기다립니다. */
 static bool poll_cgi(struct connection *client, struct pollfd *fd, int *timeout, int64_t now)
 {
@@ -117,17 +100,7 @@ static bool poll_client(struct connection *client, struct pollfd *fd, int *timeo
     if (client->phase == CGI_OUTPUT)
         return poll_cgi(client, fd, timeout, now);
     bool writing = client->phase == WRITE_RESPONSE;
-    int64_t left = connection_deadline(client) - now;
-
-    if (left <= 0) {
-        client->reason = timeout_reason(client);
-        connection_close(client);
-        *timeout = 0; /* 만료된 선두 제거 후 다음 FIFO 대기자를 즉시 재검사 */
-        return false;
-    }
-
-    if (*timeout < 0 || left < *timeout)
-        *timeout = (int)left;
+    (void)now;
     if (connection_buffered(client))
         *timeout = 0;
 
@@ -145,7 +118,7 @@ static nfds_t prepare_poll(struct server *server, int listener,
     nfds_t count = 2;
     int64_t now = now_ms();
 
-    *timeout = -1;
+    *timeout = timer_expire(server);
     fds[0] = (struct pollfd){.fd = listener, .events = POLLIN};
     fds[1] = (struct pollfd){.fd = server->wake_fd, .events = POLLIN};
 
@@ -156,6 +129,10 @@ static nfds_t prepare_poll(struct server *server, int listener,
         if (client->state != WAITING)
             continue;
 
+        if (client->pending) {
+            enqueue_turn(server, client);
+            continue;
+        }
         /* 슬롯당 하나의 대기 기록: 최대 MAX_CONNECTIONS개, 중복 없음.
          * 반환 작업자의 wake 알림으로 재검사하며 절대 2초 기한을 유지합니다. */
         if (client->context_wait_deadline && now < client->context_wait_deadline &&
@@ -170,8 +147,7 @@ static nfds_t prepare_poll(struct server *server, int listener,
     }
 
     /* 슬롯 순서가 FIFO와 다르면 앞 슬롯의 대기자를 다음 루프에서 재검사합니다. */
-    if (server->count)
-        *timeout = 0;
+
     return count;
 }
 
@@ -200,6 +176,8 @@ static void dispatch(struct server *server, struct pollfd *fds, struct connectio
 /* 메인은 준비 대기·작업 배정만 하고 실제 HTTP I/O는 작업자가 맡습니다. */
 void server_run(struct server *server, int listener)
 {
+    if (!server->slots_initialized)
+        slots_init(server);
     while (!stop_requested) {
         struct pollfd fds[MAX_CONNECTIONS + 2];
         struct connection *owners[MAX_CONNECTIONS + 2] = {0};

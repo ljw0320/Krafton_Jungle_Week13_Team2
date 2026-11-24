@@ -23,7 +23,7 @@ CONNECTION_SOURCES = src/connection.c src/context_pool.c src/platform.c src/http
 test_drain: src/tests/test_drain.c $(CONNECTION_SOURCES) $(HEADERS)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc src/tests/test_drain.c $(CONNECTION_SOURCES) -o $@ $(LDLIBS)
 
-CONTEXT_TEST_SOURCES = $(filter-out src/connection.c,$(CONNECTION_SOURCES)) src/thread_pool.c
+CONTEXT_TEST_SOURCES = $(filter-out src/connection.c,$(CONNECTION_SOURCES)) src/thread_pool.c src/timers.c
 
 test_context: src/tests/test_support.h src/tests/context_fixture.h src/tests/test_context.c src/server.c src/connection.c $(CONTEXT_TEST_SOURCES) $(HEADERS)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc src/tests/test_context.c $(CONTEXT_TEST_SOURCES) -o $@ $(LDLIBS)
@@ -55,3 +55,6 @@ check_keep_alive: all
 
 clean:
 	rm -f webserver test_http test_drain test_context test_context_pool cgi-bin/adder
+
+test_scheduler: src/tests/test_scheduler.c $(CONNECTION_SOURCES) src/thread_pool.c src/timers.c $(HEADERS)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc src/tests/test_scheduler.c $(CONNECTION_SOURCES) src/thread_pool.c src/timers.c -o $@ $(LDLIBS)

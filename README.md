@@ -573,3 +573,22 @@ wait
 ```
 
 기대 결과는 `200` 네 줄입니다. 서버 터미널에는 accept와, curl이 연결을 닫으면 `peer_closed` 등의 종료 로그가 보입니다. 유지된 연결은 유휴 5초 뒤 `keep_alive_timeout`으로 회수됩니다. Ctrl+C로 종료하면 `[server] stopped`가 출력됩니다. 실행 파일 정리는 `make clean`입니다.
+
+
+## C10K 4·5단계
+
+연결 상한은 16개, 작업 큐는 독립적으로 4개이다. 빈 슬롯 연결 목록으로
+accept/close 시 슬롯을 확보·반환한다. 큐 포화 시 pending 표시를 남기고
+작업자 반환 알림 뒤 다시 배정한다. QUEUED/RUNNING 연결은 중복 배정하거나
+메인에서 종료하지 않으므로 작업 포인터가 슬롯 재사용과 겹치지 않는다.
+
+타이머는 만료 순서로 정렬한 연결 목록(timers.c)으로 관리한다. WAITING에
+진입할 때 갱신하고 작업 배정·종료 때 취소한다. 가장 이른 기한으로 poll
+대기를 정하고 만료 항목만 꺼낸다. CGI 재확인 시각도 같은 목록에 등록한다.
+삽입·취소는 O(N), 다음 기한 조회는 O(1)이며 최소 힙은 아니다.
+poll 감시 배열 구성과 pending/FIFO 재검사는 여전히 연결 배열을 순회한다.
+
+최소 검증: `make test_scheduler test_context_pool webserver`,
+`./test_scheduler`, `./test_context_pool`, `python3 src/tests/test_stage3.py`.
+
+CGI 추가 회귀 검사는 8개 중 4개 성공, 3개 실패·1개 오류였다. 임시 HEAD 빌드에서도 동일한 실패가 재현되어 이번 변경의 회귀로 확인되지는 않았다.
