@@ -84,7 +84,7 @@ class ProxyTests(unittest.TestCase):
         c = http.client.HTTPConnection('127.0.0.1', port, timeout=12)
         try:
             c.request('POST' if body is not None else 'GET', path, body,
-                      {'Connection': 'keep-alive', 'Content-Type': 'application/octet-stream'})
+                      {'Connection': 'close', 'Content-Type': 'application/octet-stream'})
             r = c.getresponse()
             data = r.read()
             self.assertEqual(r.getheader('Connection'), 'close')
@@ -123,7 +123,7 @@ class ProxyTests(unittest.TestCase):
         port, backend, _ = self.mock(reply)
         with socket.create_connection(('127.0.0.1', port), 2) as s:
             s.sendall(b'POST /echo?q=%26 HTTP/1.1\r\nHost: original\r\nContent-Length: 6\r\n'
-                      b'Connection: X-Remove\r\nX-Remove: hidden\r\n\r\nabc')
+                      b'Connection: close, X-Remove\r\nX-Remove: hidden\r\n\r\nabc')
             time.sleep(.08)
             self.assertTrue(backend.seen.empty(), 'must not contact backend before full body')
             s.sendall(b'\x00\xffz')
@@ -174,7 +174,7 @@ class ProxyTests(unittest.TestCase):
         try:
             for _ in range(8):
                 s = socket.create_connection(('127.0.0.1', port), 2); peers.append(s)
-                s.sendall(b'GET / HTTP/1.1\r\nHost: x\r\n\r\n')
+                s.sendall(b'GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n')
                 backend.seen.get(timeout=2)
             self.assertEqual(self.request(port)[0], 503)
             release.set()
@@ -199,6 +199,70 @@ class ProxyTests(unittest.TestCase):
         closed_port = free_port()
         failed, _ = self.start(closed_port)
         self.assertEqual(self.request(failed)[0], 502)
+
+    def test_keep_alive_reuse_pipeline_error_and_limit(self):
+        def reply(s, data):
+            s.sendall(b'HTTP/1.1 404 Missing\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok')
+        port, backend, _ = self.mock(reply)
+        with socket.create_connection(('127.0.0.1', port), 3) as sock:
+            stream = sock.makefile('rb')
+            def read():
+                status = stream.readline()
+                fields = {}
+                while True:
+                    line = stream.readline()
+                    if line == b'\r\n': break
+                    self.assertTrue(line)
+                    k, v = line.split(b':', 1); fields[k.lower()] = v.strip()
+                return status, fields, stream.read(int(fields[b'content-length']))
+            # POST and next GET in the same write: preserve their boundary.
+            sock.sendall(b'POST /echo HTTP/1.1\r\nHost: x\r\nContent-Length: 3\r\n\r\nabc'
+                         b'GET /next HTTP/1.1\r\nHost: x\r\n\r\n')
+            for _ in range(2):
+                status, fields, body = read()
+                self.assertIn(b'404', status)
+                self.assertEqual(body, b'ok')
+                self.assertEqual(fields[b'connection'], b'keep-alive')
+            for number in range(3, 101):
+                sock.sendall(b'GET / HTTP/1.1\r\nHost: x\r\n\r\n')
+                _, fields, body = read()
+                self.assertEqual(fields[b'connection'], b'close' if number == 100 else b'keep-alive')
+                self.assertEqual(body, b'ok')
+            self.assertEqual(stream.read(1), b'')
+            stream.close()
+        self.assertEqual(backend.seen.qsize(), 100) # Separate backend connection for each request.
+        while not backend.seen.empty():
+            self.assertIn(b'Connection: close\r\n', backend.seen.get())
+        with socket.create_connection(('127.0.0.1', port), 3) as sock:
+            sock.sendall(b'BAD / HTTP/1.1\r\nHost: x\r\n\r\n'
+                         b'GET /must-not-run HTTP/1.1\r\nHost: x\r\n\r\n')
+            r = http.client.HTTPResponse(sock); r.begin()
+            self.assertEqual(r.status, 405); r.read()
+            self.assertEqual(sock.recv(1), b'')
+        self.assertTrue(backend.seen.empty())
+
+    def test_idle_connections_release_active_capacity(self):
+        port, _, _ = self.mock(lambda s, data: s.sendall(
+            b'HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n'))
+        peers = []
+        try:
+            for _ in range(15):
+                sock = socket.create_connection(('127.0.0.1', port), 3)
+                peers.append(sock)
+                sock.sendall(b'GET / HTTP/1.1\r\nHost: x\r\n\r\n')
+                r = http.client.HTTPResponse(sock); r.begin()
+                self.assertEqual(r.status, 200); r.read(); r.close()
+            # Fifteen idle keep-alive connections must not hold the eight active buffers.
+            self.assertEqual(self.request(port)[0], 200)
+            time.sleep(5.15)
+            for sock in peers: self.assertEqual(sock.recv(1), b'')
+            with socket.create_connection(('127.0.0.1', port), 3) as sock:
+                sock.sendall(b'GET / HTTP/1.0\r\n\r\n')
+                r = http.client.HTTPResponse(sock); r.begin()
+                self.assertEqual(r.getheader('Connection'), 'close'); r.read()
+                self.assertEqual(sock.recv(1), b'')
+        finally:
+            for sock in peers: sock.close()
 
     def test_idle_and_absolute_deadlines(self):
         def reply(s, data):

@@ -22,3 +22,5 @@ core.*
 /test_scheduler
 /reverse_proxy
 /test_proxy_headers
+
+/test_proxy_state

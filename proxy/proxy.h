@@ -5,7 +5,9 @@
 #include <stdint.h>
 
 enum {
-    PROXY_CLIENTS = 8,
+    PROXY_CLIENTS = 16,
+    PROXY_ACTIVE = 8,
+    KEEP_MAX = 100,
     RELAY_SIZE = 16384,
     FORWARD_HEADER_SIZE = HEADER_LIMIT + 1024,
     CONNECT_MS = 3000,
