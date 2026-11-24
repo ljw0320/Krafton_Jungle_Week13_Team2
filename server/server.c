@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include <arpa/inet.h>
+#include <netinet/tcp.h>
 #include <fcntl.h>
 #include <stdbool.h>
 #include <sys/time.h>
@@ -312,6 +313,12 @@ static int run_parent(int listener, int root_fd, struct child_processes *childre
             continue;
         }
         if (fcntl(fd, F_SETFD, FD_CLOEXEC) == -1) {
+            close(fd);
+            continue;
+        }
+        int no_delay = 1;
+        if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &no_delay, sizeof(no_delay)) == -1) {
+            diagnostic_error("TCP_NODELAY", errno);
             close(fd);
             continue;
         }

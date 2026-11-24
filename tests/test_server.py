@@ -2,6 +2,7 @@ import concurrent.futures
 import os
 from pathlib import Path
 import socket
+import statistics
 import struct
 import subprocess
 import time
@@ -125,6 +126,23 @@ class ServerTests(ServerTestCase):
             worker = children(self.proc.pid)[0]
             # stdin/stdout/stderr, the borrowed root, and the client remain open.
             wait_for(lambda: len(list(Path(f'/proc/{worker}/fd').iterdir())) == 5)
+
+    def test_small_keepalive_responses_avoid_delayed_ack_wait(self):
+        import http.client
+        payload = b'x' * 1024
+        (self.root / 'small.txt').write_bytes(payload)
+        client = http.client.HTTPConnection('127.0.0.1', self.port, timeout=3)
+        self.addCleanup(client.close)
+        samples = []
+        for i in range(14):
+            start = time.monotonic()
+            client.request('GET', '/small.txt')
+            result = client.getresponse()
+            self.assertEqual((result.status, result.read()), (200, payload))
+            if i >= 2:
+                samples.append(time.monotonic() - start)
+        median = statistics.median(samples)
+        self.assertLess(median, .02, f'keep-alive median {median * 1000:.1f}ms')
 
     def test_close_token_overrides_keep_alive(self):
         with connect(self.port) as client:

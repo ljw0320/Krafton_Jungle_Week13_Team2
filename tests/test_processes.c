@@ -140,8 +140,8 @@ static void reset_mocks(void)
 static void run_resource_failure(int stage, int error)
 {
     reset_mocks();
-    int witness[2];
-    assert(socketpair(AF_UNIX, SOCK_STREAM, 0, witness) == 0);
+    int witness[2] = {socket(AF_INET, SOCK_STREAM, 0), socket(AF_INET, SOCK_STREAM, 0)};
+    assert(witness[0] >= 0 && witness[1] >= 0);
     failure_stage = stage;
     resource_errno = error;
     witness_fd = witness[0];
