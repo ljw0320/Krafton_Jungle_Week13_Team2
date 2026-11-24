@@ -42,11 +42,17 @@ void respond_error(struct connection *client, int status)
 static void prepare_get(struct server *server, struct connection *client)
 {
     int status;
-
+    client->resource_server = server;
+    if (!resource_acquire(&server->active_files, FILE_CAPACITY)) {
+        respond_error(client, 503);
+        return;
+    }
+    client->file_reserved = true;
     client->file_fd = file_open(server->root_fd, client->context->request.target,
                                 &client->file_left, &status);
 
     if (client->file_fd == -1) {
+        file_release(client);
         respond_error(client, status);
         return;
     }
@@ -250,6 +256,7 @@ static bool shutdown_write(struct connection *client)
 /* 413은 이미 보냈습니다. WSL 전달 호환을 위해 남은 업로드를 먼저 폐기합니다. */
 static bool begin_drain(struct connection *client)
 {
+    file_release(client);
     context_release(client);
     client->phase = DRAIN_INPUT;
     client->drain_deadline = now_ms() + DRAIN_TIMEOUT_MS;
@@ -263,8 +270,7 @@ static bool finish_response(struct connection *client)
     if (!client->keep_alive)
         return begin_drain(client);
     cgi_close(client);
-    if (client->file_fd >= 0)
-        close(client->file_fd);
+    file_release(client);
     client->file_fd = -1;
     client->file_left = 0;
     memset(&client->context->request, 0, sizeof(client->context->request));

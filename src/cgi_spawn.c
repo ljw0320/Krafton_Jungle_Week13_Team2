@@ -65,7 +65,7 @@ static int spawn_actions(posix_spawn_file_actions_t *actions, int executable, in
     if (!error)
         error = posix_spawn_file_actions_addopen(actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
     if (!error)
-        error = posix_spawn_file_actions_adddup2(actions, executable, executable);
+        error = posix_spawn_file_actions_adddup2(actions, executable, 3);
     return error;
 }
 
@@ -93,7 +93,7 @@ static int launch(int executable, int input, int output, struct connection *clie
     posix_spawnattr_t attributes;
     struct environment env;
     char path[64];
-    snprintf(path, sizeof(path), "/proc/self/fd/%d", executable);
+    snprintf(path, sizeof(path), "/proc/self/fd/3");
     char *argv[] = {client->context->request.target, NULL};
     make_environment(&env, &client->context->request);
     int error = posix_spawn_file_actions_init(&actions);
@@ -123,7 +123,13 @@ int cgi_spawn(int executable, struct connection *client)
         close(input);
         return 500;
     }
-    int error = nonblocking(pipes[0]) == -1 ? errno : launch(executable, input, pipes[1], client);
+    /* 동일 fd dup2의 CLOEXEC 처리에 의존하지 않습니다.
+     * 자식 fd 3과 다른 원본을 예약하고, dup2로 명시적으로 상속합니다. */
+    int inherited = fcntl(executable, F_DUPFD_CLOEXEC, 4);
+    int error = inherited == -1 ? errno :
+                nonblocking(pipes[0]) == -1 ? errno : launch(inherited, input, pipes[1], client);
+    if (inherited >= 0)
+        close(inherited);
     close(input);
     close(pipes[1]);
     if (error) {

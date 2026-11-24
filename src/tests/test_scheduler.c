@@ -4,6 +4,11 @@
 static struct server server;
 int main(void)
 {
+    atomic_uint resources = 0;
+    for (int i = 0; i < FILE_CAPACITY; i++) CHECK(resource_acquire(&resources, FILE_CAPACITY));
+    CHECK(!resource_acquire(&resources, FILE_CAPACITY));
+    atomic_fetch_sub(&resources, 1);
+    CHECK(resource_acquire(&resources, FILE_CAPACITY));
     slots_init(&server);
     context_pool_init(&server.contexts);
     check_thread(pthread_mutex_init(&server.mutex, NULL));
@@ -41,6 +46,14 @@ int main(void)
     CHECK(server.free_clients == b);
     for (int i = 2; i < MAX_CONNECTIONS; i++) connection_close(&server.clients[i]);
     CHECK(server.contexts.wait_count == 0);
+    a->resource_server = &server; a->file_fd = -1; a->file_reserved = true;
+    atomic_store(&server.active_files, 1);
+    file_release(a); file_release(a);
+    CHECK(atomic_load(&server.active_files) == 0);
+    a->cgi_reserved = true; a->cgi.pid = 0;
+    atomic_store(&server.active_cgi, 1);
+    cgi_close(a); cgi_close(a);
+    CHECK(atomic_load(&server.active_cgi) == 0);
     puts("scheduler: slots, saturation, retry, duplicate, timer order/update/cancel/expiry passed");
     return 0;
 }

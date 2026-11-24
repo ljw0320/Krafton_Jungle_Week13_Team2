@@ -47,6 +47,12 @@ void cgi_start(struct server *server, struct connection *client)
         respond_error(client, status);
         return;
     }
+    client->resource_server = server;
+    if (!resource_acquire(&server->active_cgi, CGI_CAPACITY)) {
+        respond_error(client, 503);
+        return;
+    }
+    client->cgi_reserved = true;
     int fd = file_open(server->cgi_root_fd, client->context->request.target + 8, &size, &status);
     if (fd >= 0) {
         struct stat info;
@@ -55,19 +61,30 @@ void cgi_start(struct server *server, struct connection *client)
             status = cgi_spawn(fd, client);
         close(fd);
     }
-    if (status)
+    if (status) {
+        cgi_close(client);
         respond_error(client, status);
+    }
 }
 
 /* 기한 초과·서버 종료에서도 CGI 프로세스 그룹을 종료하고 직접 자식을 회수합니다. */
 void cgi_close(struct connection *client)
 {
-    if (client->cgi.pid <= 0)
+    if (client->cgi.pid <= 0) {
+        if (client->cgi_reserved) {
+            atomic_fetch_sub(&client->resource_server->active_cgi, 1);
+            client->cgi_reserved = false;
+        }
         return;
+    }
     kill(-client->cgi.pid, SIGKILL);
     while (waitpid(client->cgi.pid, NULL, 0) == -1 && errno == EINTR) {}
     if (client->cgi.fd >= 0)
         close(client->cgi.fd);
+    if (client->cgi_reserved) {
+        atomic_fetch_sub(&client->resource_server->active_cgi, 1);
+        client->cgi_reserved = false;
+    }
     client->cgi.pid = 0;
     client->cgi.fd = -1;
 }

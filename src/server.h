@@ -7,6 +7,7 @@
 #include <pthread.h>
 #include <signal.h>
 #include <stdint.h>
+#include <stdatomic.h>
 
 enum {
     WORKERS = 4,
@@ -25,6 +26,8 @@ enum {
     DRAIN_BUFFER_SIZE = 4096,
     KEEP_ALIVE_TIMEOUT_MS = 5000,
     KEEP_ALIVE_MAX_REQUESTS = 100,
+    CGI_CAPACITY = 4,
+    FILE_CAPACITY = 4,
     CGI_TIMEOUT_MS = 2000,
     CGI_POLL_MS = 50
 };
@@ -65,6 +68,9 @@ struct request_context {
 /* 작업자가 바뀌어도 상태·진행 위치·context 소유권은 연결에 남습니다. */
 struct connection {
     struct server *server;
+    struct server *resource_server;
+    bool cgi_reserved;
+    bool file_reserved;
     struct connection *free_next;
     struct connection *timer_next;
     int64_t expires;
@@ -119,6 +125,8 @@ struct server {
     pthread_cond_t ready;
     pthread_t workers[WORKERS];
     bool stopping;
+    atomic_uint active_cgi;
+    atomic_uint active_files;
 
     int wake_fd;
     int root_fd;
@@ -146,6 +154,9 @@ void drain_notifications(int fd);
 void signals_start(int wake_fd);
 void signals_unblock(void);
 void signals_detach(void);
+
+bool resource_acquire(atomic_uint *count, unsigned limit);
+void file_release(struct connection *client);
 
 void timer_cancel(struct server *server, struct connection *client);
 void timer_update(struct server *server, struct connection *client);

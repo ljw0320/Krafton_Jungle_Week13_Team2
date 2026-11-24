@@ -206,11 +206,13 @@ class CgiTests(unittest.TestCase):
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
             jobs = [pool.submit(self.request, f"/cgi-bin/slow{i}") for i in range(4)]
             self.wait_for_files(markers)
+            self.assertEqual(self.request("/cgi-bin/adder?a=1&b=2")[0], 503)
             started = time.monotonic()
             self.assertEqual(self.request("/")[0], 200)
             self.assertLess(time.monotonic() - started, 1.0)
             self.assertEqual([job.result()[0] for job in jobs], [504] * 4)
         self.assert_reaped(markers)
+        self.assertEqual(self.request("/cgi-bin/adder?a=1&b=2")[0], 200)
         self.program("closed", "import os, time\nos.close(1)\ntime.sleep(10)\n")
         self.assertEqual(self.request("/cgi-bin/closed")[0], 504)
 

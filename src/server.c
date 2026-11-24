@@ -14,8 +14,7 @@ void connection_close(struct connection *client)
     if (client->server)
         timer_cancel(client->server, client);
     cgi_close(client);
-    if (client->file_fd >= 0)
-        close(client->file_fd);
+    file_release(client);
 
     close(client->fd);
     context_release(client);
@@ -85,11 +84,8 @@ static void accept_clients(struct server *server, int listener)
 /* CGI stdout 준비와 자식 종료 재확인 시각 중 먼저 도착하는 사건을 기다립니다. */
 static bool poll_cgi(struct connection *client, struct pollfd *fd, int *timeout, int64_t now)
 {
-    int64_t check = client->cgi.next_check < client->cgi.deadline ?
-                    client->cgi.next_check : client->cgi.deadline;
-    int delay = check <= now ? 0 : (int)(check - now);
-    if (*timeout < 0 || delay < *timeout)
-        *timeout = delay;
+    (void)timeout;
+    (void)now;
     *fd = (struct pollfd){.fd = client->cgi.fd, .events = POLLIN};
     return true;
 }
@@ -156,6 +152,8 @@ static void dispatch(struct server *server, struct pollfd *fds, struct connectio
     check_thread(pthread_mutex_lock(&server->mutex));
 
     for (nfds_t i = 2; i < count; i++) {
+        if (owners[i]->state != WAITING)
+            continue;
         if (fds[i].revents & POLLNVAL) {
             owners[i]->reason = "invalid_socket";
             connection_close(owners[i]);
