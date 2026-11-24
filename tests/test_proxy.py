@@ -133,6 +133,27 @@ class ProxyTests(ServerTestCase):
         self.assertEqual(self.exchange('/apix')[0], 404)
         self.assertEqual(self.exchange('/cgi-bin/adder?a=1&b=2')[2], b'3\n')
 
+    def test_rejects_ambiguous_proxy_paths_before_forwarding(self):
+        self.launch()
+        paths = ['/api/admin/../users', '/api/./admin/users', '/api/.', '/api/..',
+                 '/api/%2e/admin', '/api/admin/%2E%2e/users', '/api//admin/users',
+                 '/api%2Fadmin/users', '/api%2fadmin/users',
+                 '/api/%252e%252e/admin', '/api/a%3fb', '/api/a%23b']
+        for path in paths:
+            with self.subTest(path=path):
+                status, headers, _ = self.exchange(path)
+                self.assertEqual(status, 400)
+                self.assertIn(('Connection', 'close'), headers)
+        self.assertTrue(self.backend.requests.empty())
+        self.assertTrue(self.other.requests.empty())
+
+    def test_preserves_unambiguous_encoded_proxy_paths(self):
+        self.launch()
+        for path in ['/api/', '/api/admin/', '/%61pi/users',
+                     '/api/v1.2/a%20b?next=%2Fapi%2F..%2Fx', '/api/.well-known']:
+            with self.subTest(path=path):
+                self.assertEqual(self.exchange(path)[0], 200)
+
     def test_preserves_target_host_binary_body_and_filters_headers(self):
         self.launch()
         body = bytes(range(256)) * 128

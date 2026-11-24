@@ -42,6 +42,26 @@ static enum request_route select_route(const char *path)
     return ROUTE_STATIC;
 }
 
+static bool valid_proxy_path(const char *target, const char *path)
+{
+    /* Reject alternate separators and further decoding instead of rewriting the target. */
+    for (const char *p = target; *p && *p != '?'; ++p)
+        if (*p == '%' && strncasecmp(p, "%2f", 3) == 0)
+            return false;
+    if (strpbrk(path, "%?#") || strstr(path, "//"))
+        return false;
+    for (const char *part = path + 1; *part;) {
+        size_t n = strcspn(part, "/");
+        if ((n == 1 && part[0] == '.') ||
+            (n == 2 && part[0] == '.' && part[1] == '.'))
+            return false;
+        part += n;
+        if (*part)
+            ++part;
+    }
+    return true;
+}
+
 /* 헤더와 경로를 해석하고 CGI POST의 본문 크기·형식을 검사하며, 본문을 저장하거나 읽어 버린다. */
 static int read_request(int fd, int idle_seconds, struct request_storage *storage,
                         struct request *request)
@@ -63,6 +83,8 @@ static int read_request(int fd, int idle_seconds, struct request_storage *storag
     if (storage->route == ROUTE_STATIC) {
         storage->upstream = routes_match(storage->path);
         if (storage->upstream) {
+            if (!valid_proxy_path(request->target, storage->path))
+                return 400;
             storage->route = ROUTE_PROXY;
             status = proxy_request_header(storage->raw_header, request, &storage->proxy_header);
             if (status)
