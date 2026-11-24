@@ -10,6 +10,13 @@
 #include <time.h>
 #include <unistd.h>
 
+static int control = -1;
+
+void proxy_set_control(int fd)
+{
+    control = fd;
+}
+
 static double now_seconds(void)
 {
     struct timespec now;
@@ -50,6 +57,25 @@ static int wait_socket(int fd, short events, double deadline, short *returned, i
             *returned = fds[0].revents;
         return 0;
     }
+}
+
+/* One sequenced packet and acknowledgement per acquire/release; no queued admission. */
+static int limit_exchange(int backend_id, int client)
+{
+    if (control < 0)
+        return 0;
+    double now = now_seconds();
+    if (now < 0)
+        return 500;
+    double deadline = now + 5;
+    if (wait_socket(control, POLLOUT, deadline, NULL, client) ||
+        send(control, &backend_id, sizeof(backend_id), 0) != sizeof(backend_id) ||
+        wait_socket(control, POLLIN, deadline, NULL, client))
+        return 500;
+    int status;
+    if (recv(control, &status, sizeof(status), MSG_TRUNC) != sizeof(status))
+        return 500;
+    return status == 0 || status == 503 ? status : 500;
 }
 
 static int connect_backend(const struct proxy_route *route, int *status, int client)
@@ -179,13 +205,20 @@ int serve_proxy(int client, const struct proxy_route *route, struct request *req
                 const char *header, const char *body)
 {
     int status;
-    int backend = connect_backend(route, &status, client);
+    int backend = -1;
     char raw[HEADER_LIMIT + 1];
     char buffer[16384];
     char *response = NULL;
     uintmax_t expected = 0, received = 0, sent = 0, upstream_sent = 0;
     bool known = false, started = false;
-    const char *phase = "connect";
+    const char *phase = "admission";
+    status = limit_exchange(route->backend_id, client);
+    if (status) {
+        request->close = true;
+        return errno == ECANCELED ? -1 : send_error(client, request, status);
+    }
+    phase = "connect";
+    backend = connect_backend(route, &status, client);
     if (backend < 0)
         goto failed;
     phase = "request_send";
@@ -238,6 +271,10 @@ int serve_proxy(int client, const struct proxy_route *route, struct request *req
     }
     free(response);
     close(backend);
+    if (limit_exchange(-1, -1)) {
+        request->close = true;
+        return -1;
+    }
     return 0;
 failed:
     {
@@ -246,6 +283,7 @@ failed:
             status = 0;
         if (backend >= 0)
             close(backend);
+        limit_exchange(-1, -1);
         free(response);
         request->close = true;
         char length[32];

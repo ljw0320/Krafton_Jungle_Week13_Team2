@@ -1,6 +1,7 @@
 """Real TCP peers verify forwarding, framing, failure and resource ownership."""
 import concurrent.futures
 import http.client
+import os
 import queue
 import socket
 import subprocess
@@ -94,10 +95,10 @@ class ProxyTests(ServerTestCase):
                                f'/api/admin 127.0.0.1 {self.other.port}\n')
         self.proc = None
 
-    def launch(self):
+    def launch(self, *options):
         self.proc = subprocess.Popen(
             [str(BINARY), str(self.port), str(self.root), '16', '2', '1',
-             '--routes', str(self.config)], cwd=ROOT,
+             '--routes', str(self.config), *options], cwd=ROOT,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.addCleanup(self.shutdown)
         self.assertTrue(self.proc.stdout.readline().startswith('READY'),
@@ -124,6 +125,152 @@ class ProxyTests(ServerTestCase):
             result = http.client.HTTPResponse(peer)
             result.begin()
             return result.status, result.getheaders(), result.read()
+
+    def test_backend_limit_isolates_services_and_shares_endpoint_limit(self):
+        entered = threading.Event()
+        release = threading.Event()
+        def stalled(peer):
+            peer.recv(32768)
+            peer.sendall(b'HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\no')
+            entered.set()
+            release.wait(4)
+            peer.sendall(b'k')
+        self.backend.handler = stalled
+        self.addCleanup(release.set)
+        with self.config.open('a') as config:
+            config.write(f'/shared 127.0.0.1 {self.backend.port}\n')
+        self.launch('--backend-limit', '1')
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            first = pool.submit(self.exchange)
+            try:
+                self.assertTrue(entered.wait(2))
+                start = time.monotonic()
+                status, headers, body = self.exchange('/shared')
+                self.assertEqual(status, 503)
+                self.assertIn(('Connection', 'close'), headers)
+                self.assertIn(b'Service Unavailable', body)
+                self.assertLess(time.monotonic() - start, 2)
+                self.assertEqual(self.exchange('/api/admin')[2], b'other')
+                self.assertEqual(self.exchange('/')[2], b'local')
+                self.assertEqual(self.exchange('/cgi-bin/adder?a=1&b=2')[2], b'3\n')
+            finally:
+                release.set()
+            self.assertEqual(first.result(timeout=3)[2], b'ok')
+        self.backend.handler = None
+        self.assertEqual(self.exchange('/shared')[2], b'ok')
+
+    def test_backend_limit_reclaims_killed_worker_and_client_cancellation(self):
+        import signal
+        import struct
+        entered = threading.Event()
+        def stalled(peer):
+            peer.recv(32768)
+            entered.set()
+            peer.recv(1)
+        self.backend.handler = stalled
+        self.launch('--backend-limit', '1')
+        for termination in ('kill', 'reset'):
+            with self.subTest(termination=termination):
+                entered.clear()
+                with connect(self.port) as peer:
+                    peer.sendall(b'GET /api HTTP/1.1\r\nHost: example.com\r\n\r\n')
+                    self.assertTrue(entered.wait(2))
+                    self.assertEqual(self.exchange()[0], 503)
+                    if termination == 'kill':
+                        wait_for(lambda: len(children(self.proc.pid)) == 1)
+                        worker, = children(self.proc.pid)
+                        os.kill(int(worker), signal.SIGKILL)
+                    else:
+                        peer.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
+                wait_for(lambda: not children(self.proc.pid))
+                self.backend.handler = None
+                self.assertEqual(self.exchange()[2], b'ok')
+                self.backend.handler = stalled
+
+    def test_backend_limit_cli_validation(self):
+        for options in [('--backend-limit',), ('--backend-limit', '0'),
+                        ('--backend-limit', '-1'), ('--backend-limit', '4097'),
+                        ('--backend-limit', 'bad'),
+                        ('--backend-limit', '1', '--backend-limit', '2'),
+                        ('--routes', str(self.config)), ('--unknown', '1')]:
+            with self.subTest(options=options):
+                result = subprocess.run([str(BINARY), str(self.port), str(self.root),
+                                         '--routes', str(self.config), *options],
+                                        capture_output=True, timeout=3)
+                self.assertNotEqual(result.returncode, 0)
+
+    def test_backend_limit_option_before_routes(self):
+        self.proc = subprocess.Popen(
+            [str(BINARY), str(self.port), str(self.root), '1', '2', '1',
+             '--backend-limit', '1',
+             '--routes', str(self.config)], cwd=ROOT,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.addCleanup(self.shutdown)
+        self.assertTrue(self.proc.stdout.readline().startswith('READY'))
+        self.assertEqual(self.exchange()[2], b'ok')
+
+    def test_backend_limit_releases_between_keepalive_requests_and_failures(self):
+        self.launch('--backend-limit', '1')
+        conn = http.client.HTTPConnection('127.0.0.1', self.port, timeout=4)
+        self.addCleanup(conn.close)
+        conn.request('GET', '/api')
+        self.assertEqual(conn.getresponse().read(), b'ok')
+        # A local request on this connection completes only after the release ACK.
+        conn.request('GET', '/')
+        self.assertEqual(conn.getresponse().read(), b'local')
+        self.assertEqual(self.exchange()[2], b'ok')
+        conn.request('GET', '/api/admin')
+        self.assertEqual(conn.getresponse().read(), b'other')
+        self.backend.reply = b'HTTP/1.1 200 OK\r\nBad Header\r\n\r\n'
+        self.assertEqual(self.exchange()[0], 502)
+        self.backend.reply = b'HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok'
+        self.assertEqual(self.exchange()[2], b'ok')
+
+    def test_backend_limit_honors_two_slots_under_concurrent_load(self):
+        entered = queue.Queue()
+        release = threading.Event()
+        def stalled(peer):
+            peer.recv(32768)
+            entered.put(True)
+            release.wait(4)
+            peer.sendall(b'HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok')
+        self.backend.handler = stalled
+        self.addCleanup(release.set)
+        self.launch('--backend-limit', '2')
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            first = [pool.submit(self.exchange) for _ in range(2)]
+            try:
+                for _ in first:
+                    entered.get(timeout=2)
+                rejected = list(pool.map(lambda _: self.exchange()[0], range(6)))
+                self.assertEqual(rejected, [503] * 6)
+                self.assertTrue(entered.empty())
+            finally:
+                release.set()
+            self.assertEqual([result.result(timeout=3)[2] for result in first], [b'ok'] * 2)
+
+    def test_parent_shutdown_services_pending_slot_release(self):
+        entered = threading.Event()
+        release = threading.Event()
+        def stalled(peer):
+            peer.recv(32768)
+            entered.set()
+            release.wait(4)
+            peer.sendall(b'HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok')
+        self.backend.handler = stalled
+        self.addCleanup(release.set)
+        self.launch('--backend-limit', '1')
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            result = pool.submit(self.exchange)
+            try:
+                self.assertTrue(entered.wait(2))
+                self.proc.terminate()
+                time.sleep(.05)
+            finally:
+                release.set()
+            self.assertEqual(result.result(timeout=3)[2], b'ok')
+        self.shutdown()
+        self.assertNotIn('proxy phase=', self.logs)
 
     def test_routes_longest_boundary_and_local_fallback(self):
         self.launch()
@@ -293,9 +440,11 @@ class ProxyTests(ServerTestCase):
 
     def test_concurrent_requests_and_fd_recovery(self):
         self.launch()
+        initial_fds = len(os.listdir(f'/proc/{self.proc.pid}/fd'))
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
             self.assertEqual(list(pool.map(lambda _: self.exchange()[2], range(40))), [b'ok'] * 40)
         wait_for(lambda: not children(self.proc.pid))
+        self.assertEqual(len(os.listdir(f'/proc/{self.proc.pid}/fd')), initial_fds)
 
     def test_header_timeout_is_fixed_even_with_trickling_bytes(self):
         def trickle(peer):
@@ -385,6 +534,11 @@ class ProxyTests(ServerTestCase):
                 with connect(self.port) as peer:
                     peer.sendall(b'GET /api HTTP/1.1\r\nHost: example.com\r\n\r\n')
                     self.assertTrue(waiting.wait(2))
+                    if phase == 'body':
+                        response = http.client.HTTPResponse(peer)
+                        response.begin()
+                        self.assertEqual(response.status, 200)
+                        response.close()
                     peer.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
                 self.assertTrue(closed.wait(2), 'backend must close before its 10s timeout')
                 wait_for(lambda: not children(self.proc.pid), seconds=2)

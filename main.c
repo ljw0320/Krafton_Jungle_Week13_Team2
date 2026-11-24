@@ -20,13 +20,27 @@ static int parse_positive_integer(const char *text, int maximum)
 int main(int argc, char **argv)
 {
     const char *routes_file = NULL;
-    if (argc >= 3 && strcmp(argv[argc - 2], "--routes") == 0) {
-        routes_file = argv[argc - 1];
-        argc -= 2;
+    int backend_limit = 16;
+    int positional = 1;
+    while (positional < argc && strncmp(argv[positional], "--", 2) != 0)
+        ++positional;
+    int seen_limit = 0;
+    for (int i = positional; i < argc; i += 2) {
+        if (i + 1 == argc)
+            goto usage;
+        if (strcmp(argv[i], "--routes") == 0 && !routes_file)
+            routes_file = argv[i + 1];
+        else if (strcmp(argv[i], "--backend-limit") == 0 && !seen_limit) {
+            seen_limit = 1;
+            backend_limit = parse_positive_integer(argv[i + 1], 4096);
+            if (backend_limit < 0)
+                return EXIT_FAILURE;
+        } else
+            goto usage;
     }
+    argc = positional;
     if (argc > 6) {
-        fprintf(stderr, "Usage: %s [port [root [max_children [idle_seconds [grace_seconds]]]]] [--routes FILE]\n", argv[0]);
-        return EXIT_FAILURE;
+        goto usage;
     }
 
     int port = argc > 1 ? parse_positive_integer(argv[1], 65535) : 8080; /* 서버 포트 */
@@ -39,7 +53,10 @@ int main(int argc, char **argv)
 
     if (routes_file && routes_load(routes_file) == -1)
         return EXIT_FAILURE;
-    int result = server_run(port, root, limit, idle, grace);
+    int result = server_run(port, root, limit, idle, grace, backend_limit);
     routes_free();
     return result;
+usage:
+    fprintf(stderr, "Usage: %s [port [root [max_children [idle_seconds [grace_seconds]]]]] [--routes FILE] [--backend-limit N]\n", argv[0]);
+    return EXIT_FAILURE;
 }

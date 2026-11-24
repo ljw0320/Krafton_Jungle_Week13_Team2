@@ -10,6 +10,11 @@ enum { ROUTE_LIMIT = 128, LINE_LIMIT = 16384 };
 static struct proxy_route routes[ROUTE_LIMIT];
 static size_t count;
 
+bool routes_enabled(void)
+{
+    return count != 0;
+}
+
 void routes_free(void)
 {
     while (count)
@@ -103,7 +108,13 @@ int routes_load(const char *path)
             break;
         }
         address.sin_port = htons((unsigned short)n);
-        routes[count++] = (struct proxy_route){.path = copy, .address = address};
+        int backend_id = (int)count;
+        for (size_t i = 0; i < count; ++i)
+            if (routes[i].address.sin_addr.s_addr == address.sin_addr.s_addr &&
+                routes[i].address.sin_port == address.sin_port)
+                backend_id = routes[i].backend_id;
+        routes[count++] = (struct proxy_route){.path = copy, .address = address,
+                                              .backend_id = backend_id};
     }
     if (line_status < 0) {
         ++number;

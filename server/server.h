@@ -5,6 +5,6 @@
  * Installs process-wide signal handlers and masks; releases server resources.
  * Returns EXIT_SUCCESS or EXIT_FAILURE. */
 int server_run(int port, const char *root, int max_children,
-               int idle_seconds, int grace_seconds);
+               int idle_seconds, int grace_seconds, int backend_limit);
 
 #endif

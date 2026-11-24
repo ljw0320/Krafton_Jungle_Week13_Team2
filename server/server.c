@@ -1,4 +1,4 @@
-#define _POSIX_C_SOURCE 200809L
+#define _GNU_SOURCE
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <stdbool.h>
@@ -8,22 +8,87 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/select.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 #include "server.h"
 #include "../http/http.h"
+#include "../proxy/proxy.h"
 
 static volatile sig_atomic_t stopping;
+
+struct child_channel {
+    int fd;
+    int backend;                /* -1 when no request holds a backend slot. */
+};
 
 /* Only the parent updates this table, while SIGCHLD is blocked. */
 struct child_processes {
     pid_t *pids;                 /* Entries [0, active) are live or unreaped. */
     int capacity;
     int active;
+    struct child_channel *channels;
+    struct pollfd *pollfds;
+    int backend_limit;
 };
+
+static void close_channel(struct child_channel *channel)
+{
+    if (channel->fd >= 0)
+        close(channel->fd);
+    *channel = (struct child_channel){.fd = -1, .backend = -1};
+}
+
+/* Parent alone owns leases. Releasing a dead worker cannot race another acquire. */
+static void service_channel(struct child_processes *children, int index)
+{
+    struct child_channel *channel = &children->channels[index];
+    int backend;
+    ssize_t n = recv(channel->fd, &backend, sizeof(backend), MSG_TRUNC);
+    if (n < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK))
+        return;
+    if (n != sizeof(backend) || backend < -1 || backend >= PROXY_BACKEND_LIMIT ||
+        (backend >= 0 && channel->backend >= 0)) {
+        close_channel(channel);
+        return;
+    }
+    int status = 0;
+    if (backend < 0)
+        channel->backend = -1;
+    else {
+        int used = 0;
+        for (int i = 0; i < children->active; ++i)
+            used += children->channels[i].backend == backend;
+        if (used >= children->backend_limit)
+            status = 503;
+        else
+            channel->backend = backend;
+    }
+    if (send(channel->fd, &status, sizeof(status), 0) != sizeof(status))
+        close_channel(channel);
+}
+
+/* ppoll retains atomic signal-mask switching without FD_SETSIZE's 1024-fd ceiling. */
+static int poll_children(struct child_processes *children, int listener,
+                         const sigset_t *mask, const struct timespec *timeout)
+{
+    children->pollfds[0] = (struct pollfd){
+        .fd = children->active < children->capacity ? listener : -1,
+        .events = POLLIN,
+    };
+    for (int i = 0; i < children->active; ++i)
+        children->pollfds[i + 1] = (struct pollfd){
+            .fd = children->channels[i].fd, .events = POLLIN,
+        };
+    if (ppoll(children->pollfds, (nfds_t)children->active + 1, timeout, mask) < 0)
+        return errno == EINTR ? 0 : -1;
+    for (int i = 0; i < children->active; ++i)
+        if (children->pollfds[i + 1].revents)
+            service_channel(children, i);
+    return (children->pollfds[0].revents & POLLIN) != 0;
+}
 
 /* SIGINT·SIGTERM 수신 시 종료를 요청하며, SIGCHLD는 부모의 대기만 중단한다. */
 static void handle_signal(int signo)
@@ -55,6 +120,10 @@ static int reap_children(struct child_processes *children)
         }
         for (int i = 0; i < children->active; ++i) {
             if (children->pids[i] == pid) {
+                if (children->channels) {
+                    close_channel(&children->channels[i]);
+                    children->channels[i] = children->channels[children->active - 1];
+                }
                 --children->active;
                 children->pids[i] = children->pids[children->active];
                 break;
@@ -74,7 +143,7 @@ static int set_signal_handler(int signo, void (*handler)(int))
     return -1;
 }
 
-/* 부모의 시그널 처리와 차단을 설정하고 pselect 대기용 기존 마스크를 보관한다.
+/* 부모의 시그널 처리와 차단을 설정하고 ppoll 대기용 기존 마스크를 보관한다.
  * SIGPIPE는 무시한다. */
 static int setup_parent_signals(sigset_t *wait_mask)
 {
@@ -123,11 +192,6 @@ static int open_listener(int port)
         close(listener);
         return -1;
     }
-    if (listener >= FD_SETSIZE) {
-        fprintf(stderr, "Listening descriptor exceeds pselect capacity\n");
-        close(listener);
-        return -1;
-    }
     if (set_socket_blocking(listener, false) == -1) {
         close(listener);
         return -1;
@@ -137,11 +201,18 @@ static int open_listener(int port)
 
 /* 불필요한 자원을 정리하고 시그널 설정을 복원한 뒤 HTTP 연결을 처리하고 종료한다. */
 static void run_child(int listener, int client_fd, int root_fd, int idle_seconds,
-                      struct child_processes *children, const sigset_t *wait_mask)
+                      struct child_processes *children, const sigset_t *wait_mask,
+                      int control)
 {
     /* The child owns client_fd; it does not accept or manage other children. */
     close(listener);
+    for (int i = 0; i < children->active; ++i)
+        if (children->channels[i].fd >= 0)
+            close(children->channels[i].fd);
     free(children->pids);
+    free(children->channels);
+    free(children->pollfds);
+    proxy_set_control(control);
     const int signals[] = {SIGINT, SIGTERM, SIGCHLD};
     for (int i = 0; i < 3; ++i) {
         if (set_signal_handler(signals[i], SIG_DFL) == -1) {
@@ -154,6 +225,8 @@ static void run_child(int listener, int client_fd, int root_fd, int idle_seconds
         _exit(EXIT_FAILURE);
     }
     int status = serve_http(client_fd, root_fd, idle_seconds);
+    if (control >= 0)
+        close(control);
     close(root_fd);
     close(client_fd);
     _exit(status);
@@ -166,19 +239,15 @@ static int run_parent(int listener, int root_fd, struct child_processes *childre
     while (!stopping) {
         if (reap_children(children) == -1)
             return EXIT_FAILURE;
-        fd_set ready;
-        FD_ZERO(&ready);
-        if (children->active < children->capacity)
-            FD_SET(listener, &ready);
         /* Atomically unblock signals while waiting, avoiding a check/wait race. */
-        int count = pselect(listener + 1, &ready, NULL, NULL, NULL, wait_mask);
+        int count = poll_children(children, listener, wait_mask, NULL);
         if (count < 0) {
             if (errno == EINTR)
                 continue;
-            perror("pselect");
+            perror("ppoll");
             return EXIT_FAILURE;
         }
-        if (!FD_ISSET(listener, &ready))
+        if (!count || stopping)
             continue;
         int fd = accept(listener, NULL, NULL);
         if (fd == -1) {
@@ -195,13 +264,31 @@ static int run_parent(int listener, int root_fd, struct child_processes *childre
             close(fd);
             continue;
         }
-        pid_t pid = check_call(fork(), "fork");
-        if (pid == 0)
-            run_child(listener, fd, root_fd, idle_seconds, children, wait_mask);
-        close(fd);  /* Only the child retains the connection after fork. */
-        if (pid == -1)
+        int control[2] = {-1, -1};
+        if (routes_enabled() &&
+            socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC | SOCK_NONBLOCK,
+                       0, control) < 0) {
+            perror("socketpair control");
+            close(fd);
             return EXIT_FAILURE;
+        }
+        pid_t pid = check_call(fork(), "fork");
+        if (pid == 0) {
+            if (control[0] >= 0)
+                close(control[0]);
+            run_child(listener, fd, root_fd, idle_seconds, children, wait_mask, control[1]);
+        }
+        if (control[1] >= 0)
+            close(control[1]);
+        close(fd);  /* Only the child retains the connection after fork. */
+        if (pid == -1) {
+            if (control[0] >= 0)
+                close(control[0]);
+            return EXIT_FAILURE;
+        }
         children->pids[children->active] = pid;
+        children->channels[children->active] =
+            (struct child_channel){.fd = control[0], .backend = -1};
         ++children->active;
     }
     return EXIT_SUCCESS;
@@ -224,7 +311,11 @@ static int wait_for_children(struct child_processes *children, int seconds)
         if (reap_children(children) == -1)
             return -1;
         struct timespec pause = {.tv_sec = 0, .tv_nsec = 20000000};
-        nanosleep(&pause, NULL);
+        if (children->channels) {
+            if (poll_children(children, -1, NULL, &pause) < 0)
+                return -1;
+        } else
+            nanosleep(&pause, NULL);
     }
     return 0;
 }
@@ -267,7 +358,7 @@ static int shutdown_children(struct child_processes *children, int grace_seconds
 }
 
 /* 서버 자원을 준비하고 부모 루프를 실행한 뒤 자식과 자원을 정리한다. */
-int server_run(int port, const char *root, int limit, int idle, int grace)
+int server_run(int port, const char *root, int limit, int idle, int grace, int backend_limit)
 {
     int root_fd = open(root, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
     if (root_fd == -1) {
@@ -288,14 +379,21 @@ int server_run(int port, const char *root, int limit, int idle, int grace)
         .pids = calloc((size_t)limit, sizeof(pid_t)),
         .capacity = limit,
         .active = 0,
+        .channels = calloc((size_t)limit, sizeof(struct child_channel)),
+        .pollfds = calloc((size_t)limit + 1, sizeof(struct pollfd)),
+        .backend_limit = backend_limit,
     };
-    if (!children.pids) {
+    if (!children.pids || !children.channels || !children.pollfds) {
         perror("calloc");
+        free(children.pids);
+        free(children.channels);
+        free(children.pollfds);
         close(root_fd);
         close(listener);
         return EXIT_FAILURE;
     }
-    printf("READY port=%d max_children=%d idle=%d grace=%d\n", port, limit, idle, grace);
+    printf("READY port=%d max_children=%d idle=%d grace=%d backend_limit=%d\n",
+           port, limit, idle, grace, backend_limit);
     fflush(stdout);
 
     int result = run_parent(listener, root_fd, &children, idle, &wait_mask);
@@ -303,6 +401,10 @@ int server_run(int port, const char *root, int limit, int idle, int grace)
     close(root_fd);
     if (shutdown_children(&children, grace) != EXIT_SUCCESS)
         result = EXIT_FAILURE;
+    for (int i = 0; i < children.active; ++i)
+        close_channel(&children.channels[i]);
     free(children.pids);
+    free(children.channels);
+    free(children.pollfds);
     return result;
 }
