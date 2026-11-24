@@ -1,7 +1,9 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "server/server.h"
+#include "proxy/routes.h"
 
 static int parse_positive_integer(const char *text, int maximum)
 {
@@ -17,8 +19,13 @@ static int parse_positive_integer(const char *text, int maximum)
 
 int main(int argc, char **argv)
 {
+    const char *routes_file = NULL;
+    if (argc >= 3 && strcmp(argv[argc - 2], "--routes") == 0) {
+        routes_file = argv[argc - 1];
+        argc -= 2;
+    }
     if (argc > 6) {
-        fprintf(stderr, "Usage: %s [port [root [max_children [idle_seconds [grace_seconds]]]]]\n", argv[0]);
+        fprintf(stderr, "Usage: %s [port [root [max_children [idle_seconds [grace_seconds]]]]] [--routes FILE]\n", argv[0]);
         return EXIT_FAILURE;
     }
 
@@ -30,5 +37,9 @@ int main(int argc, char **argv)
     if (port < 0 || limit < 0 || idle < 0 || grace < 0)
         return EXIT_FAILURE;
 
-    return server_run(port, root, limit, idle, grace);
+    if (routes_file && routes_load(routes_file) == -1)
+        return EXIT_FAILURE;
+    int result = server_run(port, root, limit, idle, grace);
+    routes_free();
+    return result;
 }

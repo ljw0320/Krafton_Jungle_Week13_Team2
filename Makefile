@@ -1,11 +1,11 @@
 CC = cc
 CFLAGS = -std=c11 -Wall -Wextra -Wpedantic -Werror -O2
-HTTP_SOURCES = http/http.c http/http_parse.c http/http_io.c http/http_response.c http/http_static.c http/http_cgi.c
-HTTP_HEADERS = http/http.h http/http_internal.h
+HTTP_SOURCES = http/http.c http/http_parse.c http/http_io.c http/http_response.c http/http_static.c http/http_cgi.c proxy/routes.c proxy/headers.c proxy/proxy.c
+HTTP_HEADERS = http/http.h http/http_internal.h proxy/routes.h proxy/headers.h proxy/proxy.h
 SERVER_SOURCES = server/server.c
 SERVER_HEADERS = server/server.h
 
-.PHONY: all test sanitize clean
+.PHONY: all test sanitize smoke-proxy clean
 all: build/web-server build/adder
 
 build/adder: cgi/adder.c
@@ -28,15 +28,29 @@ build/test-cgi-io: tests/test_cgi_io.c $(HTTP_SOURCES) $(HTTP_HEADERS)
 	mkdir -p build
 	$(CC) $(CFLAGS) tests/test_cgi_io.c $(HTTP_SOURCES) -o $@ $(LDFLAGS) -Wl,--wrap=write
 
-test: all build/test-processes build/test-http build/test-cgi-io
+build/test-proxy-headers: tests/test_proxy_headers.c proxy/headers.c proxy/headers.h http/http_internal.h
+	mkdir -p build
+	$(CC) $(CFLAGS) tests/test_proxy_headers.c proxy/headers.c -o $@ $(LDFLAGS)
+
+build/test-proxy-io: tests/test_proxy_io.c proxy/proxy.c proxy/headers.c $(HTTP_HEADERS) http/http_response.c http/http_io.c
+	mkdir -p build
+	$(CC) $(CFLAGS) tests/test_proxy_io.c proxy/headers.c http/http_response.c http/http_io.c -o $@ $(LDFLAGS) -Wl,--wrap=poll -Wl,--wrap=__poll_chk -Wl,--wrap=connect
+
+test: all build/test-processes build/test-http build/test-cgi-io build/test-proxy-headers build/test-proxy-io
 	./build/test-processes
 	./build/test-http
+	./build/test-proxy-headers
+	./build/test-proxy-io
 	python3 tests/test_server.py
 	python3 tests/test_cgi.py
+	python3 tests/test_proxy.py
 
 sanitize:
 	$(MAKE) clean
 	$(MAKE) test CFLAGS='-std=c11 -Wall -Wextra -Wpedantic -Werror -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer' LDFLAGS='-fsanitize=address,undefined'
 
+smoke-proxy: all
+	python3 tests/smoke_proxy.py
+
 clean:
-	rm -f build/web-server build/adder build/test-processes build/test-http build/test-cgi-io
+	rm -f build/web-server build/adder build/test-processes build/test-http build/test-cgi-io build/test-proxy-headers build/test-proxy-io
