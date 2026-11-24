@@ -20,6 +20,7 @@ enum method {
 struct request {
     enum method method;
     char target[TARGET_LIMIT];
+    char content_type[256];
 
     size_t content_length;
     bool has_length;

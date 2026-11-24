@@ -1,6 +1,7 @@
 /webserver
 /test_http
 /test_drain
+/cgi-bin/adder
 *.o
 __pycache__/
 /tests/.tmp/

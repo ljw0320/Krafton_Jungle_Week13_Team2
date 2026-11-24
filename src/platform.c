@@ -46,7 +46,9 @@ int nonblocking(int fd)
 {
     int flags = fcntl(fd, F_GETFL, 0);
 
-    return flags == -1 ? -1 : fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    if (flags == -1 || fcntl(fd, F_SETFD, FD_CLOEXEC) == -1)
+        return -1;
+    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
 int listener_open(int port)

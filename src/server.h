@@ -20,7 +20,9 @@ enum {
     RECV_TIMEOUT_MS = 5000,
     SEND_TIMEOUT_MS = 3000,
     DRAIN_TIMEOUT_MS = 2000,
-    DRAIN_BUFFER_SIZE = 4096
+    DRAIN_BUFFER_SIZE = 4096,
+    CGI_TIMEOUT_MS = 2000,
+    CGI_POLL_MS = 50
 };
 
 enum state {
@@ -34,8 +36,18 @@ enum state {
 enum phase {
     READ_HEADER,
     READ_BODY,
+    CGI_OUTPUT,
     WRITE_RESPONSE,
     DRAIN_INPUT
+};
+
+struct cgi_state {
+    pid_t pid;
+    int fd;
+    int64_t deadline;
+    int64_t next_check;
+    size_t length;
+    char output[HEADER_LIMIT + BODY_LIMIT + 1];
 };
 
 /* 작업자가 바뀌어도 요청과 부분 송신 위치는 연결에 남습니다. */
@@ -48,6 +60,7 @@ struct connection {
     off_t file_left;
 
     struct request request;
+    struct cgi_state cgi;
     char input[HEADER_LIMIT + 1];
     size_t input_length;
 
@@ -79,6 +92,7 @@ struct server {
 
     int wake_fd;
     int root_fd;
+    int cgi_root_fd;
 };
 
 extern volatile sig_atomic_t stop_requested;
@@ -106,6 +120,11 @@ void process_turn(struct server *server, struct connection *client);
 void respond(struct connection *client, int status, off_t size,
              const char *type);
 void respond_error(struct connection *client, int status);
+bool cgi_target(const char *target);
+void cgi_start(struct server *server, struct connection *client);
+void cgi_turn(struct connection *client);
+void cgi_close(struct connection *client);
+int cgi_response(struct connection *client);
 
 void server_run(struct server *server, int listener);
 void connection_close(struct connection *client);

@@ -43,6 +43,9 @@ static void test_post(void)
     assert(request.content_length == 65537);
     assert(parse("POST /echo HTTP/1.0\r\nContent-Length: 999999999999999999999\r\n\r\n", &request) == 413);
     assert(request.content_length == 0);
+    assert(parse("POST /cgi-bin/adder HTTP/1.0\r\nContent-Length: 0\r\n"
+                 "Content-Type: application/x-www-form-urlencoded\r\n\r\n", &request) == 0);
+    assert(!strcmp(request.content_type, "application/x-www-form-urlencoded"));
 
     puts("PASS POST / body length boundary");
 }
@@ -64,6 +67,8 @@ static void test_errors(void)
     assert(parse("GET / HTTP/1.0\r\nTransfer-Encoding: chunked\r\n\r\n", &request) == 400);
     assert(parse("GET / HTTP/1.0\r\nX: a\nb\r\n\r\n", &request) == 400);
     assert(parse("GET / HTTP/1.0\r\nBad : x\r\n\r\n", &request) == 400);
+    assert(parse("POST /cgi-bin/adder HTTP/1.0\r\nContent-Length: 0\r\n"
+                 "Content-Type: a\r\nContent-Type: b\r\n\r\n", &request) == 400);
 
     puts("PASS invalid requests / unsupported methods");
 }
@@ -79,6 +84,8 @@ static void test_response(void)
     assert(http_header_end(out, strlen(out)) == strlen(out));
 
     assert(http_response(out, 8, 200, 0, "text/plain") == -1);
+    assert(http_response(out, sizeof(out), 204, 0, "text/plain") > 0);
+    assert(!strstr(out, "Content-Length:"));
 
     puts("PASS response headers / output bound");
 }

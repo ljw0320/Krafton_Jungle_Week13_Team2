@@ -54,6 +54,26 @@ static void prepare_get(struct server *server, struct connection *client)
     respond(client, 200, client->file_left, file_type(client->request.target));
 }
 
+/* 전체 POST 본문을 받은 뒤 CGI 실행 또는 기존 에코 응답을 준비합니다. */
+static void body_received(struct server *server, struct connection *client)
+{
+    if (cgi_target(client->request.target))
+        cgi_start(server, client);
+    else
+        respond(client, 200, (off_t)client->length, "application/octet-stream");
+}
+
+static void prepare_body(struct server *server, struct connection *client, size_t end)
+{
+    client->length = client->input_length - end;
+    if (client->length > client->request.content_length)
+        client->length = client->request.content_length;
+    memcpy(client->data, client->input + end, client->length);
+    client->phase = READ_BODY;
+    if (client->length == client->request.content_length)
+        body_received(server, client);
+}
+
 /* 크기 초과여도 선언된 길이를 보존해, 이미 읽은 부분을 뺀 남은 업로드만 폐기합니다. */
 static void reject_request(struct connection *client, int status, size_t end)
 {
@@ -77,23 +97,19 @@ static void prepare_request(struct server *server, struct connection *client,
     }
 
     if (client->request.method == METHOD_GET) {
-        prepare_get(server, client);
+        if (cgi_target(client->request.target))
+            cgi_start(server, client);
+        else
+            prepare_get(server, client);
         return;
     }
 
-    if (strcmp(client->request.target, "/echo")) {
+    if (strcmp(client->request.target, "/echo") && !cgi_target(client->request.target)) {
         respond_error(client, 404);
         return;
     }
 
-    client->length = client->input_length - end;
-    if (client->length > client->request.content_length)
-        client->length = client->request.content_length;
-
-    memcpy(client->data, client->input + end, client->length);
-    client->phase = READ_BODY;
-    if (client->length == client->request.content_length)
-        respond(client, 200, (off_t)client->length, "application/octet-stream");
+    prepare_body(server, client, end);
 }
 
 static void header_received(struct server *server, struct connection *client)
@@ -150,7 +166,7 @@ static bool receive_step(struct server *server, struct connection *client, size_
     } else {
         client->length += (size_t)result;
         if (client->length == client->request.content_length)
-            respond(client, 200, (off_t)client->length, "application/octet-stream");
+            body_received(server, client);
     }
 
     return true;
@@ -293,7 +309,10 @@ void process_turn(struct server *server, struct connection *client)
     size_t received = 0, transmitted = 0;
 
     for (int calls = 0; calls < CALL_BUDGET && !client->reason; calls++) {
-        if (client->phase == WRITE_RESPONSE) {
+        if (client->phase == CGI_OUTPUT) {
+            cgi_turn(client);
+            break;
+        } else if (client->phase == WRITE_RESPONSE) {
             if (transmitted == IO_BUDGET || !send_step(client, &transmitted))
                 break;
         } else if (client->phase == DRAIN_INPUT) {

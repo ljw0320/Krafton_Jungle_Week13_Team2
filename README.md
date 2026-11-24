@@ -1,6 +1,6 @@
 # Krafton Jungle Week 13 — Team 2 Web Server
 
-`learning/05_echo_thread-nonblocking`의 **non-blocking 소켓 + poll + 고정 스레드 풀 + eventfd** 구조를 참고한 학습용 C 웹서버입니다. GET으로 HTML·CSS·이미지를 제공하고 POST `/echo`로 요청 본문을 그대로 돌려줍니다. HTTP 메서드는 **GET, POST만** 지원합니다.
+`learning/05_echo_thread-nonblocking`의 **non-blocking 소켓 + poll + 고정 스레드 풀 + eventfd** 구조를 참고한 학습용 C 웹서버입니다. GET으로 HTML·CSS·이미지를 제공하고 POST `/echo`로 요청 본문을 그대로 돌려줍니다. CGI를 활성화하면 GET·POST `/cgi-bin/프로그램` 요청에 따라 애플리케이션을 실행하고 응답을 생성합니다. HTTP 메서드는 **GET, POST만** 지원합니다.
 
 현재 컴퓨터의 **WSL Ubuntu 24.04**에서 빌드합니다. Windows 네이티브 실행이나 macOS 이식성은 이번 범위에 포함하지 않습니다. 완성된 HTTP·이벤트 루프 라이브러리는 사용하지 않습니다.
 
@@ -17,15 +17,53 @@ make
 브라우저에서 `http://127.0.0.1:19006/`를 엽니다. HTML, CSS, 나무 이미지가 표시됩니다. 종료는 실행 터미널의 **Ctrl+C** 또는 다른 WSL 터미널의 `kill -TERM <PID>`입니다.
 
 ```text
-./webserver PORT DOCUMENT_ROOT
+./webserver PORT DOCUMENT_ROOT [CGI_ROOT]
 ```
 
 | 인자 | 의미 |
 |---|---|
 | `PORT` | 필수, 1~65535 정수. 사용 중인 포트면 bind 오류 후 실패 종료 |
 | `DOCUMENT_ROOT` | 필수, 정적 파일 루트. 상대 경로는 실행 디렉터리 기준 |
+| `CGI_ROOT` | 선택, CGI 실행 파일 디렉터리. 지정하면 `/cgi-bin/이름` 활성화. 생략하면 CGI 경로는 404 |
 
-주소는 `127.0.0.1`로 고정합니다. 포트와 문서 루트만 실행 인자로 받으며 Reverse Proxy 라우팅 인자는 구현하지 않습니다. 다른 포트·루트 예: `./webserver 8080 /tmp/my-site`.
+주소는 `127.0.0.1`로 고정합니다. Reverse Proxy 라우팅 인자는 구현하지 않습니다. 다른 포트·루트 예: `./webserver 8080 /tmp/my-site`.
+
+## 동적 요청 처리: CGI
+
+WSL에서 `make`하면 서버와 덧셈 예제 `cgi-bin/adder`를 함께 빌드합니다. **CGI를 사용하려면 세 번째 인자를 지정**하고 서버를 재시작합니다.
+
+```bash
+make
+./webserver 19006 ./www ./cgi-bin
+```
+
+다른 WSL 터미널에서 실행합니다.
+
+```bash
+curl -i 'http://127.0.0.1:19006/cgi-bin/adder?a=12&b=30'
+curl -i --data 'a=12&b=30' http://127.0.0.1:19006/cgi-bin/adder
+```
+
+두 요청 모두 `200 OK`, `Content-Type: application/json`, 본문 `{"a":12,"b":30,"sum":42}`와 줄바꿈을 반환합니다. GET은 쿼리를, POST는 `application/x-www-form-urlencoded` 본문을 계산에 사용합니다. 예제는 두 정수 `a`, `b`를 받으며, 잘못된 입력·누락·합계 오버플로는 CGI의 `Status` 헤더를 통해 400을 반환합니다. 예제 폼 입력은 255바이트까지이며 서버의 일반 POST 한도 64KiB와 별개입니다.
+
+브라우저에서는 `http://127.0.0.1:19006/`의 **동적 요청 · CGI 테스트**를 사용합니다. GET 또는 POST를 선택하고 정수 `a`, `b`를 입력한 뒤 **덧셈 요청 보내기**를 누릅니다. 요청 주소·POST 본문, 예상 응답, 실제 HTTP 상태·Content-Type·소요 시간, 응답 본문과 검증 결과가 표시됩니다. **잘못된 입력 테스트 · 400**은 `b`를 생략하고, **없는 프로그램 테스트 · 404**는 없는 CGI 경로를 요청합니다. 입력값과 예상 합계는 BigInt로 비교하므로 64비트 정수의 반올림을 피합니다. 파일을 직접 열면 테스트가 비활성화됩니다. 페이지 변경은 새로고침으로 적용되지만 CGI를 활성화하려면 위 세 번째 인자를 포함해 서버를 실행해야 합니다.
+
+| 항목 | 동작 |
+|---|---|
+| 라우팅 | `/cgi-bin/이름`은 정적 파일보다 먼저 CGI로 분기. CGI_ROOT 바로 아래의 일반 실행 파일만 허용 |
+| 프로그램 이름 | 영문·숫자·`.`·`_`·`-` 허용. `.`·`..`, 하위 경로, 퍼센트 인코딩, 심볼릭 링크 차단 |
+| 요청 전달 | `REQUEST_METHOD`, 원본 `QUERY_STRING`, `SCRIPT_NAME`, `CONTENT_LENGTH`, `CONTENT_TYPE`, `SERVER_PROTOCOL`, `GATEWAY_INTERFACE`, `SERVER_SOFTWARE` 환경 변수. POST 원본 바이트는 stdin으로 전달 |
+| 실행 | 검증한 fd를 `/proc/self/fd/번호`로 `posix_spawn`. 셸 명령 문자열을 만들지 않으며 요청별 환경을 별도로 구성 |
+| 응답 | stdout의 `Content-Type` 필수, `Status: 400 Bad Request` 같은 최종 상태(200~599) 선택. 헤더는 CRLF, 빈 줄 뒤 본문은 바이너리 가능 |
+| 지원 헤더 | CGI 응답은 `Content-Type`, `Status`만 지원. 그 밖의 헤더·중복·잘못된 형식은 502. 리다이렉트용 Location·쿠키 전달·NPH·PATH_INFO는 미지원 |
+| HTTP 생성 | 서버가 실제 본문 길이를 계산해 공통 응답 함수로 전송. 204·205·304는 빈 본문만 허용하고, 204·304는 Content-Length를 생략 |
+| 한도 | CGI 실행 시작 후 절대 2초, 응답 헤더 16KiB·본문 64KiB. 시간 초과 504, 출력 한도 초과·비정상 종료·실행 형식 오류 502 |
+| 동시성 | stdout 파이프를 non-blocking으로 수집하고 poll에 양보. EOF 뒤 종료 확인도 비차단이며 최대 50ms 간격으로 재확인 |
+| 자원 회수 | 성공·오류·시간 초과·서버 종료 시 프로세스 그룹 종료, 직접 자식 waitpid 회수, 파이프 close. stderr는 `/dev/null` |
+
+CGI_ROOT를 생략한 기존 실행 명령도 그대로 동작합니다. 없는 프로그램은 404, 실행 권한이 없는 파일은 403입니다. GET 본문 제한과 POST의 Content-Length 필수·64KiB 제한을 CGI에도 동일하게 적용하며, POST는 본문 수신을 완료한 뒤 프로그램을 실행합니다. CGI 입력에는 익명 메모리 파일(`memfd_create`)을 사용해 큰 stdin과 stdout 사이의 파이프 교착을 피합니다. Linux `/proc`, memfd, GNU/POSIX spawn API를 사용하므로 기존 WSL/Linux 실행 범위를 유지합니다.
+
+CGI_ROOT에는 서버 관리자가 신뢰하는 프로그램만 배치하고 문서 루트와 분리하세요. CGI는 서버 사용자 권한으로 실행되며 파일시스템·네트워크 접근을 격리하는 샌드박스는 아닙니다. 별도 세션으로 이탈한 하위 프로세스까지 관리하는 기능은 포함하지 않습니다. 추가 프로그램은 CGI_ROOT에 실행 파일 또는 올바른 shebang과 실행 권한이 있는 스크립트로 배치합니다. 인자 전달·임의 경로 실행·백엔드 프록시는 추가하지 않았습니다.
 
 ## 요청에 따른 결정과 직접 정한 결정
 
@@ -51,7 +89,7 @@ make
 |---|---|
 | 응답마다 `Connection: close` | 제안한 첫 단계의 정적 응답에 범위를 맞춤. keep-alive·pipelining 미지원 |
 | GET은 문서 루트 아래 정적 파일 | `/`와 끝이 `/`인 경로는 `index.html`, 쿼리는 파일 선택에서 제외 |
-| POST는 정확히 `/echo` | 별도 저장·업무 로직 없이 본문 경계 처리를 학습. 원본 바이트를 `application/octet-stream`으로 응답 |
+| POST는 `/echo` 또는 활성화된 `/cgi-bin/이름` | `/echo`는 원본 바이트 응답, CGI는 본문 수신 후 애플리케이션 실행 |
 | POST에 Content-Length 필수 | 미지정 411, 0 허용, 최대 65,536바이트. 초과 413 |
 | GET 요청 본문은 길이 0만 허용 | 양수 Content-Length는 400. 본문 수신 기능은 POST에 한정 |
 | 헤더 전체 최대 16,384바이트 | 요청 줄과 마지막 빈 줄 포함. 초과 431, 누적 버퍼 상한 고정 |
@@ -66,7 +104,7 @@ make
 | 이전 설계 문서 보존 | `docs/PREVIOUS_*`에 원본 복사. 현재 구현의 기준은 이 README |
 | 후속 요청에 따른 브라우저 테스트 | 요청 수 4개·8개·12개·36개 선택. GET 응답 본문은 4·16·64·128KiB, POST 요청 본문은 추가로 512KiB·1MiB·100MiB를 선택하고 예상 응답과 비교 |
 
-Reverse Proxy는 기술 스택 예시의 괄호 안 항목이지만 이번 필수 구현항목 ①~⑤에는 없으므로 구현하지 않았습니다. TLS, 업로드 저장, CGI, DB, 인증, 부하 도구도 추가하지 않았습니다.
+동적 요청 처리는 CGI 실행 방식으로 추가했습니다. Reverse Proxy, TLS, 업로드 저장, DB, 인증, 부하 도구는 구현하지 않았습니다.
 
 ## 프로그램 구조
 
@@ -85,9 +123,15 @@ Krafton_Jungle_Week13_Team2/
 │   ├── http.c                  # 요청 경계·파싱·응답 헤더
 │   ├── files.c                 # 경로 검사, 파일 열기, MIME
 │   ├── connection.c            # 분할 수신·송신, 반쪽 종료, 남은 데이터 폐기
+│   ├── cgi.c                   # CGI 라우팅, 비차단 출력 수집, 기한·자식 회수
+│   ├── cgi_spawn.c             # 요청별 환경·stdin 준비, posix_spawn
+│   ├── cgi_response.c          # 제한된 CGI 헤더 검증, HTTP 응답 변환
+│   ├── cgi-bin/adder.c         # 동적 덧셈 CGI 예제 소스
 │   └── tests/
 │       ├── test_http.c         # HTTP·파일 최소 단위 테스트
-│       └── test_drain.c        # socketpair 기반 종료 최소 단위 테스트
+│       ├── test_drain.c        # socketpair 기반 종료 최소 단위 테스트
+│       └── test_cgi.py         # 실제 TCP CGI 통합 테스트
+├── cgi-bin/adder               # make로 생성하는 CGI 실행 파일 (Git 제외)
 ├── www/                        # HTML(브라우저 테스트 JS 포함), CSS, SVG, test-data/*.bin
 └── docs/
     ├── ARCHITECTURE.md          # 상태 전이·동시성·종료 설명
@@ -100,15 +144,16 @@ Krafton_Jungle_Week13_Team2/
 1. `main()`이 포트·루트 인자를 검사하고 `socket → SO_REUSEADDR → bind → listen`을 수행합니다. 리스너는 non-blocking입니다. TCP 3-way handshake 자체는 커널이 처리합니다.
 2. 문서 루트 fd와 eventfd를 열고 시그널 처리기·작업자 4개를 준비합니다.
 3. 메인이 `poll()`에서 리스너, 완료 알림, WAITING 연결의 읽기/쓰기 준비를 기다립니다. 준비된 연결은 FIFO 큐에 한 번만 들어갑니다.
-4. 작업자는 연결의 한 차례를 맡아 `\r\n\r\n`까지 헤더를 누적합니다. GET은 파일을 열고, POST는 Content-Length만큼 본문을 모읍니다.
+4. 작업자는 연결의 한 차례를 맡아 `\r\n\r\n`까지 헤더를 누적합니다. 일반 GET은 파일을 열고, POST는 Content-Length만큼 본문을 모읍니다. CGI 경로는 GET 즉시 또는 POST 본문 수신 후 프로그램을 실행하고 출력 파이프를 감시합니다.
 5. 응답 헤더를 먼저 보내고 파일/본문을 전송합니다. 부분 송신·EAGAIN이면 오프셋을 남겨 다음 차례에서 이어갑니다.
 6. 응답 전송 후 `DRAIN_INPUT`에서 남은 수신 데이터를 버립니다. 한도 초과 본문이 남았으면 먼저 폐기하고 `shutdown(SHUT_WR)`를 수행합니다. 작업자는 WAITING/FINISHED 상태를 mutex 아래 공개하고 eventfd로 메인을 깨웁니다. 메인만 연결·파일을 닫고 슬롯을 FREE로 돌립니다.
 7. 종료 신호가 오면 신규 배정을 중단하고 작업자를 join한 뒤 모든 열린 연결·파일·리스너·eventfd 및 동기화 객체를 정리합니다.
 
 ```text
 수신 누적 → 헤더 완성 → HTTP 파싱
-                        ├─ GET  → 경로 검사 → 파일 열기
-                        └─ POST → /echo 확인 → 본문 길이만큼 수신
+                        ├─ GET 정적 파일 → 경로 검사 → 파일 열기
+                        ├─ POST /echo → 본문 길이만큼 수신
+                        └─ GET/POST /cgi-bin/이름 → [POST 본문 수신] → CGI 실행·출력 검증
         → 응답 헤더 → 파일/본문 분할 송신
         → 남은 업로드 폐기 → 송신 방향 종료 → 상대 EOF 대기 → 연결 종료
 ```
@@ -186,7 +231,9 @@ GET 파일 응답과 정상 POST 응답에도 같은 종료 절차를 적용합�
 |---|---|
 | GET 파일 존재 | 200, Content-Length·Content-Type, 파일 바이트 |
 | POST `/echo` | 200, Content-Length만큼 원본 본문. 빈 본문도 허용 |
-| 파일 없음 / POST 다른 경로 | 404 |
+| GET·POST `/cgi-bin/이름` | CGI가 생성한 상태·Content-Type·본문. CGI_ROOT 지정 시 활성화 |
+| 파일 없음 / 지원하지 않는 경로 | 404 |
+| CGI 비정상 종료·잘못된 출력·응답 한도 초과 / 실행 기한 초과 | 502 / 504 |
 | `..` 등 차단된 경로 / 일반 파일 아님 | 403. 중간 심볼릭 링크는 Linux 오류에 따라 404일 수도 있음 |
 | GET·POST 외 메서드 | 405 + `Allow: GET, POST`. HEAD도 미지원이며 HEAD 오류 응답에는 본문 생략 |
 | 잘못된 문법 / HTTP/1.1 Host 누락·중복 / 중복 Content-Length | 400 |
@@ -202,9 +249,10 @@ HTTP 전체 명세 구현은 아닙니다. chunked, 100-continue, Range, 조건�
 
 ```bash
 make test
+make test_cgi
 ```
 
-네트워크 서버를 띄우지 않고 HTTP 5개 묶음과 종료 처리 5개 묶음만 검사합니다. HTTP·파일 테스트는 저장소의 `www` 샘플을 기준으로 합니다.
+`make test`는 네트워크 서버를 띄우지 않고 HTTP 5개 묶음과 종료 처리 5개 묶음을 검사합니다. HTTP·파일 테스트는 저장소의 `www` 샘플을 기준으로 합니다. `make test_cgi`는 Python 3 표준 라이브러리로 실제 TCP 서버를 임시 포트에 띄우는 CGI 통합 테스트 8개를 실행합니다. CGI GET·POST, 환경 변수·바이너리/분할 입력, 실행 경로 차단, 출력/크기 오류, 실행 기한, 4개 CGI 대기 중 정적 응답, 서버 종료 시 자식 회수를 확인합니다. 테스트 서버와 임시 CGI 디렉터리는 종료 시 정리합니다.
 
 | 테스트 묶음 | 기대 결과 |
 |---|---|
@@ -228,9 +276,9 @@ make test
 
 **2026-11-23, 이 컴퓨터의 WSL Ubuntu 24.04에서 확인:**
 
-- `make all test` 통과: C11, `-Wall -Wextra -Wpedantic -Werror`, pthread 빌드.
-- HTTP 5개·종료 5개 단위 테스트 묶음 통과.
-- 테스트를 포함한 C 함수 81개 모두 선언·중괄호 포함 30줄 이하, 최댓값 30줄.
+- `make all test test_cgi` 통과: C11, `-Wall -Wextra -Wpedantic -Werror`, pthread 빌드.
+- HTTP 5개·종료 5개 단위 테스트 묶음과 CGI 통합 테스트 8개 통과.
+- 테스트·CGI 예제를 포함한 C 함수의 선언·중괄호 포함 30줄 이하 조건 확인.
 - Windows–WSL 문제 재현 후, 수정한 별도 서버에 Windows Node.js fetch로 512KiB·1MiB POST 각각 4건을 함께 보내 모두 413·22바이트 수신 확인. WSL 내부에서도 같은 크기 요청의 정상 응답 확인.
 - 실제 브라우저 UI와 부하 테스트는 실행하지 않았습니다. 아래는 사용자가 실행할 수 있는 수동 확인 절차와 기대 결과입니다.
 

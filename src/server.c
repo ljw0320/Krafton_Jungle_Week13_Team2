@@ -9,6 +9,7 @@
 /* 메인만 close합니다. RUNNING 자원은 join 전까지 건드리지 않습니다. */
 void connection_close(struct connection *client)
 {
+    cgi_close(client);
     if (client->file_fd >= 0)
         close(client->file_fd);
 
@@ -52,7 +53,7 @@ static void register_client(struct server *server, int fd)
 static void accept_clients(struct server *server, int listener)
 {
     for (int i = 0; i < ACCEPT_BUDGET && !stop_requested; i++) {
-        int fd = accept(listener, NULL, NULL);
+        int fd = accept4(listener, NULL, NULL, SOCK_NONBLOCK | SOCK_CLOEXEC);
 
         if (fd == -1) {
             if (errno == EINTR)
@@ -88,9 +89,23 @@ static const char *timeout_reason(const struct connection *client)
     return client->phase == WRITE_RESPONSE ? "send_timeout" : "recv_timeout";
 }
 
+/* CGI stdout 준비와 자식 종료 재확인 시각 중 먼저 도착하는 사건을 기다립니다. */
+static bool poll_cgi(struct connection *client, struct pollfd *fd, int *timeout, int64_t now)
+{
+    int64_t check = client->cgi.next_check < client->cgi.deadline ?
+                    client->cgi.next_check : client->cgi.deadline;
+    int delay = check <= now ? 0 : (int)(check - now);
+    if (*timeout < 0 || delay < *timeout)
+        *timeout = delay;
+    *fd = (struct pollfd){.fd = client->cgi.fd, .events = POLLIN};
+    return true;
+}
+
 /* 정리 중에는 POLLIN을 기다리고, 상대가 아무것도 보내지 않아도 기한에 회수합니다. */
 static bool poll_client(struct connection *client, struct pollfd *fd, int *timeout, int64_t now)
 {
+    if (client->phase == CGI_OUTPUT)
+        return poll_cgi(client, fd, timeout, now);
     bool writing = client->phase == WRITE_RESPONSE;
     int64_t left = connection_deadline(client) - now;
 
@@ -143,7 +158,8 @@ static void dispatch(struct server *server, struct pollfd *fds, struct connectio
         if (fds[i].revents & POLLNVAL) {
             owners[i]->reason = "invalid_socket";
             connection_close(owners[i]);
-        } else if (fds[i].revents) {
+        } else if (fds[i].revents || (owners[i]->phase == CGI_OUTPUT &&
+                   (now_ms() >= owners[i]->cgi.next_check || now_ms() >= owners[i]->cgi.deadline))) {
             enqueue_turn(server, owners[i]);
         }
     }

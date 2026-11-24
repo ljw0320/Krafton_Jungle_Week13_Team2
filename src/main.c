@@ -9,8 +9,8 @@
 
 static int parse_port(int argc, char **argv)
 {
-    if (argc != 3) {
-        fprintf(stderr, "usage: %s PORT DOCUMENT_ROOT\n", argv[0]);
+    if (argc != 3 && argc != 4) {
+        fprintf(stderr, "usage: %s PORT DOCUMENT_ROOT [CGI_ROOT]\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
@@ -26,11 +26,15 @@ static int parse_port(int argc, char **argv)
     return (int)value;
 }
 
-static void server_setup(struct server *server, const char *root)
+static void server_setup(struct server *server, const char *root, const char *cgi_root)
 {
     server->root_fd = open(root, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     if (server->root_fd == -1)
         fail("document root");
+
+    server->cgi_root_fd = cgi_root ? open(cgi_root, O_RDONLY | O_DIRECTORY | O_CLOEXEC) : -1;
+    if (cgi_root && server->cgi_root_fd == -1)
+        fail("CGI root");
 
     server->wake_fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
     if (server->wake_fd == -1)
@@ -56,6 +60,8 @@ static void server_cleanup(struct server *server, int listener)
     signals_detach();
     close(server->wake_fd);
     close(server->root_fd);
+    if (server->cgi_root_fd >= 0)
+        close(server->cgi_root_fd);
 
     check_thread(pthread_cond_destroy(&server->ready));
     check_thread(pthread_mutex_destroy(&server->mutex));
@@ -72,7 +78,7 @@ int main(int argc, char **argv)
         fail("setvbuf");
 
     int listener = listener_open(port);
-    server_setup(&server, argv[2]);
+    server_setup(&server, argv[2], argc == 4 ? argv[3] : NULL);
 
     printf("[server] http://127.0.0.1:%d root=%s workers=%d slots=%d\n",
            port, argv[2], WORKERS, MAX_CONNECTIONS);

@@ -65,7 +65,7 @@ static int open_error(void)
 /* 각 경로 조각을 root fd 기준으로 열어 ..와 심볼릭 링크를 차단합니다. */
 static int walk_path(int root, char *path, int *status)
 {
-    int directory = dup(root);
+    int directory = fcntl(root, F_DUPFD_CLOEXEC, 3);
     if (directory == -1) {
         *status = 500;
         return -1;

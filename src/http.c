@@ -93,6 +93,16 @@ static int parse_length(const char *value, struct request *request)
     return request->content_length > BODY_LIMIT ? 413 : 0;
 }
 
+/* CGI 환경에 전달할 미디어 타입은 중복과 고정 버퍼 초과를 거부합니다. */
+static int parse_content_type(const char *value, struct request *request)
+{
+    if (request->content_type[0] || !*value ||
+        strlen(value) >= sizeof(request->content_type))
+        return 400;
+    strcpy(request->content_type, value);
+    return 0;
+}
+
 static int parse_header(char *line, struct request *request)
 {
     char *value = strchr(line, ':');
@@ -112,6 +122,8 @@ static int parse_header(char *line, struct request *request)
 
     if (!strcasecmp(line, "Content-Length"))
         return parse_length(value, request);
+    if (!strcasecmp(line, "Content-Type"))
+        return parse_content_type(value, request);
     if (!strcasecmp(line, "Transfer-Encoding"))
         return 400;
     if (!strcasecmp(line, "Expect"))
@@ -192,28 +204,25 @@ int http_parse(const char *data, size_t length, struct request *request)
 const char *http_reason(int status)
 {
     switch (status) {
-    case 200:
-        return "OK";
-    case 400:
-        return "Bad Request";
-    case 403:
-        return "Forbidden";
-    case 404:
-        return "Not Found";
-    case 405:
-        return "Method Not Allowed";
-    case 411:
-        return "Length Required";
-    case 413:
-        return "Content Too Large";
-    case 417:
-        return "Expectation Failed";
-    case 431:
-        return "Request Header Fields Too Large";
-    case 505:
-        return "HTTP Version Not Supported";
-    default:
-        return "Internal Server Error";
+    case 200: return "OK";
+    case 201: return "Created";
+    case 202: return "Accepted";
+    case 204: return "No Content";
+    case 205: return "Reset Content";
+    case 304: return "Not Modified";
+    case 400: return "Bad Request";
+    case 403: return "Forbidden";
+    case 404: return "Not Found";
+    case 405: return "Method Not Allowed";
+    case 411: return "Length Required";
+    case 413: return "Content Too Large";
+    case 417: return "Expectation Failed";
+    case 431: return "Request Header Fields Too Large";
+    case 500: return "Internal Server Error";
+    case 502: return "Bad Gateway";
+    case 504: return "Gateway Timeout";
+    case 505: return "HTTP Version Not Supported";
+    default: return "CGI Response";
     }
 }
 
@@ -221,10 +230,13 @@ const char *http_reason(int status)
 int http_response(char *out, size_t capacity, int status, off_t length,
                   const char *type)
 {
+    char length_header[64] = "";
+    if (status != 204 && status != 304)
+        snprintf(length_header, sizeof(length_header), "Content-Length: %jd\r\n", (intmax_t)length);
     int size = snprintf(out, capacity,
-        "HTTP/1.1 %d %s\r\nContent-Length: %jd\r\n"
+        "HTTP/1.1 %d %s\r\n%s"
         "Content-Type: %s\r\nConnection: close\r\n%s\r\n",
-        status, http_reason(status), (intmax_t)length, type,
+        status, http_reason(status), length_header, type,
         status == 405 ? "Allow: GET, POST\r\n" : "");
 
     return size < 0 || (size_t)size >= capacity ? -1 : size;

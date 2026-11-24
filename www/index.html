@@ -4,6 +4,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Team 2 Web Server</title>
 <link rel="stylesheet" href="/style.css">
+<script src="/cgi-test.js" defer></script>
 <main>
   <img src="/jungle.svg" alt="정글의 나무" width="120" height="120">
   <h1>Team 2 Web Server</h1>
@@ -13,6 +14,45 @@
     <button>POST /echo</button>
   </form>
   <p>POST 응답은 전송한 원본 바이트를 담은 application/octet-stream입니다.</p>
+
+  <section aria-labelledby="cgi-title">
+    <h2 id="cgi-title">동적 요청 · CGI 테스트</h2>
+    <p>두 정수를 보내면 서버가 덧셈 프로그램을 실행하고 JSON 응답을 생성합니다.</p>
+    <form id="cgi-form" class="test-controls">
+      <div class="cgi-field">
+        <label for="cgi-method">요청 방식</label>
+        <select id="cgi-method">
+          <option value="GET">GET · 쿼리 전달</option>
+          <option value="POST">POST · 폼 본문 전달</option>
+        </select>
+      </div>
+      <div class="cgi-field">
+        <label for="cgi-a">정수 a</label>
+        <input id="cgi-a" name="a" type="text" inputmode="numeric" value="12"
+               pattern="[+\-]?[0-9]+" required>
+      </div>
+      <div class="cgi-field">
+        <label for="cgi-b">정수 b</label>
+        <input id="cgi-b" name="b" type="text" inputmode="numeric" value="30"
+               pattern="[+\-]?[0-9]+" required>
+      </div>
+      <button id="cgi-run" type="submit">덧셈 요청 보내기</button>
+    </form>
+    <div class="test-controls cgi-error-controls">
+      <button id="cgi-invalid" type="button">잘못된 입력 테스트 · 400</button>
+      <button id="cgi-missing" type="button">없는 프로그램 테스트 · 404</button>
+    </div>
+    <p id="cgi-summary" role="status" aria-live="polite">요청 방식을 선택하고 테스트를 시작해 주세요.</p>
+    <dl class="cgi-details">
+      <dt>요청</dt><dd id="cgi-request">아직 보내지 않았습니다.</dd>
+      <dt>예상 응답</dt><dd id="cgi-expected">HTTP 200 · a와 b의 합계</dd>
+      <dt>실제 응답</dt><dd id="cgi-response">-</dd>
+    </dl>
+    <pre id="cgi-body" aria-label="CGI 응답 본문">응답 본문이 여기에 표시됩니다.</pre>
+    <p class="test-note">CGI를 사용하려면 WSL에서 <code>make</code> 후
+      <code>./webserver 19006 ./www ./cgi-bin</code>으로 서버를 실행하세요.
+      정상 덧셈 요청도 404라면 CGI 실행 인자와 프로그램 파일을 확인하세요.</p>
+  </section>
 
   <section aria-labelledby="test-title">
     <h2 id="test-title">동시 HTTP 요청 테스트</h2>
