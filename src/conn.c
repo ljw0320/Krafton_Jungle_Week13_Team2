@@ -30,7 +30,7 @@ struct conn *conn_new(int fd) {
     // 헤더와 본문이 따로 나가면 Nagle + 지연 ACK로 약 44ms 늦는다. 실패해도 느려질 뿐이다
     int on = 1;
     if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on)) < 0) perror("setsockopt");
-    c->fd = fd;
+    c->w = (struct watch){W_CLIENT, fd, 0};
     c->file_fd = -1;  // calloc의 0은 stdin이라 conn_close가 fd 0을 닫는다
     c->state = CONN_READING;
     c->last_active = time(NULL);  // 아무것도 안 보내는 연결도 유휴로 닫히게
@@ -38,7 +38,7 @@ struct conn *conn_new(int fd) {
     if (head) head->prev = c;
     head = c;
     conn_count++;
-    if (loop_watch(c, EPOLLIN) < 0) {
+    if (loop_watch(&c->w, EPOLLIN) < 0) {
         conn_close(c);
         return NULL;
     }
@@ -46,20 +46,21 @@ struct conn *conn_new(int fd) {
 }
 
 void conn_close(struct conn *c) {
-    loop_unwatch(c);  // close 전에 해야 한다
-    close(c->fd);
+    loop_unwatch(&c->w);  // close 전에 해야 한다
+    close(c->w.fd);
+    loop_accept_resume();
     free(c->wbuf);
     if (c->file_fd >= 0) close(c->file_fd);
     if (c->prev) c->prev->next = c->next;
     else head = c->next;
     if (c->next) c->next->prev = c->prev;
     conn_count--;
-    fprintf(stderr, "close fd=%d conn_count=%d\n", c->fd, conn_count);
+    fprintf(stderr, "close fd=%d conn_count=%d\n", c->w.fd, conn_count);
     free(c);
 }
 
 int conn_on_readable(struct conn *c) {
-    ssize_t n = recv(c->fd, c->rbuf + c->rlen, RBUF_SIZE - c->rlen, 0);
+    ssize_t n = recv(c->w.fd, c->rbuf + c->rlen, RBUF_SIZE - c->rlen, 0);
     if (n < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) return 0;
         conn_close(c);
@@ -72,7 +73,7 @@ int conn_on_readable(struct conn *c) {
     c->last_active = time(NULL);
     if (c->rlen == 0) c->req_start = c->last_active;
     c->rlen += (size_t)n;
-    fprintf(stderr, "fd=%d recv %zd bytes\n", c->fd, n);
+    fprintf(stderr, "fd=%d recv %zd bytes\n", c->w.fd, n);
     return conn_process(c);
 }
 
@@ -80,10 +81,10 @@ int conn_on_readable(struct conn *c) {
 static int conn_send(struct conn *c) {
     ssize_t n;
     if (c->woff < c->wlen) {
-        n = send(c->fd, c->wbuf + c->woff, c->wlen - c->woff, 0);
+        n = send(c->w.fd, c->wbuf + c->woff, c->wlen - c->woff, 0);
         if (n > 0) c->woff += (size_t)n;
     } else {
-        n = sendfile(c->fd, c->file_fd, &c->file_off, (size_t)(c->file_len - c->file_off));
+        n = sendfile(c->w.fd, c->file_fd, &c->file_off, (size_t)(c->file_len - c->file_off));
         if (n == 0) {  // 전송 중 파일이 줄어듦. Content-Length를 채울 수 없다
             conn_close(c);
             return -1;
@@ -96,15 +97,15 @@ static int conn_send(struct conn *c) {
         }
     } else {
         c->last_active = time(NULL);
-        fprintf(stderr, "fd=%d send %zd bytes\n", c->fd, n);
+        fprintf(stderr, "fd=%d send %zd bytes\n", c->w.fd, n);
     }
     if (c->woff < c->wlen || c->file_off < c->file_len) {
-        if (!(c->events & EPOLLOUT)) {
-            if (loop_watch(c, EPOLLOUT) < 0) {
+        if (!(c->w.events & EPOLLOUT)) {
+            if (loop_watch(&c->w, EPOLLOUT) < 0) {
                 conn_close(c);
                 return -1;
             }
-            fprintf(stderr, "fd=%d EPOLLOUT on\n", c->fd);
+            fprintf(stderr, "fd=%d EPOLLOUT on\n", c->w.fd);
         }
         return 0;
     }
@@ -119,12 +120,13 @@ static int conn_send(struct conn *c) {
     c->state = CONN_READING;
     // 앞 응답을 보낸 시간이 다음 요청의 타이머에 들어가지 않게 여기서 기록한다
     if (c->rlen > 0) c->req_start = time(NULL);
-    if (c->events != EPOLLIN) {
-        if (loop_watch(c, EPOLLIN) < 0) {
+    if (c->w.events != EPOLLIN) {
+        int had_out = c->w.events & EPOLLOUT;
+        if (loop_watch(&c->w, EPOLLIN) < 0) {
             conn_close(c);
             return -1;
         }
-        fprintf(stderr, "fd=%d EPOLLOUT off\n", c->fd);
+        if (had_out) fprintf(stderr, "fd=%d EPOLLOUT off\n", c->w.fd);
     }
     return 1;
 }
@@ -180,18 +182,18 @@ void conn_sweep_idle(time_t now) {
         next = c->next;  // conn_close가 c를 해제하므로 먼저 저장
         // 송신 버퍼가 1/3쯤 비기 전에는 EPOLLOUT이 오지 않아, 느리게 읽는 중인지는 줄어든 양으로 안다
         int q;
-        if (c->state == CONN_WRITING && ioctl(c->fd, SIOCOUTQ, &q) == 0) {
+        if (c->state == CONN_WRITING && ioctl(c->w.fd, SIOCOUTQ, &q) == 0) {
             if (q < c->outq) c->last_active = now;
             c->outq = q;
         }
         // 유휴보다 먼저 본다. 한 바이트 보내고 멈춘 연결도 408을 받는다
         if (c->state == CONN_READING && c->rlen > 0 && now - c->req_start > REQ_TIMEOUT_SEC) {
-            fprintf(stderr, "fd=%d request timeout\n", c->fd);
+            fprintf(stderr, "fd=%d request timeout\n", c->w.fd);
             struct http_req req = {.status = 408};
             // 다 못 보내면 WRITING으로 남고 유휴 검사가 맡는다
             if (conn_respond(c, &req) == 0) conn_send(c);
         } else if (now - c->last_active > IDLE_TIMEOUT_SEC) {
-            fprintf(stderr, "fd=%d idle timeout\n", c->fd);
+            fprintf(stderr, "fd=%d idle timeout\n", c->w.fd);
             conn_close(c);
         }
     }
