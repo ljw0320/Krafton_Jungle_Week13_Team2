@@ -257,15 +257,45 @@ static void test_req_check(void) {
     RST("7 IPv6", GET11 "Host: [::1]:8080\r\n\r\n", 0);
 }
 
-// 가장 많이 늘어나는 요청: a:\r\n의 반복으로 8192바이트
+// start + first + a:\r\n 줄들 + 빈 줄. 헤더는 first까지 합쳐 lines줄이다. first는 헤더 한 줄
+static size_t lines_head(char *buf, const char *start, const char *first, int lines) {
+    size_t n = (size_t)sprintf(buf, "%s%s", start, first);
+    for (int i = 1; i < lines; i++) n += (size_t)sprintf(buf + n, "a:\r\n");
+    return n + (size_t)sprintf(buf + n, "\r\n");
+}
+
+static void test_hdr_max(void) {
+    char in[1024];
+    size_t n = lines_head(in, GET11, HOST, 100);
+    req_st("요청 100줄", in, n, 0);
+    n = lines_head(in, GET11, HOST, 101);
+    req_st("요청 101줄", in, n, 431);
+    n = lines_head(in, GET11, "Host: a\x01\r\n", 101);
+    req_st("앞쪽의 제어 문자가 먼저", in, n, 400);
+    n = lines_head(in, GET11, "Host: a/b\r\n", 101);
+    req_st("앞쪽의 나쁜 Host가 먼저", in, n, 400);
+    n = lines_head(in, "GET /api/x HTTP/1.1\r\n" HOST, "a:\r\n", 100);   // Host까지 101줄
+    req_st("Host도 센다", in, n, 431);
+    n = lines_head(in, GET11, HOST, 100) - 2;   // 빈 줄을 빼고 101번째 줄을 붙인다
+    n += (size_t)sprintf(in + n, "b: \x01\r\n\r\n");
+    req_st("101번째 줄의 제어 문자는 431", in, n, 431);
+    n = lines_head(in, "BREW /api/x HTTP/1.1\r\n", HOST, 101);
+    req_st("메서드가 먼저", in, n, 501);
+    n = lines_head(in, "GET /api/.. HTTP/1.1\r\n", HOST, 101);
+    req_st("대상이 먼저", in, n, 400);
+}
+
+// 가장 많이 늘어나는 요청: 콜론 뒤에 공백이 없는 100줄, 8192바이트, Host 없음
 static void test_req_grow(void) {
     static char in[8192];
-    size_t n = (size_t)sprintf(in, "GET /ab HTTP/1.0\r\n"), lines = 0;
-    for (; n + 4 + 2 <= sizeof in; n += 4, lines++) memcpy(in + n, "a:\r\n", 4);
-    memcpy(in + n, "\r\n", 2);
-    check("grow 입력 크기", sizeof in, (long long)(n + 2));
+    size_t n = (size_t)sprintf(in, "GET /ab HTTP/1.0\r\n");
+    for (int i = 0; i < 99; i++) n += (size_t)sprintf(in + n, "a:\r\n");
+    in[n++] = 'b';
+    in[n++] = ':';
+    while (n < sizeof in - 4) in[n++] = 'x';
+    memcpy(in + n, "\r\n\r\n", 4);
     char *out;
-    size_t got, want = strlen("GET /ab HTTP/1.0\r\nHost: " BACKEND "\r\n" CLOSE "\r\n") + 5 * lines;
+    size_t got, want = sizeof in + 100 + strlen("Host: " BACKEND "\r\n" CLOSE);
     check("grow", 0, preq(in, sizeof in, 16384, &out, &got));
     check("grow 길이", (long long)want, (long long)got);
     free(out);
@@ -382,6 +412,15 @@ static void test_resp_check(void) {
     resp_ret("정확히 8192 + 본문", big, 8300, 1, 8192);
     memcpy(big + 8188, "a\r\n\r\n", 5);
     resp_ret("8193", big, 8193, 1, -1);
+
+    size_t n = lines_head(big, OK200, "A: 1\r\n", 100);   // 줄 수 한도
+    resp_ret("100줄", big, n, 1, (ssize_t)n);
+    n = lines_head(big, OK200, "A: 1\r\n", 101);
+    resp_ret("101줄", big, n, 1, -1);
+    n = lines_head(big, "HTTP/1.1 100 Continue\r\n", "A: 1\r\n", 100);
+    resp_ret("1xx 100줄", big, n, 1, (ssize_t)n);
+    n = lines_head(big, "HTTP/1.1 100 Continue\r\n", "A: 1\r\n", 101);
+    resp_ret("1xx 101줄", big, n, 1, -1);
 }
 
 static void resp_ok(const char *name, const char *in, size_t len, int keep, const char *want, size_t wn,
@@ -478,6 +517,7 @@ int main(void) {
     test_req_rewrite();
     test_req_check();
     test_req_grow();
+    test_hdr_max();
     test_resp_check();
     test_resp_rewrite();
     printf("%d passed, %d failed\n", passed, failed);

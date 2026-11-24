@@ -501,7 +501,9 @@ int http_proxy_request(const struct http_req *req, const char *buf, const char *
     const char *hend = buf + req->head_len;
     const char *first = (const char *)memchr(buf, '\n', req->head_len) + 1, *h = first;
     struct hdr f, host_hdr = {"Host", 4, host, host + strlen(host)};
+    int lines = 0;
     while (hdr_next(&h, hend, &f) > 0) {
+        if (++lines > HTTP_HDR_MAX) return 431;
         if (has_ctl(f.v, f.ve)) return 400;
         if (ieq(f.name, f.nlen, "host")) {
             if (!host_ok(&f)) return 400;
@@ -555,10 +557,10 @@ ssize_t http_proxy_response(const char *buf, size_t len, int minor, int keep,
     if (status < 0 || status == 101) return -1;
 
     const char *first = buf + line_len + 2, *hend = buf + head_len, *h = first;
-    int has_cl = 0, has_te = 0, got;
+    int has_cl = 0, has_te = 0, lines = 0, got;
     struct hdr f;
     while ((got = hdr_next(&h, hend, &f)) > 0) {
-        if (has_ctl(f.v, f.ve)) return -1;
+        if (++lines > HTTP_HDR_MAX || has_ctl(f.v, f.ve)) return -1;
         if (ieq(f.name, f.nlen, "transfer-encoding")) has_te = 1;
         else if (ieq(f.name, f.nlen, "content-length")) {
             if (has_cl || parse_cl(f.v, f.ve, &cl) < 0) return -1;

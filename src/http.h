@@ -5,6 +5,7 @@
 #include <sys/types.h>
 
 #define HTTP_HEAD_MAX 8192   /* 백엔드 응답 헤더 한도 */
+#define HTTP_HDR_MAX 100     /* 프록시 헤더 줄 수 한도. Connection 비교가 줄 수의 제곱이라 막는다 */
 
 /* 정적 루트를 realpath로 확인해 저장한다. 실패하면 메시지를 stderr에 찍고 -1 */
 int http_init(const char *root);
@@ -41,7 +42,7 @@ struct http_resp {
 int http_handle(const struct http_req *req, struct http_resp *resp);
 
 /* buf 안의 req를 백엔드에 보낼 요청(헤더 + 본문)으로 out에 다시 만든다. host는 Host가 없을 때 쓴다.
-   0 또는 400/405/411/500/501 */
+   0 또는 400/405/411/431/500/501 */
 int http_proxy_request(const struct http_req *req, const char *buf, const char *host,
                        char *out, size_t cap, size_t *out_len);
 
