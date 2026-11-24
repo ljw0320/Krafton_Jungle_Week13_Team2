@@ -96,11 +96,15 @@ class ProxyTests(ServerTestCase):
                                f'/api/admin 127.0.0.1 {self.other.port}\n')
         self.proc = None
 
-    def launch(self, *options):
+    def launch(self, *options, fd_limit=None, max_children=16, idle_seconds=2):
+        def restrict_fds():
+            import resource
+            resource.setrlimit(resource.RLIMIT_NOFILE, (fd_limit, fd_limit))
         self.proc = subprocess.Popen(
-            [str(BINARY), str(self.port), str(self.root), '16', '2', '1',
+            [str(BINARY), str(self.port), str(self.root), str(max_children), str(idle_seconds), '1',
              '--routes', str(self.config), *options], cwd=ROOT,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            preexec_fn=restrict_fds if fd_limit is not None else None)
         self.addCleanup(self.shutdown)
         self.assertTrue(self.proc.stdout.readline().startswith('READY'),
                         'proxy CLI must accept --routes and start')
@@ -126,6 +130,43 @@ class ProxyTests(ServerTestCase):
             result = http.client.HTTPResponse(peer)
             result.begin()
             return result.status, result.getheaders(), result.read()
+
+    def test_parent_survives_fd_pressure_and_recovers_without_slot_or_fd_leaks(self):
+        self.launch('--backend-limit', '1', fd_limit=32, max_children=64, idle_seconds=30)
+        keeper = http.client.HTTPConnection('127.0.0.1', self.port, timeout=3)
+        self.addCleanup(keeper.close)
+        keeper.request('GET', '/api')
+        self.assertEqual(keeper.getresponse().read(), b'ok')
+        keeper.request('GET', '/')
+        self.assertEqual(keeper.getresponse().read(), b'local')
+        original_workers = children(self.proc.pid)
+        original_fds = len(os.listdir(f'/proc/{self.proc.pid}/fd'))
+        for _ in range(2):
+            holders = []
+            try:
+                for _ in range(36):
+                    try:
+                        holders.append(connect(self.port))
+                    except ConnectionRefusedError:
+                        self.fail('fd pressure closed the server listener')
+                    time.sleep(.01)
+                time.sleep(.15)
+                self.assertIsNone(self.proc.poll(), 'fd pressure must not stop the server')
+                # Admission/release IPC must work while accepting new clients is paused.
+                keeper.request('GET', '/api')
+                self.assertEqual(keeper.getresponse().read(), b'ok')
+            finally:
+                for peer in holders:
+                    peer.close()
+            wait_for(lambda: children(self.proc.pid) == original_workers)
+            self.assertEqual(len(os.listdir(f'/proc/{self.proc.pid}/fd')), original_fds)
+            self.assertEqual(self.exchange()[2], b'ok')
+            wait_for(lambda: children(self.proc.pid) == original_workers)
+        keeper.close()
+        wait_for(lambda: not children(self.proc.pid))
+        self.shutdown()
+        self.assertIn('socketpair control:', self.logs)
+        self.assertLessEqual(self.logs.count('socketpair control:'), 2)
 
     def logged_failures(self):
         self.shutdown()

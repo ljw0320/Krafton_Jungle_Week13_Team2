@@ -232,15 +232,60 @@ static void run_child(int listener, int client_fd, int root_fd, int idle_seconds
     _exit(status);
 }
 
+static int defer_accept(const char *operation, int error, struct timespec *until,
+                         bool *reported)
+{
+    bool temporary = error == EMFILE || error == ENFILE || error == ENOMEM ||
+                     error == ENOBUFS || error == EAGAIN;
+    if (!temporary || !*reported) {
+        errno = error;
+        perror(operation);
+        *reported = true;
+    }
+    if (!temporary)
+        return -1;
+    if (clock_gettime(CLOCK_MONOTONIC, until) < 0) {
+        perror("clock_gettime accept retry");
+        return -1;
+    }
+    until->tv_nsec += 100000000;
+    if (until->tv_nsec >= 1000000000) {
+        ++until->tv_sec;
+        until->tv_nsec -= 1000000000;
+    }
+    return 0;
+}
+
 /* 자식 수 제한 내에서 접속을 수락하고 처리할 자식을 생성하며, 종료된 자식을 회수한다. */
 static int run_parent(int listener, int root_fd, struct child_processes *children,
                       int idle_seconds, const sigset_t *wait_mask)
 {
+    struct timespec retry_until = {0};
+    bool pausing = false, reported = false;
     while (!stopping) {
         if (reap_children(children) == -1)
             return EXIT_FAILURE;
+        struct timespec delay;
+        const struct timespec *timeout = NULL;
+        if (pausing) {
+            struct timespec now;
+            if (clock_gettime(CLOCK_MONOTONIC, &now) < 0) {
+                perror("clock_gettime accept retry");
+                return EXIT_FAILURE;
+            }
+            delay.tv_sec = retry_until.tv_sec - now.tv_sec;
+            delay.tv_nsec = retry_until.tv_nsec - now.tv_nsec;
+            if (delay.tv_nsec < 0) {
+                --delay.tv_sec;
+                delay.tv_nsec += 1000000000;
+            }
+            pausing = delay.tv_sec >= 0 && (delay.tv_sec || delay.tv_nsec);
+            if (pausing)
+                timeout = &delay;
+        }
+        /* Pause only admission: existing workers still need IPC and signal handling. */
         /* Atomically unblock signals while waiting, avoiding a check/wait race. */
-        int count = poll_children(children, listener, wait_mask, NULL);
+        int count = poll_children(children, pausing ? -1 : listener, wait_mask, timeout);
         if (count < 0) {
             if (errno == EINTR)
                 continue;
@@ -253,8 +298,10 @@ static int run_parent(int listener, int root_fd, struct child_processes *childre
         if (fd == -1) {
             if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK || errno == ECONNABORTED)
                 continue;
-            perror("accept");
-            return EXIT_FAILURE;
+            if (defer_accept("accept", errno, &retry_until, &reported) < 0)
+                return EXIT_FAILURE;
+            pausing = true;
+            continue;
         }
         if (set_socket_blocking(fd, false) == -1) {
             close(fd);
@@ -268,11 +315,15 @@ static int run_parent(int listener, int root_fd, struct child_processes *childre
         if (routes_enabled() &&
             socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC | SOCK_NONBLOCK,
                        0, control) < 0) {
-            perror("socketpair control");
+            int error = errno;
             close(fd);
-            return EXIT_FAILURE;
+            if (defer_accept("socketpair control", error, &retry_until, &reported) < 0)
+                return EXIT_FAILURE;
+            pausing = true;
+            continue;
         }
-        pid_t pid = check_call(fork(), "fork");
+        pid_t pid = fork();
+        int fork_error = pid < 0 ? errno : 0;
         if (pid == 0) {
             if (control[0] >= 0)
                 close(control[0]);
@@ -284,12 +335,16 @@ static int run_parent(int listener, int root_fd, struct child_processes *childre
         if (pid == -1) {
             if (control[0] >= 0)
                 close(control[0]);
-            return EXIT_FAILURE;
+            if (defer_accept("fork", fork_error, &retry_until, &reported) < 0)
+                return EXIT_FAILURE;
+            pausing = true;
+            continue;
         }
         children->pids[children->active] = pid;
         children->channels[children->active] =
             (struct child_channel){.fd = control[0], .backend = -1};
         ++children->active;
+        reported = false;
     }
     return EXIT_SUCCESS;
 }
