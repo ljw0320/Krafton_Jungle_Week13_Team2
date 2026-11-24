@@ -362,6 +362,52 @@ class ProxyTests(ServerTestCase):
                     self.assertEqual(stream.read(262144), b'z' * 262144)
                     time.sleep(.4)
 
+    def test_client_reset_cancels_stalled_backend(self):
+        import struct
+        for phase in ('header', 'body'):
+            with self.subTest(phase=phase):
+                waiting = threading.Event()
+                closed = threading.Event()
+
+                def stalled(peer):
+                    header = b''
+                    while not header.endswith(b'\r\n\r\n'):
+                        header += peer.recv(1)
+                    if phase == 'body':
+                        peer.sendall(b'HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\n')
+                    waiting.set()
+                    if peer.recv(1) == b'':
+                        closed.set()
+
+                self.backend.handler = stalled
+                if not self.proc:
+                    self.launch()
+                with connect(self.port) as peer:
+                    peer.sendall(b'GET /api HTTP/1.1\r\nHost: example.com\r\n\r\n')
+                    self.assertTrue(waiting.wait(2))
+                    peer.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
+                self.assertTrue(closed.wait(2), 'backend must close before its 10s timeout')
+                wait_for(lambda: not children(self.proc.pid), seconds=2)
+        self.shutdown()
+        self.assertIn('phase=response_header status=0', self.logs)
+        self.assertIn('phase=response_body status=0', self.logs)
+
+    def test_write_half_close_keeps_delayed_backend_response(self):
+        def delayed(peer):
+            header = b''
+            while not header.endswith(b'\r\n\r\n'):
+                header += peer.recv(1)
+            time.sleep(.1)
+            peer.sendall(b'HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok')
+        self.backend.handler = delayed
+        self.launch()
+        with connect(self.port) as peer:
+            peer.sendall(b'GET /api HTTP/1.1\r\nHost: example.com\r\n\r\n')
+            peer.shutdown(socket.SHUT_WR)
+            result = http.client.HTTPResponse(peer)
+            result.begin()
+            self.assertEqual((result.status, result.read()), (200, b'ok'))
+
     def test_client_reset_stops_upstream_and_reaps_child(self):
         self.backend.reply = b'HTTP/1.1 200 OK\r\nContent-Length: 8388608\r\n\r\n' + b'z' * 8388608
         self.launch()

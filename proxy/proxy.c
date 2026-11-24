@@ -18,7 +18,7 @@ static double now_seconds(void)
     return now.tv_sec + now.tv_nsec / 1e9;
 }
 
-static int wait_socket(int fd, short events, double deadline, short *returned)
+static int wait_socket(int fd, short events, double deadline, short *returned, int client)
 {
     for (;;) {
         double now = now_seconds();
@@ -28,8 +28,11 @@ static int wait_socket(int fd, short events, double deadline, short *returned)
             errno = ETIMEDOUT;
             return -1;
         }
-        struct pollfd p = {.fd = fd, .events = events};
-        int result = poll(&p, 1, (int)((deadline - now) * 1000) + 1);
+        struct pollfd fds[] = {
+            {.fd = fd, .events = events},
+            {.fd = client, .events = 0},
+        };
+        int result = poll(fds, 2, (int)((deadline - now) * 1000) + 1);
         if (result < 0 && errno == EINTR)
             continue;
         if (!result) {
@@ -38,13 +41,18 @@ static int wait_socket(int fd, short events, double deadline, short *returned)
         }
         if (result < 0)
             return -1;
+        /* FIN may be a valid write-half close; only errors/full hangup cancel. */
+        if (fds[1].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+            errno = ECANCELED;
+            return -1;
+        }
         if (returned)
-            *returned = p.revents;
+            *returned = fds[0].revents;
         return 0;
     }
 }
 
-static int connect_backend(const struct proxy_route *route, int *status)
+static int connect_backend(const struct proxy_route *route, int *status, int client)
 {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     *status = 500;
@@ -59,7 +67,7 @@ static int connect_backend(const struct proxy_route *route, int *status)
     if (connect(fd, (const struct sockaddr *)&route->address, sizeof(route->address)) < 0) {
         if (errno != EINPROGRESS)
             goto failed;
-        if (wait_socket(fd, POLLOUT, start + 5, NULL)) {
+        if (wait_socket(fd, POLLOUT, start + 5, NULL, client)) {
             if (errno == ETIMEDOUT)
                 *status = 504;
             goto failed;
@@ -83,7 +91,7 @@ failed:
 /* Upstream readability during a send can be an early final response. Do not deadlock
  * trying to send a POST to a backend that has already stopped reading it. */
 static int send_bytes(int fd, const char *data, size_t length, uintmax_t *sent,
-                       bool upstream)
+                       bool upstream, int client)
 {
     double start = now_seconds();
     if (start < 0)
@@ -91,7 +99,7 @@ static int send_bytes(int fd, const char *data, size_t length, uintmax_t *sent,
     double deadline = start + 10;
     while (length) {
         short events;
-        if (wait_socket(fd, POLLOUT | (upstream ? POLLIN : 0), deadline, &events))
+        if (wait_socket(fd, POLLOUT | (upstream ? POLLIN : 0), deadline, &events, client))
             return -1;
         if (upstream && (events & (POLLIN | POLLHUP)))
             return 1;
@@ -111,10 +119,11 @@ static int send_bytes(int fd, const char *data, size_t length, uintmax_t *sent,
     return 0;
 }
 
-static ssize_t read_bytes(int fd, char *buffer, size_t size, int flags, double deadline)
+static ssize_t read_bytes(int fd, char *buffer, size_t size, int flags, double deadline,
+                          int client)
 {
     for (;;) {
-        if (wait_socket(fd, POLLIN, deadline, NULL))
+        if (wait_socket(fd, POLLIN, deadline, NULL, client))
             return -1;
         ssize_t n = recv(fd, buffer, size, flags);
         if (n < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK))
@@ -125,7 +134,7 @@ static ssize_t read_bytes(int fd, char *buffer, size_t size, int flags, double d
     }
 }
 
-static int read_header(int fd, char *header)
+static int read_header(int fd, char *header, int client)
 {
     double start = now_seconds();
     if (start < 0)
@@ -136,7 +145,7 @@ static int read_header(int fd, char *header)
         size_t room = HEADER_LIMIT - used;
         if (room > 4096)
             room = 4096;
-        ssize_t n = read_bytes(fd, header + used, room, MSG_PEEK, deadline);
+        ssize_t n = read_bytes(fd, header + used, room, MSG_PEEK, deadline, client);
         if (n <= 0)
             return errno == ETIMEDOUT ? 504 : 502;
         size_t end = 0;
@@ -152,7 +161,7 @@ static int read_header(int fd, char *header)
             return 502;
         size_t consumed = 0;
         while (consumed < take) {
-            n = read_bytes(fd, header + used + consumed, take - consumed, 0, deadline);
+            n = read_bytes(fd, header + used + consumed, take - consumed, 0, deadline, client);
             if (n <= 0)
                 return errno == ETIMEDOUT ? 504 : 502;
             consumed += (size_t)n;
@@ -170,7 +179,7 @@ int serve_proxy(int client, const struct proxy_route *route, struct request *req
                 const char *header, const char *body)
 {
     int status;
-    int backend = connect_backend(route, &status);
+    int backend = connect_backend(route, &status, client);
     char raw[HEADER_LIMIT + 1];
     char buffer[16384];
     char *response = NULL;
@@ -180,9 +189,9 @@ int serve_proxy(int client, const struct proxy_route *route, struct request *req
     if (backend < 0)
         goto failed;
     phase = "request_send";
-    int result = send_bytes(backend, header, strlen(header), &upstream_sent, true);
+    int result = send_bytes(backend, header, strlen(header), &upstream_sent, true, client);
     if (!result)
-        result = send_bytes(backend, body, request->content_length, &upstream_sent, true);
+        result = send_bytes(backend, body, request->content_length, &upstream_sent, true, client);
     if (result < 0) {
         status = errno == ETIMEDOUT ? 504 : 502;
         goto failed;
@@ -190,7 +199,7 @@ int serve_proxy(int client, const struct proxy_route *route, struct request *req
     if (result == 1)
         request->close = true;
     phase = "response_header";
-    status = read_header(backend, raw);
+    status = read_header(backend, raw, client);
     if (status)
         goto failed;
     status = proxy_response_header(raw, request, &response, &expected);
@@ -199,7 +208,7 @@ int serve_proxy(int client, const struct proxy_route *route, struct request *req
     known = true;
     phase = "client_header_send";
     uintmax_t header_sent = 0;
-    result = send_bytes(client, response, strlen(response), &header_sent, false);
+    result = send_bytes(client, response, strlen(response), &header_sent, false, -1);
     started = header_sent > 0;
     if (result) {
         status = 0; /* A downstream failure is not an upstream 504. */
@@ -214,14 +223,14 @@ int serve_proxy(int client, const struct proxy_route *route, struct request *req
             status = 500;
             goto failed;
         }
-        ssize_t n = read_bytes(backend, buffer, take, 0, now + 10);
+        ssize_t n = read_bytes(backend, buffer, take, 0, now + 10, client);
         if (n <= 0) {
             status = errno == ETIMEDOUT ? 504 : 502;
             goto failed;
         }
         received += (size_t)n;
         phase = "client_body_send";
-        if (send_bytes(client, buffer, (size_t)n, &sent, false)) {
+        if (send_bytes(client, buffer, (size_t)n, &sent, false, -1)) {
             status = 0;
             goto failed;
         }
@@ -233,6 +242,8 @@ int serve_proxy(int client, const struct proxy_route *route, struct request *req
 failed:
     {
         int error = errno;
+        if (error == ECANCELED)
+            status = 0;
         if (backend >= 0)
             close(backend);
         free(response);
