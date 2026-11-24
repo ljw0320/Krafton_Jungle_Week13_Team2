@@ -13,6 +13,7 @@ enum {
     MAX_CONNECTIONS = 16,
     QUEUE_CAPACITY = 16,
     CONTEXT_CAPACITY = 8,
+    CONTEXT_WAIT_TIMEOUT_MS = 2000,
 
     IO_BUDGET = 65536,
     CALL_BUDGET = 64,
@@ -81,6 +82,7 @@ struct connection {
     size_t length;
     size_t sent;
 
+    int64_t context_wait_deadline;
     int64_t progress;
     int64_t drain_deadline;
     size_t drain_remaining;
@@ -93,6 +95,8 @@ struct connection {
 struct context_pool {
     struct request_context entries[CONTEXT_CAPACITY];
     struct connection *owners[CONTEXT_CAPACITY];
+    struct connection *waiters[MAX_CONNECTIONS];
+    size_t wait_count;
     pthread_mutex_t mutex;
 };
 

@@ -117,8 +117,42 @@ static void test_concurrent_ownership(void)
     finish_pool();
 }
 
+static void test_fifo(void)
+{
+    static struct connection later;
+    prepare_pool();
+    memset(&later, 0, sizeof(later));
+    later.context_pool = &pool;
+    for (int i = 0; i < CONTEXT_CAPACITY; i++) CHECK(context_acquire(&clients[i]));
+    struct connection *first = &clients[CONTEXT_CAPACITY];
+    CHECK(!context_acquire(first));
+    int64_t deadline = first->context_wait_deadline;
+    CHECK(!context_acquire(first));
+    CHECK(pool.wait_count == 1 && first->context_wait_deadline == deadline);
+    CHECK(!context_acquire(&later));
+    context_release(&clients[0]);
+    CHECK(!context_acquire(&later)); /* 신규/후순위 추월 차단 */
+    CHECK(context_acquire(first));
+    context_release(first);
+    CHECK(context_acquire(&later));
+    context_release(&later);
+    /* 종료·만료는 공통 release를 통해 선두를 제거합니다. */
+    CHECK(context_acquire(&clients[0]));
+    CHECK(!context_acquire(first));
+    CHECK(!context_acquire(&later));
+    context_release(first);
+    CHECK(pool.wait_count == 1 && pool.waiters[0] == &later);
+    context_release(&clients[0]);
+    CHECK(context_acquire(&later));
+    context_release(&later);
+    finish_pool();
+    CHECK(pool.wait_count == 0);
+    puts("FIFO: duplicate, no overtaking, order, cancellation passed.");
+}
+
 int main(void)
 {
+    test_fifo();
     test_acquire_preserves_owned_data();
     test_full_pool_returns_failure();
     test_release_and_clean_reuse();

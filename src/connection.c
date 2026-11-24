@@ -201,7 +201,7 @@ static bool receive_step(struct server *server, struct connection *client, size_
     return true;
 }
 
-/* 실제 바이트가 있을 때만 확보합니다. 풀 고갈 시 대기 정책은 3단계에서 추가합니다. */
+/* 실제 바이트가 있을 때만 확보합니다. 풀 고갈 시 읽기를 중단하고 메인의 재개를 기다립니다. */
 static bool receive_context(struct connection *client)
 {
     unsigned char first_byte;
@@ -210,7 +210,6 @@ static bool receive_context(struct connection *client)
         return false;
     if (context_acquire(client))
         return true;
-    client->reason = "request_context_limit";
     return false;
 }
 

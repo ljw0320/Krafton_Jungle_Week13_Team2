@@ -76,6 +76,8 @@ static void accept_clients(struct server *server, int listener)
 /* 정리 단계는 마지막 수신 시각 대신 최초에 정한 절대 마감 시각을 사용합니다. */
 static int64_t connection_deadline(const struct connection *client)
 {
+    if (client->context_wait_deadline)
+        return client->context_wait_deadline;
     if (client->phase == DRAIN_INPUT)
         return client->drain_deadline;
     if (connection_idle(client))
@@ -87,6 +89,8 @@ static int64_t connection_deadline(const struct connection *client)
 
 static const char *timeout_reason(const struct connection *client)
 {
+    if (client->context_wait_deadline)
+        return "context_wait_timeout";
     if (client->phase == DRAIN_INPUT)
         return "drain_timeout";
     if (connection_idle(client))
@@ -118,6 +122,7 @@ static bool poll_client(struct connection *client, struct pollfd *fd, int *timeo
     if (left <= 0) {
         client->reason = timeout_reason(client);
         connection_close(client);
+        *timeout = 0; /* 만료된 선두 제거 후 다음 FIFO 대기자를 즉시 재검사 */
         return false;
     }
 
@@ -127,7 +132,7 @@ static bool poll_client(struct connection *client, struct pollfd *fd, int *timeo
         *timeout = 0;
 
     *fd = (struct pollfd){.fd = client->fd,
-                         .events = writing ? POLLOUT : POLLIN};
+                         .events = client->context_wait_deadline ? 0 : (writing ? POLLOUT : POLLIN)};
 
     return true;
 }
@@ -151,10 +156,22 @@ static nfds_t prepare_poll(struct server *server, int listener,
         if (client->state != WAITING)
             continue;
 
+        /* 슬롯당 하나의 대기 기록: 최대 MAX_CONNECTIONS개, 중복 없음.
+         * 반환 작업자의 wake 알림으로 재검사하며 절대 2초 기한을 유지합니다. */
+        if (client->context_wait_deadline && now < client->context_wait_deadline &&
+            context_acquire(client)) {
+            client->context_wait_deadline = 0;
+            client->progress = now;
+            enqueue_turn(server, client);
+            continue;
+        }
         if (poll_client(client, &fds[count], timeout, now))
             owners[count++] = client;
     }
 
+    /* 슬롯 순서가 FIFO와 다르면 앞 슬롯의 대기자를 다음 루프에서 재검사합니다. */
+    if (server->count)
+        *timeout = 0;
     return count;
 }
 
@@ -166,6 +183,11 @@ static void dispatch(struct server *server, struct pollfd *fds, struct connectio
         if (fds[i].revents & POLLNVAL) {
             owners[i]->reason = "invalid_socket";
             connection_close(owners[i]);
+        } else if (owners[i]->context_wait_deadline) {
+            if (fds[i].revents & (POLLHUP | POLLERR)) {
+                owners[i]->reason = "context_wait_closed";
+                connection_close(owners[i]);
+            }
         } else if (fds[i].revents || connection_buffered(owners[i]) || (owners[i]->phase == CGI_OUTPUT &&
                    (now_ms() >= owners[i]->cgi.next_check || now_ms() >= owners[i]->cgi.deadline))) {
             enqueue_turn(server, owners[i]);
