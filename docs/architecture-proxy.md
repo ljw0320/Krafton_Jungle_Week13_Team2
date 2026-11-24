@@ -94,6 +94,7 @@ tests/
   test_proxy.c        # 새로 만듦. http.c와 route.c를 #include하는 단위 테스트
   backend.py          # 새로 만듦. 테스트용 백엔드(python3 표준 라이브러리)
   proxy_test.sh       # 새로 만듦. 기능 테스트
+  proxy_cases.py      # 새로 만듦. proxy_test.sh가 부르는 소켓 시나리오(한 배치의 RST, accept 재개)
 ```
 
 - `server.c`는 바뀌지 않는다.
@@ -596,6 +597,7 @@ static int proxy_fail(struct conn *c, int status, const char *why) {
 | 백엔드를 10초 가까이 기다린 뒤 응답 | sweep | A가 유휴나 408로 닫히지 않는다 |
 | 프록시 요청 중 fd가 한도에 닿음 | `proxy_start` | 500 + 닫기. 서버는 계속 동작한다 |
 | accept가 멈춘 뒤 B가 닫힘 | `proxy_close` | accept를 재개한다 |
+| 한 배치에 이전 B의 이벤트가 남았는데 같은 자리에 새 B를 엶 | - | 지금 구조에서는 생기지 않는다. B를 닫고 새 B를 여는 길은 B 자신의 이벤트뿐이고 배치에는 fd마다 이벤트가 하나다(Task 7 검증) |
 | backpressure로 B를 끔 | `loop_unwatch` | accept를 재개하지 않는다 |
 
 ---
@@ -651,7 +653,7 @@ static int proxy_fail(struct conn *c, int status, const char *why) {
 	- 중계 중 `curl --max-time 0.1`로 끊기, 기다리는 중 FIN으로 떠나기, 백엔드 강제 종료(`kill -9`) 뒤에도 13초 안에 fd 수와 `conn_count`가 처음 값으로 돌아온다.
 	- 느린 클라이언트가 완전히 멈추면 10~14초에 A와 B가 닫힌다.
 	- 동시 요청: `seq 200 | xargs -P 100 -I{} curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/api/cl | sort | uniq -c`가 `200 200`
-	- RST 클라이언트와 정상 요청을 섞은 동시 요청 300건 뒤 ASan 오류가 0개다(한 배치 안의 해제).
+	- RST 클라이언트와 정상 요청을 섞은 동시 요청 300건 뒤 ASan 오류가 0개다. 한 배치 안의 해제는 300건으로 잡히지 않아, 서버를 SIGSTOP한 사이 A의 RST와 B의 응답을 보내고 SIGCONT하는 케이스를 따로 둔다(`proxy_cases.py batch`).
 	- `ulimit -n`을 낮춰 프록시 요청을 동시에 보내면 500이 나오거나 기다렸다가 처리되고, 그 뒤 `curl`이 200이다.
 
 ### 7단계: Round-Robin (빼도 된다)

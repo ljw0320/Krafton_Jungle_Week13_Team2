@@ -226,10 +226,10 @@ Task 2 (route, main, Makefile, 테스트) ─┴─ Task 3 (http.c, test_proxy.c
 **Files:**
 - Modify: `tests/proxy_test.sh`. 결함이 나오면 `src/`를 Task 5의 강도로 고친다.
 
-- [ ] **Step 1: 테스트** — 설계 6단계의 여섯 항목. fd 수는 `/proc/$SP/fd`, 연결 수는 로그 마지막의 `conn_count=`. RST 클라이언트는 1초(valgrind면 5초), 나머지는 13초 안. 멈춘 클라이언트는 10~14초. `ulimit` 케이스는 별도 서버를 `ulimit -n`을 낮춰 띄운다.
-- [ ] **Step 2: 공통 확인** — RST 300건 케이스가 ASan에서 통과한다.
-- [ ] **Step 3: verifier** — 고의 결함: `loop_unwatch`의 배치 지우기 반복문을 빼고 ASan으로 RST 300건을 돌린다. 잡히지 않으면 한 배치에 A의 RST와 B의 `EPOLLIN`이 같이 오는 상황을 만들어 확인한다(서버를 `SIGSTOP` → A의 RST와 B의 응답을 보냄 → `SIGCONT`). 이 방법으로 잡히면 케이스로 넣는다.
-- [ ] **Step 4: 커밋, push** — `test: 프록시 자원 회수`
+- [x] **Step 1: 테스트** — 설계 6단계의 여섯 항목. fd 수는 `/proc/$SP/fd`, 연결 수는 로그 마지막의 `conn_count=`. RST 클라이언트는 1초(valgrind면 5초), 나머지는 13초 안. 멈춘 클라이언트는 10~14초. `ulimit` 케이스는 별도 서버를 `ulimit -n`을 낮춰 띄운다.
+- [x] **Step 2: 공통 확인** — RST 300건 케이스가 ASan에서 통과한다.
+- [x] **Step 3: verifier** — 고의 결함: `loop_unwatch`의 배치 지우기 반복문을 빼고 ASan으로 RST 300건을 돌린다. 잡히지 않으면 한 배치에 A의 RST와 B의 `EPOLLIN`이 같이 오는 상황을 만들어 확인한다(서버를 `SIGSTOP` → A의 RST와 B의 응답을 보냄 → `SIGCONT`). 이 방법으로 잡히면 케이스로 넣는다.
+- [x] **Step 4: 커밋, push** — `test: 프록시 자원 회수`
 
 ### Task 8: Round-Robin (설계 7단계, 사용자가 빼자고 하면 뺀다)
 
@@ -268,3 +268,4 @@ Task 2 (route, main, Makefile, 테스트) ─┴─ Task 3 (http.c, test_proxy.c
 - Task 1: `event_loop.c:12` 주석의 `loop_unwatch가 재개할`을 `loop_accept_resume`으로, `event_loop.h:8`의 쓰지 않는 `struct conn;` 삭제 (Task 5에서 고침)
 - Task 5: `up_send`의 부분 전송 검사를 빼도 기능 테스트가 잡지 못한다. 요청이 8.4KB 이하라 보통 한 번에 나간다(사본에서 `send`를 잘라 확인함). `start_fail`의 `free` 누락은 valgrind(Task 9)로만 잡힌다
 - Task 6: 테스트가 잡지 못하는 결함(비용이 커서 문서화만): `proxy_resume`·`up_send`·연결 완료의 `since` 제거, `relay`와 `proxy_fail`의 `last_active` 제거, 한도 비교의 `>`를 `>=`로(3회 중 1회만 실패). 원본은 코드 대조와 사본 실험으로 확인했다(SENDING 타이머 포함)
+- Task 7: `event_loop.c`의 `ev_n = 0`은 없어도 동작이 같다(`for`가 끝나면 `ev_i == ev_n`). 설계 코드라 남겼고, 지울지는 Task 10에서 정한다. valgrind에서는 fd를 3개로 맞출 수 없어 `resume`, `idle`을 건너뛰고, fd 한도 케이스의 curl 56을 허용한다(valgrind의 `accept4`가 한도를 넘은 연결을 닫는 것을 strace로 확인)
