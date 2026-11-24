@@ -5,8 +5,6 @@
 
 #define MAX_EVENTS 64
 
-struct conn;
-
 enum watch_kind { W_CLIENT, W_BACKEND };
 struct watch {
     enum watch_kind kind;

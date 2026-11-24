@@ -7,9 +7,10 @@
 
 #include "conn.h"
 #include "event_loop.h"
+#include "proxy.h"
 
 static int epfd;
-static int lfd;  // loop_unwatch가 재개할 listen fd
+static int lfd;  // loop_accept_resume이 재개할 listen fd
 static int accept_paused;
 static struct epoll_event events[MAX_EVENTS];  // loop_unwatch가 보므로 static
 static int ev_i, ev_n;
@@ -99,7 +100,11 @@ int loop_run(int listen_fd) {
                 accept_all(listen_fd);
                 continue;
             }
-            struct conn *c = (struct conn *)w;  // 지금은 W_CLIENT뿐
+            if (w->kind == W_BACKEND) {
+                proxy_event((struct upstream *)w, e);
+                continue;
+            }
+            struct conn *c = (struct conn *)w;
             if (e & (EPOLLERR | EPOLLHUP)) {
                 conn_close(c);
                 continue;

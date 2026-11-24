@@ -9,8 +9,8 @@ LOG=$(mktemp)
 pass=0
 fail=0
 # 느린 서버(valgrind)에서 시간 제한이 헛되이 실패하지 않게 넓힌다
-W=10; MT=5; XT=3
-[ -n "$SERVER_WRAP" ] && { W=60; MT=25; XT=15; }
+W=10; MT=5; XT=3; LIM=1
+[ -n "$SERVER_WRAP" ] && { W=60; MT=25; XT=15; LIM=5; }
 
 cleanup() {
     kill $(jobs -p) 2>/dev/null   # 서버, 백엔드, 백그라운드 클라이언트
@@ -70,6 +70,11 @@ waitport() {   # 포트 pid: 안 열리면 바로 실패로 끝낸다
     exit 1
 }
 
+for p in $PORT 8001 8003; do   # 남은 프로세스가 있으면 엉뚱한 서버를 시험하게 된다
+    if (exec 3<>/dev/tcp/127.0.0.1/$p) 2>/dev/null; then
+        echo "FAIL start: 포트 $p가 이미 열려 있음" >&2; exit 1
+    fi
+done
 mkdir -p "$ROOT"
 printf '<h1>home</h1>\n' >"$ROOT/index.html"
 
@@ -94,8 +99,8 @@ out=$(raw 'POST /api/echo HTTP/1.1\r\nHost: h\r\nConnection: close, Content-Leng
 check "Connection names CL and Host stay" $'POST /api/echo HTTP/1.1\r\nHost: h\r\nConnection: close\r\nContent-Length: 2\r\n\r\nhi' "$(rbody "$out")"
 out=$(raw 'GET /api/echo HTTP/1.1\r\nHost: h\r\nConnection: close\r\nContent-Length: 2\r\n\r\nhi')
 check "GET with body forwarded" $'GET /api/echo HTTP/1.1\r\nHost: h\r\nConnection: close\r\nContent-Length: 2\r\n\r\nhi' "$(rbody "$out")"
-out=$(raw 'GET /api/a%2Fb?x=%20 HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n')
-check "target forwarded as is" $'GET /api/a%2Fb?x=%20 HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r' "$(rbody "$out")"
+out=$(raw 'GET /api/echo/a%2Fb?x=%20 HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n')
+check "target forwarded as is" $'GET /api/echo/a%2Fb?x=%20 HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r' "$(rbody "$out")"
 check "a..b passes" 200 "$(code /api/a..b)"
 check "query ../ passes" 200 "$(code '/api/x?y=../z')"
 
@@ -123,12 +128,13 @@ check "501 unknown method" "HTTP/1.1 501 Not Implemented" "$(status "$(raw "BREW
 out=$(raw "GET /dead/x HTTP/1.1$RQ")
 check "502 backend down" "HTTP/1.1 502 Bad Gateway|Connection: close|<h1>502 Bad Gateway</h1>" \
     "$(status "$out")|$(hdr "$out" Connection)|$(rbody "$out")"
-for n in bad lf dupcl tecl bighead 101 close rst head/8193; do
+for n in bad lf dupcl tecl bighead 101 close rst; do
     check "502 $n" 502 "$(code /api/$n)"
 done
 check "head 8191 is 200" 200 "$(code /api/head/8191)"
 check "head 8192 is 200" 200 "$(code /api/head/8192)"
 check "head 8193 is 502" 502 "$(code /api/head/8193)"
+check "502 HTTP/1.0 request, chunked reply" "HTTP/1.1 502 Bad Gateway" "$(status "$(raw 'GET /api/chunked HTTP/1.0\r\nHost: x\r\n\r\n')")"
 out=$(raw "GET /api/1xx HTTP/1.1$RQ")
 check "1xx single status" "HTTP/1.1 200," "$(tr -d '\r' <<<"$out" | grep -o '^HTTP/1\.[01] [0-9]*' | tr '\n' ,)"
 check "1xx body" "after-1xx" "$(rbody "$out" | tr -d '\n')"
@@ -141,9 +147,11 @@ check "cl, static, cl reuse A" "200,200,200,|1" "$out|$(conns)"
 check "chunked body" "hello world" "$(cu $U/api/chunked)"
 out=$(multi /api/chunked /api/chunked)
 check "chunked closes A" "200,200,|2" "$out|$(conns)"
+nerr=$(grep -c "proxy error" "$LOG")
 check "nolen body" "nolen-body" "$(cu $U/api/nolen)"
 out=$(multi /api/nolen /api/nolen)
 check "nolen closes A" "200,200,|2" "$out|$(conns)"
+check "nolen normal end logs no proxy error" "$nerr" "$(grep -c "proxy error" "$LOG")"
 out=$(multi /api/empty /api/cl)
 check "204 keeps A" "204,200,|1" "$out|$(conns)"
 check "204 has no Content-Length" 0 "$(curl -si --max-time $MT $U/api/empty | grep -ic '^content-length')"
@@ -156,6 +164,12 @@ for p in over over/split; do
     check "$p next request" "<h1>home</h1>" "$(<"$TMP/o2")"
     multi /api/$p /index.html >/dev/null
     check "$p keeps A" 1 "$(conns)"
+done
+# 길이를 알면 B의 FIN을 기다리지 않는다: 응답과 같은 A의 다음 요청이 LIM초 안에 끝난다
+out=$(curl -sv --max-time $LIM -o "$TMP/nc1" -w '%{http_code},' $U/api/noclose -o "$TMP/nc2" $U/api/cl 2>"$TMP/v")
+check "noclose: length known, no wait for FIN" "200,200,|noclose-body|cl-body|1" "$out|$(<"$TMP/nc1")|$(<"$TMP/nc2")|$(conns)"
+for i in 1 2 3 4 5; do
+    check "rstafter $i" "rstafter-body" "$(cu $U/api/rstafter)"
 done
 out=$(raw "GET /api/cl HTTP/1.1$RQ")
 check "Connection close request" "HTTP/1.1 200 OK|Connection: close" "$(status "$out")|$(hdr "$out" Connection)"
@@ -214,6 +228,7 @@ check "POST 8192 in pieces" "HTTP/1.1 200 OK True" "$out"
 # 큰 응답: 8MB. 길이를 아는 것은 sha256, 모르는 것은 느린 클라이언트와 backpressure
 cu -o "$TMP/big" $U/api/big
 check "big sha256" "$(bodysha 8388608)" "$(fsha "$TMP/big")"
+slog=$(wc -l <"$LOG")   # 이 구간의 로그만 센다
 python3 -c '
 import socket, hashlib, time
 s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
@@ -230,15 +245,15 @@ head, _, b = data.partition(b"\r\n\r\n")
 print(head.split(b"\r\n")[0].decode(), hashlib.sha256(b).hexdigest())' >"$TMP/slow" &
 slowpid=$!
 sleep 0.5
-LIM=1; [ -n "$SERVER_WRAP" ] && LIM=5
 fast() { curl -s -o /dev/null -w '%{http_code}' --max-time $LIM "$U$1"; }
 r1=$(fast /index.html); r2=$(fast /api/cl)
 kill -0 $slowpid 2>/dev/null && alive=alive || alive=done
 check "other requests fast while A is slow" "200,200,alive" "$r1,$r2,$alive"
 wait $slowpid
 check "slow reader bignolen sha256, A closes" "HTTP/1.1 200 OK $(bodysha 8388608)" "$(<"$TMP/slow")"
-offs=$(grep -Ec 'backend fd=[0-9]+ off' "$LOG"); ons=$(grep -Ec 'backend fd=[0-9]+ on' "$LOG")
-check "backpressure off and on logged" "yes" "$([ "$offs" -ge 1 ] && [ "$ons" -ge 1 ] && echo yes || echo "off=$offs on=$ons")"
+seg=$(tail -n +$((slog + 1)) "$LOG")
+offs=$(grep -Ec 'backend fd=[0-9]+ off' <<<"$seg"); ons=$(grep -Ec 'backend fd=[0-9]+ on' <<<"$seg")
+check "backpressure off and on repeat" "yes" "$([ "$offs" -ge 2 ] && [ "$ons" -ge 2 ] && echo yes || echo "off=$offs on=$ons")"
 check "connect logged" "yes" "$(grep -q 'backend fd=[0-9]* connect 127.0.0.1:8001' "$LOG" && echo yes || echo no)"
 
 # 시작 뒤에도 서버가 산다

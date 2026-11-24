@@ -14,6 +14,8 @@
 #include "conn.h"
 #include "event_loop.h"
 #include "http.h"
+#include "proxy.h"
+#include "route.h"
 
 static struct conn *head;
 static int conn_count;
@@ -31,6 +33,8 @@ struct conn *conn_new(int fd) {
     int on = 1;
     if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on)) < 0) perror("setsockopt");
     c->w = (struct watch){W_CLIENT, fd, 0};
+    c->up.w = (struct watch){W_BACKEND, -1, 0};
+    c->up.c = c;
     c->file_fd = -1;  // calloc의 0은 stdin이라 conn_close가 fd 0을 닫는다
     c->state = CONN_READING;
     c->last_active = time(NULL);  // 아무것도 안 보내는 연결도 유휴로 닫히게
@@ -46,6 +50,7 @@ struct conn *conn_new(int fd) {
 }
 
 void conn_close(struct conn *c) {
+    proxy_close(c);
     loop_unwatch(&c->w);  // close 전에 해야 한다
     close(c->w.fd);
     loop_accept_resume();
@@ -100,6 +105,10 @@ static int conn_send(struct conn *c) {
         fprintf(stderr, "fd=%d send %zd bytes\n", c->w.fd, n);
     }
     if (c->woff < c->wlen || c->file_off < c->file_len) {
+        if (c->up.w.events) {  // backpressure. 낮추기만 하면 B의 RST가 LT로 계속 온다
+            loop_unwatch(&c->up.w);
+            fprintf(stderr, "fd=%d backend fd=%d off\n", c->w.fd, c->up.w.fd);
+        }
         if (!(c->w.events & EPOLLOUT)) {
             if (loop_watch(&c->w, EPOLLOUT) < 0) {
                 conn_close(c);
@@ -109,6 +118,7 @@ static int conn_send(struct conn *c) {
         }
         return 0;
     }
+    if (c->up.w.fd >= 0) return proxy_resume(c);  // B가 열려 있으면 보낼 것이 더 있다
     if (c->file_fd >= 0) close(c->file_fd);
     c->file_fd = -1;
     free(c->wbuf);
@@ -150,22 +160,40 @@ static int conn_respond(struct conn *c, const struct http_req *req) {
     return 0;
 }
 
+int conn_error(struct conn *c, int status) {
+    proxy_close(c);
+    free(c->wbuf);
+    c->wbuf = NULL;
+    struct http_req req = {.status = status};
+    if (conn_respond(c, &req) < 0) return -1;
+    // 다 못 보내면 WRITING으로 남고 유휴 검사가 맡는다. 닫는 응답이라 1은 오지 않는다
+    return conn_send(c);
+}
+
 // rbuf의 완성된 요청을 차례로 처리한다. 재귀 대신 루프로 파이프라이닝을 처리한다
 static int conn_process(struct conn *c) {
     for (;;) {
         struct http_req req;
         ssize_t n = http_parse(c->rbuf, c->rlen, RBUF_SIZE, &req);  // rlen <= RBUF_SIZE
         if (n == 0) break;
-        if (conn_respond(c, &req) < 0) return -1;
-        // req가 rbuf를 가리키므로 응답을 만든 뒤에 지운다
+        struct route *r = n > 0 ? route_find(req.target, req.target_len) : NULL;
+        int st = r ? proxy_start(c, &req, r) : 0;
+        if (st < 0) return -1;
+        if (st > 0) {
+            req.status = st;
+            req.backend = 1;
+        }
+        if ((!r || st > 0) && conn_respond(c, &req) < 0) return -1;
+        // req가 rbuf를 가리키므로 응답이나 전달할 요청을 만든 뒤에 지운다
         if (n > 0) {
             c->rlen -= (size_t)n;
             memmove(c->rbuf, c->rbuf + n, c->rlen);
         } else {
             c->rlen = 0;  // 형식 오류는 닫는 응답이므로 남은 바이트는 쓰지 않는다
         }
-        int r = conn_send(c);
-        if (r <= 0) return r;
+        if (r && st == 0) return 0;  // PROXYING. 다음 요청은 응답이 끝난 뒤
+        int sent = conn_send(c);
+        if (sent <= 0) return sent;
     }
     // 꽉 찬 채로 돌아가면 다음 recv 크기가 0이라 FIN과 구분되지 않는다
     if (c->rlen == RBUF_SIZE) {
@@ -180,6 +208,7 @@ void conn_sweep_idle(time_t now) {
     struct conn *next;
     for (struct conn *c = head; c; c = next) {
         next = c->next;  // conn_close가 c를 해제하므로 먼저 저장
+        if (c->state == CONN_PROXYING) continue;
         // 송신 버퍼가 1/3쯤 비기 전에는 EPOLLOUT이 오지 않아, 느리게 읽는 중인지는 줄어든 양으로 안다
         int q;
         if (c->state == CONN_WRITING && ioctl(c->w.fd, SIOCOUTQ, &q) == 0) {
@@ -189,9 +218,7 @@ void conn_sweep_idle(time_t now) {
         // 유휴보다 먼저 본다. 한 바이트 보내고 멈춘 연결도 408을 받는다
         if (c->state == CONN_READING && c->rlen > 0 && now - c->req_start > REQ_TIMEOUT_SEC) {
             fprintf(stderr, "fd=%d request timeout\n", c->w.fd);
-            struct http_req req = {.status = 408};
-            // 다 못 보내면 WRITING으로 남고 유휴 검사가 맡는다
-            if (conn_respond(c, &req) == 0) conn_send(c);
+            conn_error(c, 408);
         } else if (now - c->last_active > IDLE_TIMEOUT_SEC) {
             fprintf(stderr, "fd=%d idle timeout\n", c->w.fd);
             conn_close(c);

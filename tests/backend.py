@@ -74,9 +74,9 @@ def handle(c, port):
             send(resp(200, "OK", [("Content-Length", 100)], b"0123456789"))
         elif name == "over":
             if arg == "split":
-                send(resp(200, "OK", [("Content-Length", 5)], b"hello"))
+                send(resp(200, "OK", [("Content-Length", 5)], b"he"))  # 본문 단계에서 넘치게
                 time.sleep(0.3)
-                send(b"EXTRA-BYTES")
+                send(b"lloEXTRA-BYTES")
             else:
                 send(resp(200, "OK", [("Content-Length", 5)], b"helloEXTRA-BYTES"))
         elif name == "empty":
@@ -111,6 +111,12 @@ def handle(c, port):
                 send(h + b"ok")
         elif name == "close":
             pass
+        elif name == "noclose":  # 길이만큼 보내고 닫지 않는다
+            send(ok(b"noclose-body\n"))
+            time.sleep(60)
+        elif name == "rstafter":  # 다 보낸 직후 RST
+            send(ok(b"rstafter-body\n"))
+            c.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
         elif name == "rst":
             c.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
         elif name == "hang":
