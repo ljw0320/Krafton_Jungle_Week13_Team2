@@ -36,7 +36,7 @@
 
 | 항목 | 형식 |
 |---|---|
-| 사용법 메시지 | stderr에 `usage: ./server <port> <root>`, `exit(1)`. `argc != 3`(**프록시**: 규칙을 이어서 받아 `argc < 3`)이거나 포트 검사(지금과 같음)에 실패하면 |
+| 사용법 메시지 | stderr에 `usage: ./server <port> <root> [<prefix>=<ip>:<port> ...]`, `exit(1)`. `argc < 3`이거나 포트 검사(지금과 같음)에 실패하면 |
 | 루트 오류 | `realpath: <경로>: <strerror>` / `root: <경로>: Not a directory` / `root: /: not allowed`, 모두 stderr, `exit(1)`. `server_listen`보다 먼저 검사한다 |
 | 로그 | [architecture-tcp.md](architecture-tcp.md)의 로그 그대로. 요청 로그는 추가하지 않는다 |
 | 상태 라인 | 요청 버전과 관계없이 `HTTP/1.1 <코드> <이유>` |
@@ -236,7 +236,7 @@ sweep (1초마다)
 5. 리스트에서 제거
 6. `free(c)`
 
-- **프록시**: 맨 앞에 `proxy_close(c)`, 2 다음에 `loop_accept_resume()`이 추가된다.
+- 프록시 1단계에서 2 다음에 `loop_accept_resume()`이 들어갔다. **프록시**: 맨 앞에 `proxy_close(c)`가 추가된다.
 - TCP 설계의 순서를 바꾸지 않고 한 줄을 더한다. `file_fd`는 epoll에 등록하지 않으므로 `loop_unwatch`보다 앞일 필요가 없다.
 
 ---
@@ -463,7 +463,7 @@ sweep (1초마다)
 - HEAD를 지원하지 않는다(RFC 9110은 범용 서버에 MUST). 405로 답한다.
 - 모르는 메서드의 501도 연결을 닫는다. 클라이언트가 다시 연결하는 비용이 든다.
 - 헤더와 본문이 별도 시스템 콜로 나가 패킷이 하나 더 생길 수 있다.
-- fd 한도에 닿아 accept가 멈춘 뒤 `conn_send`가 파일을 다 보내고 `close(file_fd)`로 fd를 비워도 accept는 재개되지 않는다. 재개는 `loop_unwatch`(연결이 닫힐 때)에만 있다. 열린 연결이 모두 계속 요청을 보낼 때만 오래가고, 유휴 연결이 하나라도 있으면 10~11초 안에 풀린다. 막으려면 재개 부분을 함수로 꺼내 `conn_send`의 `close(file_fd)` 뒤에도 부른다.
+- fd 한도에 닿아 accept가 멈춘 뒤 `conn_send`가 파일을 다 보내고 `close(file_fd)`로 fd를 비워도 accept는 재개되지 않는다. 재개는 `conn_close`의 `loop_accept_resume`에만 있다. 열린 연결이 모두 계속 요청을 보낼 때만 오래가고, 유휴 연결이 하나라도 있으면 10~11초 안에 풀린다. 막으려면 `conn_send`의 `close(file_fd)` 뒤에도 `loop_accept_resume()`을 부른다.
 
 ## 넣지 않은 것 (제안)
 

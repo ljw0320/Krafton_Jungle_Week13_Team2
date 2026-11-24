@@ -121,12 +121,12 @@ Task 2 (route, main, Makefile, 테스트) ─┴─ Task 3 (http.c, test_proxy.c
 **Interfaces:**
 - Produces: `enum watch_kind { W_CLIENT, W_BACKEND }`, `struct watch { enum watch_kind kind; int fd; uint32_t events; }`, `int loop_watch(struct watch *w, uint32_t events)`, `void loop_unwatch(struct watch *w)`, `void loop_accept_resume(void)`. `struct conn`의 첫 필드가 `struct watch w`이고 `fd`, `events` 필드는 없다. `conn.h`가 `event_loop.h`를 포함한다.
 
-- [ ] **Step 1: 구현** — "이벤트 루프"의 코드 그대로. `data.ptr`는 listen이면 NULL, 아니면 `struct watch *`. `W_BACKEND` 분기는 Task 5에서 넣는다. `conn_close`는 `loop_unwatch` → `close` → `loop_accept_resume` → 나머지 순서. `loop_unwatch`는 accept를 재개하지 않는다. `conn_send`의 `EPOLLOUT off` 로그는 `EPOLLOUT`이 등록돼 있었을 때만 찍는다.
-- [ ] **Step 2: 확인**
+- [x] **Step 1: 구현** — "이벤트 루프"의 코드 그대로. `data.ptr`는 listen이면 NULL, 아니면 `struct watch *`. `W_BACKEND` 분기는 Task 5에서 넣는다. `conn_close`는 `loop_unwatch` → `close` → `loop_accept_resume` → 나머지 순서. `loop_unwatch`는 accept를 재개하지 않는다. `conn_send`의 `EPOLLOUT off` 로그는 `EPOLLOUT`이 등록돼 있었을 때만 찍는다.
+- [x] **Step 2: 확인**
   - 공통 확인. 테스트 파일의 diff가 없다(`git diff --stat tests/`가 비어 있음).
   - EMFILE: 서버를 `(ulimit -n 12; exec ./server 8080 /tmp/www)`로 띄우고 연결 20개를 열었다 닫는다 → 로그에 `accept paused` 다음 `accept resumed`, 이후 `curl -s -o /dev/null -w '%{http_code}' localhost:8080/`이 `200`
-- [ ] **Step 3: verifier** — "닫는 순서"와 대조. 고의 결함: `loop_unwatch`의 배치 지우기 반복문을 빼면 무엇이 잡는지 본다. 이 단계에서는 연결 하나가 다른 연결을 닫지 않아 잡히지 않는 것이 맞다. 그렇게 보고하고 Task 7에서 다시 한다. `conn_close`의 `loop_accept_resume()`을 빼면 EMFILE 확인이 실패한다.
-- [ ] **Step 4: 커밋, push** — `refactor: struct watch와 배치에서 지우기`
+- [x] **Step 3: verifier** — "닫는 순서"와 대조. 고의 결함: `loop_unwatch`의 배치 지우기 반복문을 빼면 무엇이 잡는지 본다. 이 단계에서는 연결 하나가 다른 연결을 닫지 않아 잡히지 않는 것이 맞다. 그렇게 보고하고 Task 7에서 다시 한다. `conn_close`의 `loop_accept_resume()`을 빼면 EMFILE 확인이 실패한다.
+- [x] **Step 4: 커밋, push** — `refactor: struct watch와 배치에서 지우기`
 
 ### Task 2: `route.c`와 인자 (설계 2단계) — worktree `proxy-task2`
 
@@ -138,16 +138,16 @@ Task 2 (route, main, Makefile, 테스트) ─┴─ Task 3 (http.c, test_proxy.c
 - Produces: `MAX_ROUTES 16`, `struct backend`, `struct route`(`struct backend b` 하나), `int route_add(const char *arg)`, `struct route *route_find(const char *target, size_t len)`, `const struct backend *route_pick(struct route *r)`. 규칙 배열은 `route.c`의 `static`이다.
 - `tests/test_proxy.c`는 `../src/http.c`, `../src/route.c`를 `#include`한다. `route.c`의 `static` 이름이 `http.c`와 겹치지 않게 한다.
 
-- [ ] **Step 1: 실패하는 테스트** — 출력 형식은 `test_http.c`와 같다. 규칙 배열은 프로세스에 하나라서 거부 케이스를 먼저, 개수 케이스를 마지막에 둔다.
+- [x] **Step 1: 실패하는 테스트** — 출력 형식은 `test_http.c`와 같다. 규칙 배열은 프로세스에 하나라서 거부 케이스를 먼저, 개수 케이스를 마지막에 둔다.
   - `route_add`가 -1: `/api=127.0.0.1:8001`, `api/=127.0.0.1:8001`, `=127.0.0.1:8001`, `/a/../b/=127.0.0.1:8001`, `/a/./b/=…`, `//=…`, `/a//b/=…`, `/a%20/=…`, `/a?/=…`, `/a#/=…`, 공백·`0x7F`·`0x80`이 든 접두사, `/api/=localhost:8001`, `/api/=127.0.0.1`, `/api/=127.0.0.1:`, `…:0`, `…:65536`, `…:8001x`, `…:-1`, `…:+1`, `…: 80`, `…:99999999999999999999`, `/api/=:8001`, `/api/=127.0.0.1.1:8001`, `/api/`, `=`, 빈 문자열
   - `route_add`가 0: `/api/=127.0.0.1:8001`(`addr`의 포트·주소, `name`이 `127.0.0.1:8001`), `/=127.0.0.1:65535`, `…:1`
   - 같은 접두사 두 번 -1, 16번째 0, 17번째 -1
   - `route_find`: `/api/`, `/api/users?x=1`, `/api/?x`은 맞음. `/api`, `/apix`, `/api?x=/`, `/%61pi/users`, `//api/users`, `/API/users`, `/`는 NULL(규칙 `/`가 없을 때). `/api/` 다음 `/api/v2/`를 적으면 `/api/v2/x`는 `/api/`. `len`보다 뒤의 글자를 보지 않는다(`"/api/users"`에 `len` 4 → NULL).
-- [ ] **Step 2: 실패 확인** — `make test` 종료 코드가 0이 아니다.
-- [ ] **Step 3: 구현** — `make test`는 `test_http` → `test_proxy` → `http_test.sh`를 `&&`로 잇는다. `main`: `argc < 3`이거나 포트가 틀리면 `usage: ./server <port> <root> [<prefix>=<ip>:<port> ...]`. `http_init` 다음, `server_listen` 전에 `argv[3..]`을 `route_add`하고 실패하면 `exit(1)`.
-- [ ] **Step 4: 확인** — 공통 확인(worktree에서는 1, 2의 단위 테스트까지. 8080을 쓰는 확인은 Task 1과 겹치지 않게 merge 뒤에 돌린다). `./server 8080 /tmp/www /api=127.0.0.1:8001; echo $?` → `route: /api=127.0.0.1:8001: <이유>`, `1`. `./server 8080 /tmp/www /api/=127.0.0.1:8001`이 뜨고 `curl localhost:8080/`이 200. 규칙 오류일 때 `ss -tln | grep -c ':8080 '`이 `0`.
-- [ ] **Step 5: verifier** — "라우팅" 표와 대조. 고의 결함: `len >= prefix_len` 검사를 빼면 단위 테스트(또는 ASan)가 실패한다.
-- [ ] **Step 6: 커밋, merge, push** — `feat: 라우팅 규칙과 인자`
+- [x] **Step 2: 실패 확인** — `make test` 종료 코드가 0이 아니다.
+- [x] **Step 3: 구현** — `make test`는 `test_http` → `test_proxy` → `http_test.sh`를 `&&`로 잇는다. `main`: `argc < 3`이거나 포트가 틀리면 `usage: ./server <port> <root> [<prefix>=<ip>:<port> ...]`. `http_init` 다음, `server_listen` 전에 `argv[3..]`을 `route_add`하고 실패하면 `exit(1)`.
+- [x] **Step 4: 확인** — 공통 확인(worktree에서는 1, 2의 단위 테스트까지. 8080을 쓰는 확인은 Task 1과 겹치지 않게 merge 뒤에 돌린다). `./server 8080 /tmp/www /api=127.0.0.1:8001; echo $?` → `route: /api=127.0.0.1:8001: <이유>`, `1`. `./server 8080 /tmp/www /api/=127.0.0.1:8001`이 뜨고 `curl localhost:8080/`이 200. 규칙 오류일 때 `ss -tln | grep -c ':8080 '`이 `0`.
+- [x] **Step 5: verifier** — "라우팅" 표와 대조. 고의 결함: `len >= prefix_len` 검사를 빼면 단위 테스트(또는 ASan)가 실패한다.
+- [x] **Step 6: 커밋, merge, push** — `feat: 라우팅 규칙과 인자`
 
 ### Task 3: 요청과 응답 다시 만들기 (설계 3단계)
 
@@ -264,3 +264,5 @@ Task 2 (route, main, Makefile, 테스트) ─┴─ Task 3 (http.c, test_proxy.c
 ---
 
 ## Minor 모음
+
+- Task 1: `event_loop.c:12` 주석의 `loop_unwatch가 재개할`을 `loop_accept_resume`으로, `event_loop.h:8`의 쓰지 않는 `struct conn;` 삭제 (Task 5에서 `event_loop.*`를 고칠 때 같이 한다)

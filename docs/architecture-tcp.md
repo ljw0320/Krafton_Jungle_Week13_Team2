@@ -9,7 +9,7 @@
 |---|---|---|
 | 동시성 모델 | `epoll` LT, 단일 스레드 이벤트 루프 | 개발 환경이 WSL2라 Linux 전용이어도 된다. LT에서는 실수해도 처리가 느려질 뿐 연결이 멈추지 않는다 |
 | 개발 환경 | WSL2 Ubuntu 24.04, gcc 13.3 | 확인 명령은 모두 WSL 안에서 실행한다 |
-| 설정 | CLI 인자 `./server <port> <root>` | 정적 루트는 두 번째 인자로 받는다. **프록시**: 그 뒤에 라우팅 규칙 `<prefix>=<ip>:<port>`를 이어서 받는다. 설정 파일은 쓰지 않는다 |
+| 설정 | CLI 인자 `./server <port> <root> [<prefix>=<ip>:<port> ...]` | 정적 루트는 두 번째 인자, 그 뒤는 라우팅 규칙이다([architecture-proxy.md](architecture-proxy.md) "라우팅"). 설정 파일은 쓰지 않는다 |
 | 연결 목록 | `struct conn` 양방향 리스트 | 제거가 O(1)이다. 타임아웃 검사는 1초마다 전체를 순회한다 |
 | 수신 버퍼 | `rbuf[8192]` 고정 | 버퍼가 찼는데도 요청이 완성되지 않으면 414/431로 답하고 닫는다(`http_parse`) |
 
@@ -23,8 +23,8 @@
 
 | 항목 | 형식 |
 |---|---|
-| 사용법 메시지 | stderr에 `usage: ./server <port> <root>` (**프록시**: 뒤에 ` [<prefix>=<ip>:<port> ...]`) |
-| 인자 검사 | `argc != 3`(**프록시**: `argc < 3`), `strtol` 뒤에 남은 문자가 있음(`8080abc`), 1~65535 밖이면 사용법 + `exit(1)`. 루트 검사는 `http_init`이 한다 |
+| 사용법 메시지 | stderr에 `usage: ./server <port> <root> [<prefix>=<ip>:<port> ...]` |
+| 인자 검사 | `argc < 3`, `strtol` 뒤에 남은 문자가 있음(`8080abc`), 1~65535 밖이면 사용법 + `exit(1)`. 루트 검사는 `http_init`, 규칙 검사는 `route_add`가 한다 |
 | 1단계 `main` 출력 | stdout에 `port=<번호>` |
 | 로그 | 모두 stderr. `accept fd=N`, `fd=N recv K bytes`, `fd=N send K bytes`, `fd=N EPOLLOUT on` / `off`, `close fd=N conn_count=M`, `accept paused`, `accept resumed`, `fd=N idle timeout`, `fd=N request timeout`. **프록시**의 로그는 [architecture-proxy.md](architecture-proxy.md) "출력 형식" |
 | `/big` 본문, stub 응답 헤더 | (HTTP 3단계에서 제거됨. 응답 형식은 [architecture-http.md](architecture-http.md) "출력 형식") |
@@ -42,18 +42,19 @@ src/
   event_loop.c / .h   # epoll fd 소유, epoll_wait 루프, accept, 이벤트 분배, 1초 타이머
   conn.c / .h         # struct conn, 연결 리스트, 읽기/쓰기 처리, conn_close, 유휴 검사
   http.c / .h         # HTTP 파싱, 응답 생성, 정적 파일 (architecture-http.md)
+  route.c / .h        # 라우팅 규칙 (architecture-proxy.md)
 ```
 
 | 파일 | 공개 함수 | 책임 |
 |---|---|---|
-| `main.c` | `main` | `argv[1]`을 `strtol`로 검사한다(1~65535가 아니면 사용법을 출력하고 `exit(1)`). `http_init(argv[2])`가 -1이면 `exit(1)`. `signal(SIGPIPE, SIG_IGN)` 후 `server_listen(port)`를 부르고, -1이면 `exit(1)`한다. 이어서 `loop_run(listen_fd)`를 부르고, -1을 반환하면 `exit(1)`한다 |
+| `main.c` | `main` | `argv[1]`을 `strtol`로 검사한다(1~65535가 아니면 사용법을 출력하고 `exit(1)`). `http_init(argv[2])`가 -1이면 `exit(1)`. `argv[3]`부터 `route_add`를 부르고 -1이면 `exit(1)`. `signal(SIGPIPE, SIG_IGN)` 후 `server_listen(port)`를 부르고, -1이면 `exit(1)`한다. 이어서 `loop_run(listen_fd)`를 부르고, -1을 반환하면 `exit(1)`한다 |
 | `server.c` | `int server_listen(uint16_t port)` | `socket` → `SO_REUSEADDR` → `bind(0.0.0.0)` → `listen(SOMAXCONN)` → `O_NONBLOCK`. 실패하면 `perror` 후 -1을 반환한다 |
-| `event_loop.c` | `int loop_run(int listen_fd)`<br>`int loop_watch(struct conn *c, uint32_t events)`<br>`void loop_unwatch(struct conn *c)` | `loop_run`은 `epoll_create1`이나 `listen_fd` 등록이 실패하거나 `epoll_wait`이 `EINTR`이 아닌 오류를 내면 `perror` 후 -1을 반환하고, 그 밖에는 반환하지 않는다(2026-11-20 Task 3: `epoll_wait` 실패를 `continue`하면 같은 오류로 CPU 100% 무한 루프가 되므로 추가). `epoll` fd는 이 파일의 `static` 변수로 두고 다른 파일은 직접 만지지 않는다. `loop_watch`는 처음이면 `EPOLL_CTL_ADD`, 이후에는 `EPOLL_CTL_MOD`를 부르고 `c->events`에 현재 값을 기록한다. `loop_unwatch`는 `EPOLL_CTL_DEL`을 부르고, accept가 멈춰 있으면 다시 켠다(EMFILE 처리) |
+| `event_loop.c` | `int loop_run(int listen_fd)`<br>`int loop_watch(struct watch *w, uint32_t events)`<br>`void loop_unwatch(struct watch *w)`<br>`void loop_accept_resume(void)` | `loop_run`은 `epoll_create1`이나 `listen_fd` 등록이 실패하거나 `epoll_wait`이 `EINTR`이 아닌 오류를 내면 `perror` 후 -1을 반환하고, 그 밖에는 반환하지 않는다(2026-11-20 Task 3: `epoll_wait` 실패를 `continue`하면 같은 오류로 CPU 100% 무한 루프가 되므로 추가). `epoll` fd는 이 파일의 `static` 변수로 두고 다른 파일은 직접 만지지 않는다. `loop_watch`는 처음이면 `EPOLL_CTL_ADD`, 이후에는 `EPOLL_CTL_MOD`를 부르고 `w->events`에 현재 값을 기록한다. `loop_unwatch`는 `EPOLL_CTL_DEL`을 부르고 지금 배치에 남은 그 대상의 이벤트를 지운다. `loop_accept_resume`은 accept가 멈춰 있으면 다시 켠다(EMFILE 처리) |
 | `conn.c` | `struct conn *conn_new(int fd)`<br>`void conn_close(struct conn *c)`<br>`int conn_on_readable(struct conn *c)`<br>`int conn_on_writable(struct conn *c)`<br>`void conn_sweep_idle(time_t now)` | 연결 하나의 수명 전체를 맡는다. 핸들러는 연결이 살아 있으면 0, `conn_close`로 닫았으면 -1을 반환한다. -1을 받은 쪽은 `c`를 다시 건드리지 않는다 |
 | `http.c` | `http_init`, `http_parse`, `http_handle` ([architecture-http.md](architecture-http.md)) | 요청 파싱, 응답 생성, 경로 해석, MIME |
 
-- `listen_fd`는 `epoll`에 `data.ptr = NULL`로 등록한다. 이벤트 루프는 `ptr == NULL`이면 새 연결 이벤트, 아니면 `struct conn *` 이벤트로 구분한다.
-- **프록시**: NULL이 아니면 `struct watch *`이고 `kind`로 클라이언트와 백엔드를 구분한다. `loop_watch`, `loop_unwatch`는 `struct watch *`를 받고, accept 재개는 `loop_accept_resume`으로 나뉜다. 이유: 백엔드 fd도 등록해야 하고, backpressure의 DEL은 fd를 비우지 않는다. 파일은 `route.c`, `proxy.c`가 늘어난다.
+- `listen_fd`는 `epoll`에 `data.ptr = NULL`로 등록한다. 이벤트 루프는 `ptr == NULL`이면 새 연결 이벤트, 아니면 `struct watch *`이고 `kind`로 클라이언트와 백엔드를 구분한다.
+- 프록시 1단계에서 `loop_watch`, `loop_unwatch`의 인자를 `struct watch *`로 바꾸고 accept 재개를 `loop_accept_resume`으로 나눴다. 이유: 백엔드 fd도 등록해야 하고, backpressure의 DEL은 fd를 비우지 않는다. **프록시**: 파일은 `proxy.c`가 늘어난다.
 - 상수는 각 헤더에 `#define`으로 둔다: `MAX_EVENTS 64`, `RBUF_SIZE 8192`, `IDLE_TIMEOUT_SEC 10`(개발 중 확인하기 쉽게 짧게 둔다).
 
 ---
@@ -68,20 +69,19 @@ HTTP는 `http_init`, `http_parse`, `http_handle` 세 함수로만 붙는다. 시
 enum conn_state { CONN_READING, CONN_WRITING };
 
 struct conn {
-    int    fd;
+    struct watch w;           // 첫 필드. fd와 지금 epoll에 등록된 이벤트 (events가 0이면 미등록)
     enum conn_state state;
     char   rbuf[RBUF_SIZE];   // 받았지만 아직 처리 안 한 바이트
     size_t rlen;
     char  *wbuf;              // http_handle이 만든 응답, 다 보내면 free
     size_t wlen, woff;        // 응답 길이, 보낸 위치
     int    keep_alive;        // 응답 후 READING으로 돌아갈지
-    uint32_t events;          // 지금 epoll에 등록된 이벤트 (0이면 미등록)
     time_t last_active;       // recv/send 성공 시각 (WRITING 중에는 architecture-http.md의 SIOCOUTQ 규칙도 갱신)
     struct conn *prev, *next; // 유휴 검사용 리스트
 };
 ```
 
-- `file_fd`, `file_off`, `file_len`, `req_start`, `outq`는 HTTP 단계에서 추가되었다([architecture-http.md](architecture-http.md) "`struct conn` 변경"). **프록시**: `fd`, `events`가 `struct watch w`로 옮겨지고 `struct upstream up`(값)과 `CONN_PROXYING`이 추가된다.
+- `file_fd`, `file_off`, `file_len`, `req_start`, `outq`는 HTTP 단계에서 추가되었다([architecture-http.md](architecture-http.md) "`struct conn` 변경"). `fd`, `events`는 프록시 1단계에서 `struct watch w`로 옮겼다. **프록시**: `struct upstream up`(값)과 `CONN_PROXYING`이 추가된다.
 
 ## 연결 상태 전이
 
@@ -110,14 +110,15 @@ accept4 ──▶ READING (EPOLLIN 감시)
 
 ## `conn_close` 순서
 
-1. `loop_unwatch(c)`: `EPOLL_CTL_DEL` (`close` 전에 해야 한다). `c->events == 0`(등록 전에 `conn_new`의 `loop_watch`가 실패한 경우)이면 DEL을 건너뛴다. 어느 쪽이든 accept가 멈춰 있으면 다시 켠다. 이를 위해 `listen_fd`를 `event_loop.c`의 `static int lfd`로 저장한다(2026-11-20 Task 8).
-2. `close(c->fd)`
-3. `free(c->wbuf)`
-4. `if (c->file_fd >= 0) close(c->file_fd)` (HTTP 단계에서 추가)
-5. 리스트에서 제거
-6. `free(c)` (마지막에 해야 한다)
+1. `loop_unwatch(&c->w)`: `EPOLL_CTL_DEL` (`close` 전에 해야 한다). `events == 0`(등록 전에 `conn_new`의 `loop_watch`가 실패한 경우)이면 DEL을 건너뛴다. 어느 쪽이든 지금 배치에 남은 그 대상의 이벤트를 지운다.
+2. `close(c->w.fd)`
+3. `loop_accept_resume()`: accept가 멈춰 있으면 다시 켠다. 이를 위해 `listen_fd`를 `event_loop.c`의 `static int lfd`로 저장한다(2026-11-20 Task 8). 프록시 1단계에서 `loop_unwatch`에서 나눴다.
+4. `free(c->wbuf)`
+5. `if (c->file_fd >= 0) close(c->file_fd)` (HTTP 단계에서 추가)
+6. 리스트에서 제거
+7. `free(c)` (마지막에 해야 한다)
 
-**프록시**: 맨 앞에 `proxy_close(c)`(백엔드 연결 정리), 2 다음에 `loop_accept_resume()`이 추가된다. `free(c)`는 그대로 마지막이다.
+**프록시**: 맨 앞에 `proxy_close(c)`(백엔드 연결 정리)가 추가된다. `free(c)`는 그대로 마지막이다.
 
 ---
 # 구현 순서
