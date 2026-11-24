@@ -248,11 +248,11 @@ Task 2 (route, main, Makefile, 테스트) ─┴─ Task 3 (http.c, test_proxy.c
 
 담당: `verifier` (결함 수정은 `builder`)
 
-- [ ] **Step 1** — 공통 확인
-- [ ] **Step 2: valgrind** — `make clean && make && SERVER_WRAP='valgrind --leak-check=full --log-file=/tmp/vg.%p.log' bash tests/proxy_test.sh` → 종료 코드 0. `/tmp/vg.*.log` 전부 `definitely lost: 0`(또는 `All heap blocks were freed`), `Invalid read` / `Invalid write` 0개. 로그 파일이 1개 이상인 것을 먼저 확인한다(양성 대조, lessons.md).
-- [ ] **Step 3: 브라우저 (사용자)** — 서버와 `backend.py`를 띄워 두고 `/index.html`, `/api/echo`를 연다.
-- [ ] **Step 4: 문서** — 배정 표의 9. `grep -n '프록시' docs/architecture-tcp.md docs/architecture-http.md CLAUDE.md`에 "프록시 단계에서 바뀜"을 뜻하는 표시가 없다.
-- [ ] **Step 5: 커밋, push** — `docs: 프록시 종합 확인`
+- [x] **Step 1** — 공통 확인 3개 종료 코드 0. 일반 테스트와 ASan·UBSan 테스트는 각각 526 + 1794 + 168 + 119건을 통과했다.
+- [x] **Step 2: valgrind** — `rm -f /tmp/vg.*.log` 뒤 `make clean && make && SERVER_WRAP='valgrind --leak-check=full --log-file=/tmp/vg.%p.log' bash tests/proxy_test.sh` 실행. 종료 코드 0, 117건 통과. 로그 2개 모두 `definitely lost: 0 bytes`, `Invalid read`와 `Invalid write` 0건이었다.
+- [ ] **Step 3: 브라우저 (사용자)** — 서버와 `backend.py`를 띄워 두고 `/index.html`, `/api/echo`, `/rr/port`를 연다. `/rr/port`를 새로 고침할 때 8001과 8002가 번갈아 표시되는지 확인한다.
+- [x] **Step 4: 문서** — 품질 체크리스트에 단위 테스트, 동시 다중 클라이언트 접속, 메모리, 엣지 케이스를 표시했다. 브라우저 확인이 필요한 기능 테스트 항목은 Step 3 뒤에 표시한다. `grep -n '프록시' docs/architecture-tcp.md docs/architecture-http.md CLAUDE.md` 결과에 프록시 단계에서 바뀔 예정임을 나타내는 표시는 없었다.
+- [x] **Step 5: 커밋, push** — 자동 확인 결과를 `docs: 프록시 종합 확인`으로 반영했다.
 
 ### Task 10: 최종 리뷰와 Minor 정리
 
