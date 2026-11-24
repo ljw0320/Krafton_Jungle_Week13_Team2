@@ -44,6 +44,8 @@ static void server_setup(struct server *server, const char *root, const char *cg
     check_thread(pthread_cond_init(&server->ready, NULL));
     context_pool_init(&server->contexts);
 
+    slots_init(server);
+    runtime_fd_check((unsigned)(server->capacity + 2 * server->contexts.capacity + 32));
     signals_start(server->wake_fd);
     pool_start(server);
     signals_unblock();
@@ -54,7 +56,7 @@ static void server_cleanup(struct server *server, int listener)
     close(listener);
     pool_stop(server);
 
-    for (int i = 0; i < MAX_CONNECTIONS; i++)
+    for (int i = 0; i < server->capacity; i++)
         if (server->clients[i].state != FREE)
             connection_close(&server->clients[i]);
 
@@ -68,6 +70,7 @@ static void server_cleanup(struct server *server, int listener)
     check_thread(pthread_cond_destroy(&server->ready));
     check_thread(pthread_mutex_destroy(&server->mutex));
 
+    free(server->clients);
     puts("[server] stopped");
 }
 
@@ -82,8 +85,8 @@ int main(int argc, char **argv)
     int listener = listener_open(port);
     server_setup(&server, argv[2], argc == 4 ? argv[3] : NULL);
 
-    printf("[server] http://127.0.0.1:%d root=%s workers=%d slots=%d\n",
-           port, argv[2], WORKERS, MAX_CONNECTIONS);
+    printf("[server] http://127.0.0.1:%d root=%s workers=%d slots=%d contexts=%d\n",
+           port, argv[2], WORKERS, server.capacity, server.contexts.capacity);
 
     server_run(&server, listener);
     server_cleanup(&server, listener);

@@ -1,0 +1,21 @@
+{
+  "status": "failed",
+  "connections": 10000,
+  "configured_connections": 11000,
+  "contexts_each": 8,
+  "empty_body": true,
+  "completed_requests": 10000,
+  "elapsed_seconds": 31.946,
+  "error_type": "AssertionError",
+  "error": "{'frontend': 1408, 'backend': 1088}",
+  "observed_established": {
+    "frontend": 1384,
+    "backend": 1064
+  },
+  "backend_accepts_including_probe": 10001,
+  "backend_close_reasons": {
+    "peer_closed": 8949
+  },
+  "fd_soft_test": 65536,
+  "scope": "bounded-concurrency connection retention test; failure does not isolate loader/server bottleneck"
+}

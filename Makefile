@@ -3,7 +3,7 @@ CPPFLAGS = -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L -D_FILE_OFFSET_BITS=64
 CFLAGS = -std=c11 -Wall -Wextra -Wpedantic -Werror -g
 LDLIBS = -pthread
 SOURCES = $(wildcard src/*.c)
-HEADERS = src/server.h src/http.h
+HEADERS = src/server.h src/http.h common/runtime.h
 
 .PHONY: all test test_stage1 test_stage2 test_cgi test_keep_alive check_keep_alive test_proxy clean
 all: webserver cgi-bin/adder reverse_proxy
@@ -57,7 +57,7 @@ clean:
 	rm -f webserver reverse_proxy test_proxy_headers test_proxy_state test_http test_drain test_context test_context_pool cgi-bin/adder
 
 PROXY_SOURCES = proxy/main.c proxy/headers.c src/http.c
-reverse_proxy: $(PROXY_SOURCES) proxy/proxy.h src/http.h
+reverse_proxy: $(PROXY_SOURCES) proxy/proxy.h src/http.h common/runtime.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc $(PROXY_SOURCES) -o $@
 
 test_proxy_headers: proxy/tests/test_headers.c proxy/headers.c proxy/proxy.h src/http.c src/http.h
@@ -71,5 +71,5 @@ test_proxy: reverse_proxy test_proxy_headers test_proxy_state all
 test_scheduler: src/tests/test_scheduler.c $(CONNECTION_SOURCES) src/thread_pool.c src/timers.c $(HEADERS)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc src/tests/test_scheduler.c $(CONNECTION_SOURCES) src/thread_pool.c src/timers.c -o $@ $(LDLIBS)
 
-test_proxy_state: proxy/tests/test_state.c $(PROXY_SOURCES) proxy/proxy.h src/http.h
+test_proxy_state: proxy/tests/test_state.c $(PROXY_SOURCES) proxy/proxy.h src/http.h common/runtime.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc -Iproxy proxy/tests/test_state.c proxy/headers.c src/http.c -o $@

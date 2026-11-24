@@ -2,6 +2,7 @@
 #define PROXY_H
 
 #include "http.h"
+#include "../common/runtime.h"
 #include <stdint.h>
 
 enum {

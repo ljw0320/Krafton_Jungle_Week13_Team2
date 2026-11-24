@@ -29,8 +29,10 @@ static const char *timeout_reason(const struct connection *client)
 
 void slots_init(struct server *server)
 {
+    server->capacity = runtime_limit("JUNGLE_CONNECTIONS", MAX_CONNECTIONS, 65536);
+    server->clients = runtime_alloc((size_t)server->capacity, sizeof(*server->clients));
     server->free_clients = NULL;
-    for (int i = MAX_CONNECTIONS - 1; i >= 0; i--) {
+    for (int i = server->capacity - 1; i >= 0; i--) {
         server->clients[i].server = server;
         server->clients[i].free_next = server->free_clients;
         server->free_clients = &server->clients[i];

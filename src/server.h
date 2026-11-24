@@ -2,6 +2,7 @@
 #define SERVER_H
 
 #include "http.h"
+#include "../common/runtime.h"
 
 #include <poll.h>
 #include <pthread.h>
@@ -104,15 +105,17 @@ struct connection {
 };
 
 struct context_pool {
-    struct request_context entries[CONTEXT_CAPACITY];
-    struct connection *owners[CONTEXT_CAPACITY];
-    struct connection *waiters[MAX_CONNECTIONS];
+    struct request_context *entries;
+    int capacity, wait_capacity;
+    struct connection **owners;
+    struct connection **waiters;
     size_t wait_count;
     pthread_mutex_t mutex;
 };
 
 struct server {
-    struct connection clients[MAX_CONNECTIONS];
+    struct connection *clients;
+    int capacity;
     struct context_pool contexts;
     struct connection *free_clients;
     struct connection *timers;

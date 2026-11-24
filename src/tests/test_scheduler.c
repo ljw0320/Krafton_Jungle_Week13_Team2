@@ -55,5 +55,7 @@ int main(void)
     cgi_close(a); cgi_close(a);
     CHECK(atomic_load(&server.active_cgi) == 0);
     puts("scheduler: slots, saturation, retry, duplicate, timer order/update/cancel/expiry passed");
+    context_pool_destroy(&server.contexts);
+    free(server.clients);
     return 0;
 }

@@ -118,7 +118,7 @@ static nfds_t prepare_poll(struct server *server, int listener,
     fds[0] = (struct pollfd){.fd = listener, .events = POLLIN};
     fds[1] = (struct pollfd){.fd = server->wake_fd, .events = POLLIN};
 
-    for (int i = 0; i < MAX_CONNECTIONS; i++) {
+    for (int i = 0; i < server->capacity; i++) {
         struct connection *client = &server->clients[i];
         if (client->state == FINISHED)
             connection_close(client);
@@ -176,9 +176,9 @@ void server_run(struct server *server, int listener)
 {
     if (!server->slots_initialized)
         slots_init(server);
+    struct pollfd *fds = runtime_alloc((size_t)server->capacity + 2, sizeof(*fds));
+    struct connection **owners = runtime_alloc((size_t)server->capacity + 2, sizeof(*owners));
     while (!stop_requested) {
-        struct pollfd fds[MAX_CONNECTIONS + 2];
-        struct connection *owners[MAX_CONNECTIONS + 2] = {0};
         int timeout;
 
         check_thread(pthread_mutex_lock(&server->mutex));
@@ -201,4 +201,5 @@ void server_run(struct server *server, int listener)
         if (fds[0].revents & POLLIN)
             accept_clients(server, listener);
     }
+    free(fds); free(owners);
 }

@@ -20,7 +20,8 @@ struct buffers {
     char response[HEADER_LIMIT + 1];
     unsigned char relay[RELAY_SIZE];
 };
-static struct buffers pool[PROXY_ACTIVE];
+static struct buffers *pool;
+static int active_capacity = PROXY_ACTIVE, client_capacity = PROXY_CLIENTS;
 struct exchange {
     struct buffers *buffers;
     bool keep_alive;
@@ -41,7 +42,7 @@ struct exchange {
     size_t relay_used, relay_sent;
     uint64_t remaining;
 };
-static struct exchange clients[PROXY_CLIENTS];
+static struct exchange *clients;
 static struct sockaddr_in backend;
 static char backend_host[64];
 static volatile sig_atomic_t stopping;
@@ -74,7 +75,7 @@ static void release_buffers(struct exchange *c)
 
 static bool acquire_buffers(struct exchange *c)
 {
-    for (int i = 0; i < PROXY_ACTIVE; i++) {
+    for (int i = 0; i < active_capacity; i++) {
         if (pool[i].used) continue;
         c->buffers = &pool[i];
         c->buffers->used = true;
@@ -389,7 +390,7 @@ static nfds_t prepare(struct pollfd *fds, int listener, int *timeout)
     fds[0] = (struct pollfd){.fd = listener, .events = POLLIN};
     int64_t now = now_ms();
     *timeout = 1000; /* also bounds signal-driven shutdown latency */
-    for (int i = 0; i < PROXY_CLIENTS; i++) {
+    for (int i = 0; i < client_capacity; i++) {
         struct exchange *c = &clients[i];
         if (c->upstream >= 0 && c->backend_idle_at) {
             int64_t left = c->backend_idle_at + BACKEND_IDLE_MS - now;
@@ -412,7 +413,7 @@ static nfds_t prepare(struct pollfd *fds, int listener, int *timeout)
             if (left < *timeout) *timeout = left > 0 ? (int)left : 0;
         }
     }
-    return 1 + 2 * PROXY_CLIENTS;
+    return 1 + 2 * client_capacity;
 }
 
 static void dispatch(struct exchange *c, short client_events, short upstream_events, unsigned generation)
@@ -462,7 +463,7 @@ static void accept_clients(int listener)
         int fd = accept4(listener, NULL, NULL, SOCK_NONBLOCK | SOCK_CLOEXEC);
         if (fd < 0) return;
         struct exchange *c = NULL;
-        for (int i = 0; i < PROXY_CLIENTS; i++)
+        for (int i = 0; i < client_capacity; i++)
             if (clients[i].phase == UNUSED) { c = &clients[i]; break; }
         if (!c) {
             bool saved = false;
@@ -525,6 +526,15 @@ static int port(const char *value)
 
 int main(int argc, char **argv)
 {
+    client_capacity = runtime_limit("PROXY_CONNECTIONS", PROXY_CLIENTS, 65536);
+    active_capacity = runtime_limit("PROXY_CONTEXTS", PROXY_ACTIVE, 4096);
+    if (active_capacity > client_capacity) {
+        fprintf(stderr, "PROXY_CONTEXTS must not exceed PROXY_CONNECTIONS\n"); return 1;
+    }
+    runtime_fd_check((unsigned)(2 * client_capacity + 32));
+    pool = runtime_alloc((size_t)active_capacity, sizeof(*pool));
+    clients = runtime_alloc((size_t)client_capacity, sizeof(*clients));
+    fprintf(stderr, "[capacity] proxy_connections=%d contexts=%d\n", client_capacity, active_capacity);
     int listen_port = argc == 4 ? port(argv[1]) : -1;
     int backend_port = argc == 4 ? port(argv[3]) : -1;
     backend.sin_family = AF_INET;
@@ -547,26 +557,27 @@ int main(int argc, char **argv)
     struct sigaction action = {.sa_handler = stop};
     sigemptyset(&action.sa_mask);
     sigaction(SIGINT, &action, NULL); sigaction(SIGTERM, &action, NULL);
-    for (int i = 0; i < PROXY_CLIENTS; i++) clients[i].client = clients[i].upstream = -1;
+    for (int i = 0; i < client_capacity; i++) clients[i].client = clients[i].upstream = -1;
     for (int i = 0; i < REJECT_SLOTS; i++) rejected[i].fd = -1;
+    struct pollfd *fds = runtime_alloc((size_t)(1 + client_capacity*2 + REJECT_SLOTS), sizeof(*fds));
+    unsigned *generations = runtime_alloc((size_t)client_capacity, sizeof(*generations));
     while (!stopping) {
-        struct pollfd fds[1 + PROXY_CLIENTS*2 + REJECT_SLOTS];
         int timeout;
-        unsigned generations[PROXY_CLIENTS];
         nfds_t count = prepare(fds, listener, &timeout);
         prepare_rejections(fds + count, &timeout);
-        for (int i = 0; i < PROXY_CLIENTS; i++) generations[i] = clients[i].upstream_generation;
+        for (int i = 0; i < client_capacity; i++) generations[i] = clients[i].upstream_generation;
         if (poll(fds, count + REJECT_SLOTS, timeout) < 0) {
             if (errno == EINTR) continue;
             perror("proxy poll"); break;
         }
-        for (int i = 0; i < PROXY_CLIENTS; i++)
+        for (int i = 0; i < client_capacity; i++)
             dispatch(&clients[i], fds[1+2*i].revents, fds[2+2*i].revents, generations[i]);
         dispatch_rejections(fds + count);
         if (fds[0].revents & POLLIN) accept_clients(listener);
     }
-    for (int i = 0; i < PROXY_CLIENTS; i++) dispose(&clients[i]);
+    for (int i = 0; i < client_capacity; i++) dispose(&clients[i]);
     for (int i = 0; i < REJECT_SLOTS; i++) if (rejected[i].fd >= 0) close(rejected[i].fd);
     close(listener);
+    free(fds); free(generations); free(clients); free(pool);
     return 0;
 }

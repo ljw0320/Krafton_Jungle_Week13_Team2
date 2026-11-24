@@ -4,6 +4,8 @@
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %d: %s\n", __LINE__, #x); exit(1); } } while (0)
 int main(void)
 {
+    pool = runtime_alloc(PROXY_ACTIVE, sizeof(*pool));
+    clients = runtime_alloc(PROXY_CLIENTS, sizeof(*clients));
     struct exchange c = {.client = -1, .upstream = -1, .phase = RELAY,
                          .keep_alive = true, .requests = 7};
     CHECK(acquire_buffers(&c));
@@ -49,5 +51,6 @@ int main(void)
     CHECK(!proxy_backend_reusable("HTTP/1.1 200 OK\r\nConnection: Keep-Alive, ClOsE\r\n\r\n",
         strlen("HTTP/1.1 200 OK\r\nConnection: Keep-Alive, ClOsE\r\n\r\n")));
     puts("proxy state: idle release, per-request deadline reset, pool cap/reuse passed");
+    free(pool); free(clients);
     return 0;
 }

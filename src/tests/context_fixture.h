@@ -24,6 +24,7 @@ static inline void fixture_finish(void)
 {
     expect_count("owners after cleanup", used_contexts(&fixture_server.contexts), 0);
     context_pool_destroy(&fixture_server.contexts);
+    free(fixture_server.clients);
 }
 
 static inline struct test_client open_client(void)

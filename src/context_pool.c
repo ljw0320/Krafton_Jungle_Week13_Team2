@@ -5,12 +5,22 @@
 void context_pool_init(struct context_pool *pool)
 {
     memset(pool, 0, sizeof(*pool));
+    pool->capacity = runtime_limit("JUNGLE_CONTEXTS", CONTEXT_CAPACITY, 4096);
+    pool->wait_capacity = runtime_limit("JUNGLE_CONNECTIONS", MAX_CONNECTIONS, 65536);
+    if (pool->capacity > pool->wait_capacity) {
+        fprintf(stderr, "JUNGLE_CONTEXTS must not exceed JUNGLE_CONNECTIONS\n"); exit(EXIT_FAILURE);
+    }
+    pool->entries = runtime_alloc((size_t)pool->capacity, sizeof(*pool->entries));
+    pool->owners = runtime_alloc((size_t)pool->capacity, sizeof(*pool->owners));
+    pool->waiters = runtime_alloc((size_t)pool->wait_capacity, sizeof(*pool->waiters));
     check_thread(pthread_mutex_init(&pool->mutex, NULL));
 }
 
 void context_pool_destroy(struct context_pool *pool)
 {
     check_thread(pthread_mutex_destroy(&pool->mutex));
+    free(pool->entries); free(pool->owners); free(pool->waiters);
+    pool->entries = NULL; pool->owners = pool->waiters = NULL;
 }
 
 /* pool mutex 아래 등록 순서가 FIFO 순서입니다. 신규 연결도 선두를 추월하지 못합니다. */
@@ -33,7 +43,7 @@ bool context_acquire(struct connection *client)
     struct context_pool *pool = client->context_pool;
     check_thread(pthread_mutex_lock(&pool->mutex));
     if (!pool->wait_count || pool->waiters[0] == client) {
-        for (int i = 0; i < CONTEXT_CAPACITY; i++) {
+        for (int i = 0; i < pool->capacity; i++) {
             if (pool->owners[i])
                 continue;
             pool->owners[i] = client;
@@ -43,7 +53,7 @@ bool context_acquire(struct connection *client)
         }
     }
     if (!client->context && !client->context_wait_deadline) {
-        if (pool->wait_count == MAX_CONNECTIONS)
+        if (pool->wait_count == (size_t)pool->wait_capacity)
             client->reason = "context_wait_limit";
         else {
             pool->waiters[pool->wait_count++] = client;
@@ -62,7 +72,7 @@ void context_release(struct connection *client)
     struct context_pool *pool = client->context_pool;
     check_thread(pthread_mutex_lock(&pool->mutex));
     remove_waiter(pool, client);
-    for (int i = 0; i < CONTEXT_CAPACITY; i++) {
+    for (int i = 0; i < pool->capacity; i++) {
         if (pool->owners[i] != client)
             continue;
         pool->owners[i] = NULL;

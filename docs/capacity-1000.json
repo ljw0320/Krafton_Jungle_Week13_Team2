@@ -1,0 +1,21 @@
+{
+  "status": "passed",
+  "connections": 1000,
+  "configured_connections": 1100,
+  "contexts_each": 8,
+  "empty_body": true,
+  "requests": 7000,
+  "elapsed_seconds": 13.654,
+  "fd_soft_before": 10240,
+  "fd_soft_test": 65536,
+  "backend_accepts_excluding_probe": 1000,
+  "fd_counts_during": {
+    "backend": 1006,
+    "proxy": 2004
+  },
+  "final_established": {
+    "frontend": 0,
+    "backend": 0
+  },
+  "scope": "bounded-concurrency POST echo heartbeats; connection retention/reuse, not throughput"
+}
