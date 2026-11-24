@@ -24,5 +24,5 @@
 |---|---|---|
 | TCP 서버, 동시 요청 처리 | 완료 | [architecture-tcp.md](architecture-tcp.md) |
 | HTTP 파싱, 정적 파일, 오류 응답 | 완료 | [architecture-http.md](architecture-http.md) |
-| Reverse Proxy | 구현 중 (6단계까지, 2026-11-24) | [architecture-proxy.md](architecture-proxy.md) |
+| Reverse Proxy | 구현 중 (7단계까지, 2026-11-24) | [architecture-proxy.md](architecture-proxy.md) |
 | 시그널 셧다운 | 미정 | (미정) |

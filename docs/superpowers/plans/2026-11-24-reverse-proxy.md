@@ -231,7 +231,7 @@ Task 2 (route, main, Makefile, 테스트) ─┴─ Task 3 (http.c, test_proxy.c
 - [x] **Step 3: verifier** — 고의 결함: `loop_unwatch`의 배치 지우기 반복문을 빼고 ASan으로 RST 300건을 돌린다. 잡히지 않으면 한 배치에 A의 RST와 B의 `EPOLLIN`이 같이 오는 상황을 만들어 확인한다(서버를 `SIGSTOP` → A의 RST와 B의 응답을 보냄 → `SIGCONT`). 이 방법으로 잡히면 케이스로 넣는다.
 - [x] **Step 4: 커밋, push** — `test: 프록시 자원 회수`
 
-### Task 8: Round-Robin (설계 7단계, 사용자가 빼자고 하면 뺀다)
+### Task 8: Round-Robin (설계 7단계)
 
 **Files:**
 - Modify: `src/route.h`, `src/route.c`, `src/proxy.c`(`proxy_start`), `tests/test_proxy.c`, `tests/proxy_test.sh`, 문서(배정 표)
@@ -239,10 +239,10 @@ Task 2 (route, main, Makefile, 테스트) ─┴─ Task 3 (http.c, test_proxy.c
 **Interfaces:**
 - Produces: `MAX_BACKENDS 8`, `struct route`의 `struct backend b[MAX_BACKENDS]; int n, next;`, `void route_advance(struct route *r)`
 
-- [ ] **Step 1: 실패하는 테스트** — 단위: 같은 접두사 두 번은 이제 0, `route_pick`만 부르면 순서가 그대로, `route_advance`로 다음, 끝에서 되돌아감, 같은 접두사 + 같은 주소 -1(`:8001`과 `:08001`도 같은 주소), 9번째 -1, 같은 접두사를 더해도 `MAX_ROUTES`를 세지 않음. Task 2의 "같은 접두사 두 번 -1" 케이스를 바꾼다. 기능: 규칙 `/rr/=127.0.0.1:8001 /rr/=127.0.0.1:8002`에 `/rr/port` 4번 → 8001, 8002, 8001, 8002. 사이에 `/rr/%zz`(400), `HEAD`(405)를 넣어도 순서가 그대로. 8002를 끄면 200과 502가 번갈아 나온다.
-- [ ] **Step 2: 실패 확인** → **Step 3: 구현** (`route_advance`는 `http_proxy_request`가 0을 반환한 뒤, `socket` 전) → **Step 4: 공통 확인**
-- [ ] **Step 5: verifier** — 고의 결함: `% n` 제거, `route_advance`를 검사 전으로 옮김.
-- [ ] **Step 6: 커밋, push** — `feat: Round-Robin`
+- [x] **Step 1: 실패하는 테스트** — 단위: 같은 접두사에 백엔드 추가, 고르기와 순서 이동, 마지막에서 처음으로 돌아가기, 백엔드 한 개일 때 순서 유지, 같은 주소 거부(`:8001`과 `:08001` 포함), 8개 한도와 거부 뒤 규칙 보존, 규칙 16개를 모두 쓴 뒤 기존 접두사에 백엔드 추가. 기능: `/rr/port`가 8001, 8002, 8001, 8002 순으로 응답한다. 사이의 400, 405, 411 응답은 순서를 소비하지 않는다. 8002를 끄면 200과 502가 교대로 나온다.
+- [x] **Step 2: 실패 확인** → **Step 3: 구현** (`route_advance`는 `http_proxy_request`가 0을 반환한 뒤, `socket` 전) → **Step 4: 공통 확인**
+- [x] **Step 5: 고의 결함 검증** — `/tmp` 사본에서 `% n` 제거, `route_advance`를 검사 전과 연결 완료 뒤로 이동, 주소 중복 검사 제거, 한도를 9로 변경했다. 각 사본에서 관련 단위 또는 기능 테스트가 실패했다.
+- [x] **Step 6: 커밋, push** — `feat: Round-Robin`, `docs: 프록시 7단계 반영`
 
 ### Task 9: 종합 확인 (설계 8단계)
 

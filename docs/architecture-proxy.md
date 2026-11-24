@@ -29,7 +29,7 @@
 | 16 | 타임아웃 | 연결 3초, 응답 10초(바이트가 오지 않은 시간). 시각 `since` 하나로 잰다 | `IDLE_TIMEOUT_SEC`, `REQ_TIMEOUT_SEC`와 같다. `SENDING`도 잰다 | 상수 |
 | 17 | 연결 타임아웃의 코드 | 504 | 시간 초과는 504, 나머지 실패는 502로 기준이 하나다 | 숫자 하나와 테스트 기대값 |
 | 18 | 500 / 502 / 504 뒤의 A | 닫는다 | 실패 경로가 응답 → 닫기 한 방향이다. sweep 안에서 다음 요청이 시작되지 않는다 | 실패 함수와 부른 쪽의 반환값 처리 |
-| 19 | Round-Robin | 마지막 구현 단계. 같은 접두사를 여러 번 적는다 | 앞 단계와 독립이라 빼도 된다 | `struct route`와 규칙 파싱 |
+| 19 | Round-Robin | 같은 접두사를 여러 번 적어 백엔드를 등록한다 | 등록 순서대로 요청을 분배한다 | `struct route`와 규칙 파싱 |
 | 20 | 헤더 줄 수 (2026-11-24 추가) | 프록시로 보내는 요청과 백엔드 응답의 헤더를 100줄까지만 받는다. 요청은 431, 응답은 502 | 줄마다 `Connection` 값을 다시 훑어, 1800줄을 채운 8KB 요청 하나가 약 55ms 동안 루프를 멈췄다. 정적 요청은 그대로다 | 상수와 검사 두 곳 |
 
 메인 세션이 정한 세부 판단 (틀렸을 때의 비용은 각각 한 함수 안의 수정이다)
@@ -104,7 +104,7 @@ tests/
 | 상수 | 값 | 위치 |
 |---|---|---|
 | `MAX_ROUTES` | 16 | `route.h` |
-| `MAX_BACKENDS` (Round-Robin 단계) | 8 | `route.h` |
+| `MAX_BACKENDS` | 8 | `route.h` |
 | `HTTP_HEAD_MAX` (응답 헤더 한도) | 8192 | `http.h` |
 | `HTTP_HDR_MAX` (프록시 헤더 줄 수) | 100 | `http.h` |
 | `PROXY_BUF_SIZE` | 16384 | `proxy.h` |
@@ -121,8 +121,12 @@ struct watch { enum watch_kind kind; int fd; uint32_t events; };   // events가 
 
 // route.h
 struct backend { struct sockaddr_in addr; const char *name; };     // name은 "127.0.0.1:8001" (argv 안)
-struct route   { const char *prefix; size_t prefix_len; struct backend b; };
-// Round-Robin 단계: struct backend b[MAX_BACKENDS]; int n, next;
+struct route {
+    const char *prefix;
+    size_t prefix_len;
+    struct backend b[MAX_BACKENDS];
+    int n, next;
+};
 
 // http.h
 struct http_req    { /* 기존 필드 */ int backend; };   // 백엔드 경로면 1. 405의 Allow를 고른다
@@ -172,8 +176,8 @@ void loop_accept_resume(void);                       // fd를 닫은 뒤 부른�
 // route.h
 int route_add(const char *arg);                                   // 0, 틀리면 메시지를 찍고 -1
 struct route *route_find(const char *target, size_t len);         // 맞는 규칙, 없으면 NULL(정적)
-const struct backend *route_pick(struct route *r);                // 지금 순서의 백엔드. Round-Robin 단계 전에는 항상 &r->b
-void route_advance(struct route *r);                              // Round-Robin 단계에서 추가. 다음 순서로 넘긴다
+const struct backend *route_pick(struct route *r);                // 순서를 유지한 채 지금 백엔드를 고른다
+void route_advance(struct route *r);                             // 다음 순서로 넘긴다
 
 // http.h (추가)
 int http_keep_alive(const struct http_req *req);                  // 클라이언트가 유지를 원하나
@@ -309,7 +313,7 @@ WRITING ── 다 보냄, B가 없음, keep_alive 아님 ─────▶ con
 ## `proxy_start`
 
 1. `wbuf = malloc(PROXY_BUF_SIZE)`. 실패하면 500
-2. `route_pick`, `http_proxy_request`. 0이 아니면 `free(wbuf)`, `wbuf = NULL` 후 그 코드. Round-Robin 단계에서는 이 검사를 통과한 뒤에만 순서를 넘긴다(아래 "Round-Robin")
+2. `route_pick`, `http_proxy_request`. 0이 아니면 `free(wbuf)`, `wbuf = NULL` 후 그 코드. 0이면 `route_advance`로 순서를 넘긴다
 3. `socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0)`. 실패하면 500
 4. `connect`. `EINPROGRESS`가 아닌 실패면 502. 0이면 `EINPROGRESS`와 똑같이 이벤트를 기다린다
 5. `loop_watch(&up.w, EPOLLOUT)`. 실패하면 500. `connect` 뒤에 등록해야 한다(먼저 등록하면 `OUT|HUP`이 온다)
@@ -373,8 +377,8 @@ void proxy_close(struct conn *c) {
 | 접두사의 글자 | `0x21`~`0x7E`. `#`, `?`, `%`, `=`, `//`, `.`이나 `..` 세그먼트는 안 됨 |
 | 주소 | `inet_pton(AF_INET)`. 이름(`localhost`)은 안 됨 |
 | 포트 | 숫자만, 1~65535 |
-| 중복 | 같은 접두사가 이미 있으면 안 됨 (Round-Robin 단계에서 바뀜) |
-| 개수 | `MAX_ROUTES`까지 |
+| 중복 | 같은 접두사 안의 같은 IPv4 주소와 포트 조합은 거부한다 |
+| 개수 | 서로 다른 접두사는 `MAX_ROUTES`까지, 접두사마다 백엔드는 `MAX_BACKENDS`까지 |
 
 ```C
 // 원래 대상의 앞부분을 비교한다. 접두사가 '/'로 끝나므로 /apix는 맞지 않는다
@@ -385,14 +389,14 @@ if (len >= r->prefix_len && memcmp(target, r->prefix, r->prefix_len) == 0) retur
 - 요청 값으로 `connect` 주소를 만들지 않는다. 요청은 등록된 규칙을 고르기만 한다(SSRF).
 - `/api`(끝에 `/` 없음), `/%61pi/users`, `//api/users`, `/API/users`는 규칙 `/api/`에 맞지 않아 정적 파일로 처리한다.
 
-## Round-Robin (마지막 단계)
+## Round-Robin
 
 | 항목 | 동작 |
 |---|---|
-| 같은 접두사 | 그 규칙의 백엔드로 더한다. 최대 `MAX_BACKENDS` |
-| 같은 접두사 + 같은 주소 | 시작하지 않는다 |
-| 순서 | 적은 순서. `i = next; next = (next + 1) % n`으로 넘치지 않는다 |
-| 세는 단위 | 요청 검사를 통과해 `connect`를 시도하는 요청. 400, 405, 411, 501로 끝난 요청은 세지 않는다. `connect`가 실패해도 다음 순서로 넘어간다 |
+| 같은 접두사 | 그 규칙의 백엔드로 더한다. 규칙 순서는 처음 등록한 자리를 유지한다 |
+| 같은 접두사 + 같은 주소 | IPv4 주소와 포트 값으로 비교한다. `:8001`과 `:08001`은 같은 포트다 |
+| 순서 | 등록 순서대로 고른다. `next = (next + 1) % n`으로 마지막 다음에는 처음으로 돌아간다 |
+| 세는 단위 | 요청 재작성에 성공한 요청. 400, 405, 411, 431, 501과 요청 버퍼 초과 500은 세지 않는다. `socket`이나 `connect`가 실패해도 이미 다음 순서로 넘어간 상태다 |
 
 `http_proxy_request`가 백엔드 이름을 쓰므로 `route_pick`을 먼저 부르되 `next`는 검사를 통과한 뒤에 넘겨야 한다. `route_pick`은 고르기만 하고 `void route_advance(struct route *r)`을 3번 전에 부른다.
 
@@ -557,7 +561,7 @@ static int proxy_fail(struct conn *c, int status, const char *why) {
 | 상황 | 어디서 | 처리 |
 |---|---|---|
 | 규칙 없이 시작 | `main` | 지금과 똑같이 동작한다 |
-| `/api=...`, `api/=...`, `/a/../b/=...`, `/api/=localhost:8001`, 포트 0, 65536, 빈 포트, `8001x`, `=` 없음, 같은 접두사 두 번, 17번째 규칙 | `route_add` | `route:` 메시지, `exit(1)` |
+| `/api=...`, `api/=...`, `/a/../b/=...`, `/api/=localhost:8001`, 포트 0, 65536, 빈 포트, `8001x`, `=` 없음, 같은 규칙에 같은 주소 두 번, 9번째 백엔드, 17번째 규칙 | `route_add` | `route:` 메시지, `exit(1)` |
 | `/api/`와 `/api/v2/` 순서 | `route_find` | 먼저 적은 것이 이긴다 |
 | `/api/../admin`, `/api/%2e%2e/admin`, `/api/a%2f..%2f..%2fadmin` | 요청 검사 | 400 |
 | `/api/a..b`, `/api/x?y=../z` | 요청 검사 | 전달. 세그먼트가 `..`이 아니고 쿼리는 보지 않는다 |
@@ -656,16 +660,16 @@ static int proxy_fail(struct conn *c, int status, const char *why) {
 	- RST 클라이언트와 정상 요청을 섞은 동시 요청 300건 뒤 ASan 오류가 0개다. 한 배치 안의 해제는 300건으로 잡히지 않아, 서버를 SIGSTOP한 사이 A의 RST와 B의 응답을 보내고 SIGCONT하는 케이스를 따로 둔다(`proxy_cases.py batch`).
 	- `ulimit -n`을 낮춰 프록시 요청을 동시에 보내면 500이 나오거나 기다렸다가 처리되고, 그 뒤 `curl`이 200이다.
 
-### 7단계: Round-Robin (빼도 된다)
+### 7단계: Round-Robin
 - `struct route`의 배열, 같은 접두사 더하기, `route_advance`.
 - 확인
-	- 단위 테스트: 순서, 되돌아감, 같은 주소 중복 거부, 9번째 거부, 검사에 걸린 요청은 세지 않음.
-	- 백엔드 두 개에 요청 4번이 8001, 8002, 8001, 8002로 간다. 하나를 끄면 200과 502가 번갈아 나온다.
+	- 단위 테스트는 순서, 되돌아감, 같은 주소 중복 거부, 9번째 백엔드 거부를 확인한다.
+	- 기능 테스트는 정상 요청 4번이 8001, 8002, 8001, 8002로 가고 사이의 400, 405, 411 요청은 순서를 바꾸지 않는지 확인한다. 백엔드 하나를 끄면 200과 502가 번갈아 나온다.
 
 ### 8단계: 종합 확인
-- 공통 확인 두 가지.
+- 경고 없는 빌드, 일반 테스트, ASan·UBSan 테스트를 실행한다.
 - `valgrind --leak-check=full ./server 8080 <루트> /api/=127.0.0.1:8001`로 `proxy_test.sh`의 시나리오를 돌린 뒤 `kill $SP`(lessons.md)로 끝내면 `definitely lost: 0`이고 `Invalid read/write`가 0개다.
-- 브라우저로 `/index.html`과 `/api/` 경로를 열어 확인한다.
+- 브라우저로 `/index.html`, `/api/echo`, `/rr/port`를 연다. `/rr/port`를 새로 고침할 때 두 포트가 번갈아 표시되는지 확인한다.
 - `docs/requirements.md` 품질 체크리스트의 해당 항목을 표시한다.
 
 ## 테스트
@@ -687,7 +691,7 @@ static int proxy_fail(struct conn *c, int status, const char *why) {
 - 응답 타이머는 바이트가 오지 않은 시간이다. 조금씩 계속 보내는 백엔드는 끝나지 않는다.
 - 클라이언트가 FIN으로 떠나도 백엔드는 그 요청을 끝까지 처리하고, A와 B의 fd가 길게는 응답 타이머까지 남는다.
 - 백엔드 주소를 자기 자신으로 설정하면 요청이 돌면서 fd를 소진하고 500이나 504가 나온다.
-- 백엔드 하나가 죽으면 그 백엔드로 가는 요청은 502다. Round-Robin이면 일부 요청만 실패한다.
+- 백엔드 하나가 죽으면 등록 순서에서 그 백엔드가 선택된 요청이 502를 받는다.
 - 백엔드가 요청을 다 받지 않고 오류 응답을 보낸 뒤 닫으면 그 응답 대신 502가 나갈 수 있다.
 - 길이도 chunked도 없는 응답이 잘리면 클라이언트가 알 수 없다. RST로 끝나도 우리는 A를 FIN으로 닫는다.
 - 요청은 헤더와 본문을 합쳐 8192바이트까지다(지금 파서의 한도). 응답 헤더는 8192바이트까지다.
