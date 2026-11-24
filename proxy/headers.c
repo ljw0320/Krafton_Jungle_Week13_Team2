@@ -66,38 +66,65 @@ static bool equal(const char *a, const char *b)
     return strcasecmp(a, b) == 0;
 }
 
-/* Check every Connection token before filtering any fields. Framing cannot be hidden. */
-static int connection_fields(const struct proxy_headers *h, const char *name)
+enum { FIELDS_INVALID = -1, FIELDS_NOMEM = -2 };
+
+static int compare_names(const void *left, const void *right)
 {
-    int found = 0;
+    return strcasecmp(*(char *const *)left, *(char *const *)right);
+}
+
+/* Token pointers borrow h->data; Connection values are not forwarded. */
+static int connection_names(struct proxy_headers *h, char ***names, size_t *count)
+{
+    *names = NULL;
+    *count = 0;
+    size_t capacity = 0;
     for (size_t i = 0; i < h->count; ++i) {
         if (!equal(h->fields[i].name, "Connection"))
             continue;
-        const char *p = h->fields[i].value;
+        ++capacity;
+        for (const char *p = h->fields[i].value; *p; ++p)
+            capacity += *p == ',';
+    }
+    if (!capacity)
+        return 0;
+    *names = malloc(capacity * sizeof(**names));
+    if (!*names)
+        return FIELDS_NOMEM;
+    for (size_t i = 0; i < h->count; ++i) {
+        if (!equal(h->fields[i].name, "Connection"))
+            continue;
+        char *p = h->fields[i].value;
         for (;;) {
             while (*p == ' ' || *p == '\t')
                 ++p;
-            const char *start = p;
+            char *start = p;
             while (token((unsigned char)*p))
                 ++p;
-            size_t n = (size_t)(p - start);
-            if (!n)
-                return -1;
-            const char *critical[] = {"Host", "Content-Length", "Transfer-Encoding"};
-            for (size_t j = 0; j < sizeof(critical) / sizeof(*critical); ++j)
-                if (strlen(critical[j]) == n && strncasecmp(start, critical[j], n) == 0)
-                    return -1;
-            if (strlen(name) == n && strncasecmp(start, name, n) == 0)
-                found = 1;
+            char *end = p;
+            if (start == end)
+                goto invalid;
             while (*p == ' ' || *p == '\t')
                 ++p;
-            if (!*p)
+            bool last = *p == '\0';
+            if (!last && *p++ != ',')
+                goto invalid;
+            *end = '\0';
+            if (equal(start, "Host") || equal(start, "Content-Length") ||
+                equal(start, "Transfer-Encoding"))
+                goto invalid;
+            (*names)[(*count)++] = start;
+            if (last)
                 break;
-            if (*p++ != ',')
-                return -1;
         }
     }
-    return found;
+    if (*count > 1)
+        qsort(*names, *count, sizeof(**names), compare_names);
+    return 0;
+invalid:
+    free(*names);
+    *names = NULL;
+    return FIELDS_INVALID;
 }
 
 static bool hop_header(const char *name)
@@ -188,23 +215,29 @@ static int append_field(char *output, size_t *used, const char *name, const char
 }
 
 /* The output may grow slightly when adding a canonical length and connection field. */
-static int build_fields(const struct proxy_headers *h, char *out, size_t *used,
+static int build_fields(struct proxy_headers *h, char *out, size_t *used,
                          bool request)
 {
-    if (connection_fields(h, "") < 0)
-        return -1;
+    char **names;
+    size_t count;
+    int result = connection_names(h, &names, &count);
+    if (result)
+        return result;
     for (size_t i = 0; i < h->count; ++i) {
-        const char *name = h->fields[i].name;
+        char *name = h->fields[i].name;
         if (hop_header(name) || equal(name, "Content-Length") ||
-            connection_fields(h, name) == 1)
+            (count && bsearch(&name, names, count, sizeof(*names), compare_names)))
             continue;
         if (request && (equal(name, "Expect") || equal(name, "Forwarded") ||
                         strncasecmp(name, "X-Forwarded-", 12) == 0))
             continue;
-        if (append_field(out, used, name, h->fields[i].value))
-            return -1;
+        if (append_field(out, used, name, h->fields[i].value)) {
+            result = FIELDS_INVALID;
+            break;
+        }
     }
-    return 0;
+    free(names);
+    return result;
 }
 
 int proxy_request_header(const char *raw, const struct request *request, char **out)
@@ -233,8 +266,12 @@ int proxy_request_header(const char *raw, const struct request *request, char **
     if (n < 0 || n >= HEADER_LIMIT + 512)
         goto done;
     size_t used = (size_t)n;
-    if (build_fields(h, output, &used, true))
+    int fields = build_fields(h, output, &used, true);
+    if (fields) {
+        if (fields == FIELDS_NOMEM)
+            status = 500;
         goto done;
+    }
     char length[32];
     snprintf(length, sizeof(length), "%zu", request->content_length);
     if (append_field(output, &used, "Content-Length", length) ||
@@ -297,8 +334,14 @@ int proxy_response_header(const char *raw, const struct request *request,
     if (n < 0 || n >= HEADER_LIMIT + 512)
         goto done;
     size_t used = (size_t)n;
-    if (build_fields(h, output, &used, false))
+    int fields = build_fields(h, output, &used, false);
+    if (fields) {
+        if (fields == FIELDS_NOMEM) {
+            result = 500;
+            *reason = "allocation_failed";
+        }
         goto done;
+    }
     if (has_length) {
         char value[32];
         snprintf(value, sizeof(value), "%ju", declared);

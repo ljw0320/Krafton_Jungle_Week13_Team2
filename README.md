@@ -351,6 +351,7 @@ make clean && make
 - GET·POST, 요청 본문 최대 1MiB를 지원합니다. 요청 본문은 기존 30초 기한 안에 먼저 보관한 뒤 전달합니다.
 - 원래 Host는 DNS 이름·IPv4 형식 이름·대괄호 IPv6와 선택 포트 문법을 검사해 유지합니다. 프록시 경로에서는 HTTP/1.0도 Host가 필요합니다. Host는 접속 목적지를 정하지 않으며 별도 도메인 허용 목록은 없습니다.
 - 연결 전용 헤더와 Connection이 지목한 필드를 양방향에서 제거합니다. Connection이 Host·Content-Length·Transfer-Encoding을 지목하면 요청은 400, 응답은 502로 거부합니다.
+- Connection 토큰은 개수를 계산한 뒤 기존 헤더 버퍼에서 한 번 검증·분리하고, 임시 포인터 배열을 대소문자 구분 없이 정렬해 이진 검색합니다. 헤더마다 전체 헤더를 다시 순회하지 않으며, Connection이 없으면 배열 할당·검색을 생략합니다. 전달할 헤더의 순서와 반복 필드는 유지하고, 임시 배열 할당 실패는 500으로 처리합니다.
 - 백엔드 요청은 HTTP/1.1, `Connection: close`와 검증한 Content-Length를 사용합니다.
 - 클라이언트의 Forwarded·X-Forwarded-*를 제거하고 생성하지 않습니다. Expect는 직접 처리하고 백엔드에 전달하지 않습니다.
 - 응답 HTTP/1.0·1.1, Content-Length 기반 응답과 204·304만 지원합니다. 1xx·Transfer-Encoding·길이 누락·중복·잘못된 길이·문법 오류는 502입니다. 204의 Content-Length도 거부하며 304는 길이가 있어도 본문을 읽지 않습니다.

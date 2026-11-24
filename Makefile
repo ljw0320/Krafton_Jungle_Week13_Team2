@@ -30,7 +30,7 @@ build/test-cgi-io: tests/test_cgi_io.c $(HTTP_SOURCES) $(HTTP_HEADERS)
 
 build/test-proxy-headers: tests/test_proxy_headers.c proxy/headers.c proxy/headers.h http/http_internal.h
 	mkdir -p build
-	$(CC) $(CFLAGS) tests/test_proxy_headers.c proxy/headers.c -o $@ $(LDFLAGS)
+	$(CC) $(CFLAGS) tests/test_proxy_headers.c proxy/headers.c -o $@ $(LDFLAGS) -Wl,--wrap=strcasecmp -Wl,--wrap=malloc
 
 build/test-proxy-io: tests/test_proxy_io.c proxy/proxy.c proxy/headers.c $(HTTP_HEADERS) http/http_response.c http/http_io.c log/diagnostics.c
 	mkdir -p build
