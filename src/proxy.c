@@ -53,6 +53,7 @@ int proxy_start(struct conn *c, const struct http_req *req, struct route *r) {
     const struct backend *b = route_pick(r);
     int st = http_proxy_request(req, c->rbuf, b->name, c->wbuf, PROXY_BUF_SIZE, &c->wlen);
     if (st != 0) return start_fail(c, st, st == 500 ? "cannot build request" : NULL);
+    route_advance(r);
     c->woff = 0;
     u->w.fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
     if (u->w.fd < 0) return start_fail(c, 500, strerror(errno));

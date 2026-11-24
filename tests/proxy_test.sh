@@ -86,13 +86,23 @@ python3 -B tests/backend.py 8002 </dev/null &   # 자원 회수 케이스에서 
 BP2=$!
 python3 -B tests/backend.py 8003 noaccept </dev/null &
 $SERVER_WRAP ./server $PORT "$ROOT" /api/=127.0.0.1:8001 /dead/=127.0.0.1:8009 \
-    /noaccept/=127.0.0.1:8003 /b2/=127.0.0.1:8002 </dev/null 2>"$LOG" &
+    /noaccept/=127.0.0.1:8003 /b2/=127.0.0.1:8002 \
+    /rr/=127.0.0.1:8001 /rr/=127.0.0.1:8002 </dev/null 2>"$LOG" &
 SP=$!
 waitport 8001 $BP
 waitport 8002 $BP2
 waitport $PORT $SP
 
 U=http://127.0.0.1:$PORT
+
+check "rr 1" 8001 "$(cu "$U/rr/port")"
+check "rr invalid path" 400 "$(code /rr/%zz)"
+check "rr 2" 8002 "$(cu "$U/rr/port")"
+check "rr HEAD" 405 "$(cu -I -o /dev/null -w '%{http_code}' "$U/rr/port")"
+check "rr 3" 8001 "$(cu "$U/rr/port")"
+out=$(raw 'POST /rr/port HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n')
+check "rr POST without CL" 411 "$(status "$out" | cut -d' ' -f2)"
+check "rr 4" 8002 "$(cu "$U/rr/port")"
 
 # 요청 다시 만들기: 새로 만들 헤더, 뺄 헤더, 이름 대소문자, 값 공백 정리
 out=$(raw 'POST /api/echo?x=1 HTTP/1.1\r\nHost: shop.com\r\nConnection: close, X-Debug\r\nX-Debug: 1\r\nX-Forwarded-For: 1.2.3.4\r\nKeep-Alive: 5\r\nProxy-Connection: x\r\nTE: trailers\r\nUpgrade: h2c\r\nExpect: 100-continue\r\nForwarded: for=1\r\nX-Real-IP: 1\r\naccept:   */*  \r\nContent-Length: 5\r\n\r\nhello')
@@ -387,9 +397,10 @@ curl -s --max-time 0.1 -o /dev/null $U/api/stall; c1=$?    # 중계 중 끊기. 
 curl -s --limit-rate 1M --max-time 0.3 -o /dev/null $U/api/big; c2=$?   # 8MB를 느리게 받다가 끊긴다
 check "curl cut while relaying: exit 28" "28 28" "$c1 $c2"
 closer fin /api/hang 0.3                            # 기다리는 중 FIN
+b2_connects=$(grep -c 'connect 127.0.0.1:8002' "$LOG")
 curl -s --max-time $((20 + H)) -o /dev/null -w '%{http_code}' $U/b2/hang >"$TMP/pt.b2hang" & B2=$!
 { curl -s --max-time $((20 + H)) -o /dev/null $U/b2/stall; echo $? >"$TMP/pt.b2stall"; } & B2="$B2 $!"
-waitlog 'connect 127.0.0.1:8002' 2 $W
+waitlog 'connect 127.0.0.1:8002' "$((b2_connects + 2))" "$W"
 sleep 0.5   # 요청이 hang에 닿고 stall이 헤더를 받을 시간
 check "held: fds above baseline" yes "$([ "$(fdn)" -gt "$FD0" ] && echo yes || echo no)"
 kill -9 $BP2 2>/dev/null; wait $BP2 2>/dev/null
@@ -399,6 +410,12 @@ TE=$(date +%s.%N)
 check "kill -9 to 502 and curl 18 within 3s" ok "$(awk -v a=$TK -v b=$TE -v h=$H 'BEGIN { t = b - a; print (t < 3 + h) ? "ok" : sprintf("t=%.2f", t) }')"
 check "backend killed while waiting: 502" 502 "$(<"$TMP/pt.b2hang")"
 check "backend killed while relaying: curl 18" 18 "$(<"$TMP/pt.b2stall")"
+rr_codes="$(code /rr/port) $(code /rr/port) $(code /rr/port) $(code /rr/port)"
+case "$rr_codes" in
+    "200 502 200 502"|"502 200 502 200") rr_result=ok ;;
+    *) rr_result="$rr_codes" ;;
+esac
+check "rr dead backend alternates" ok "$rr_result"
 # 끊은 것들은 13초 안에 닫힌다. 멈춘 느린 클라이언트(A, B 2개)는 10~14초에 닫히므로 아직 열려 있거나 이미 닫힌 두 경우를 본다
 for _ in $(seq $(((15 + H) * 10))); do
     f=$(fdn); n=$(cnt)

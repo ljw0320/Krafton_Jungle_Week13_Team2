@@ -49,12 +49,22 @@ int route_add(const char *arg) {
     if (port < 1 || port > 65535) return route_fail(arg, "invalid port");
     sa.sin_port = htons((uint16_t)port);
 
-    for (int i = 0; i < nroutes; i++)
-        if (routes[i].prefix_len == n && memcmp(routes[i].prefix, arg, n) == 0)
-            return route_fail(arg, "duplicate prefix");
+    struct backend backend = {sa, addr};
+    for (int i = 0; i < nroutes; i++) {
+        struct route *r = &routes[i];
+        if (r->prefix_len != n || memcmp(r->prefix, arg, n) != 0) continue;
+        for (int j = 0; j < r->n; j++) {
+            const struct sockaddr_in *existing = &r->b[j].addr;
+            if (existing->sin_addr.s_addr == sa.sin_addr.s_addr && existing->sin_port == sa.sin_port)
+                return route_fail(arg, "duplicate backend");
+        }
+        if (r->n >= MAX_BACKENDS) return route_fail(arg, "too many backends");
+        r->b[r->n++] = backend;
+        return 0;
+    }
     if (nroutes >= MAX_ROUTES) return route_fail(arg, "too many routes");
 
-    routes[nroutes++] = (struct route){arg, n, {sa, addr}};
+    routes[nroutes++] = (struct route){.prefix = arg, .prefix_len = n, .b = {backend}, .n = 1};
     return 0;
 }
 
@@ -65,4 +75,6 @@ struct route *route_find(const char *target, size_t len) {
     return NULL;
 }
 
-const struct backend *route_pick(struct route *r) { return &r->b; }
+const struct backend *route_pick(struct route *r) { return &r->b[r->next]; }
+
+void route_advance(struct route *r) { r->next = (r->next + 1) % r->n; }

@@ -45,12 +45,26 @@ static void test_accept(void) {
     check("find 등록 직후", 1, r != NULL);
     if (r) {
         check("prefix_len", 5, (long long)r->prefix_len);
-        check("addr 포트", 8001, ntohs(r->b.addr.sin_port));
-        check("addr 주소", (long long)htonl(INADDR_LOOPBACK), r->b.addr.sin_addr.s_addr);
-        check("name", 0, strcmp(r->b.name, "127.0.0.1:8001"));
-        check("pick", 1, route_pick(r) == &r->b);
+        check("addr 포트", 8001, ntohs(r->b[0].addr.sin_port));
+        check("addr 주소", (long long)htonl(INADDR_LOOPBACK), r->b[0].addr.sin_addr.s_addr);
+        check("name", 0, strcmp(r->b[0].name, "127.0.0.1:8001"));
+        check("pick", 1, route_pick(r) == &r->b[0]);
+        route_advance(r);
+        check("한 개면 제자리", 1, route_pick(r) == &r->b[0]);
     }
-    add("/api/=127.0.0.1:8002", -1);          // 같은 접두사 두 번
+    add("/api/=127.0.0.1:8002", 0);
+    add("/api/=127.0.0.1:8001", -1);
+    add("/api/=127.0.0.1:08001", -1);
+    if (r) {
+        check("중복 거부 뒤 개수", 2, r->n);
+        check("pick 첫 번째", 1, route_pick(r) == &r->b[0]);
+        check("pick만 하면 제자리", 1, route_pick(r) == &r->b[0]);
+        route_advance(r);
+        check("advance 다음", 1, route_pick(r) == &r->b[1]);
+        check("두 번째 주소", 8002, ntohs(r->b[1].addr.sin_port));
+        route_advance(r);
+        check("마지막에서 처음으로", 1, route_pick(r) == &r->b[0]);
+    }
     add("/=127.0.0.1:65535", 0);
     add("/x/=127.0.0.1:1", 0);
     add("/p0/=127.0.0.1:000001", 0);          // 앞자리 0
@@ -71,6 +85,7 @@ static void test_find_no_root(void) {
     nroutes = 0;
     check("v2 뒤에 add", 0, route_add("/api/=127.0.0.1:8001"));
     check("v2 add", 0, route_add("/api/v2/=127.0.0.1:8002"));
+    add("/api/=127.0.0.1:8003", 0);
     find("/api/v2/x는 먼저 적은 /api/", "/api/v2/x", 9, "/api/");
     find("/apix", "/apix/", 6, NULL);
     find("/api", "/api", 4, NULL);
@@ -91,8 +106,31 @@ static void test_count(void) {
         snprintf(arg, sizeof(args[i]), "/p%d/=127.0.0.1:%d", i, 9000 + i);
         check(arg, 0, route_add(arg));
     }
+    add("/p0/=127.0.0.1:9100", 0);
     check("17번째", -1, route_add("/p99/=127.0.0.1:9100"));
     check("16번째까지는 남음", 1, route_find("/p15/x", 6) != NULL);
+}
+
+static void test_backend_limit(void) {
+    nroutes = 0;
+    static const char *const args[] = {
+        "/rr/=127.0.0.1:8001", "/rr/=127.0.0.1:8002", "/rr/=127.0.0.1:8003",
+        "/rr/=127.0.0.1:8004", "/rr/=127.0.0.1:8005", "/rr/=127.0.0.1:8006",
+        "/rr/=127.0.0.1:8007", "/rr/=127.0.0.1:8008",
+    };
+    for (size_t i = 0; i < sizeof(args) / sizeof(args[0]); i++) add(args[i], 0);
+    struct route *r = route_find("/rr/x", 5);
+    check("한도 규칙 등록", 1, r != NULL);
+    if (!r) return;
+    route_advance(r);
+    add("/rr/=127.0.0.1:8009", -1);
+    check("거부 뒤 백엔드 수", 8, r->n);
+    check("거부 뒤 규칙과 순서", 1, route_find("/rr/x", 5) == r && route_pick(r) == &r->b[1]);
+    for (int port = 8002; port <= 8008; port++) {
+        check("거부 뒤 백엔드 주소", port, ntohs(route_pick(r)->addr.sin_port));
+        route_advance(r);
+    }
+    check("거부 뒤 처음으로", 1, route_pick(r) == &r->b[0]);
 }
 
 static void want_head(const char *name, const struct http_req *req, const char *part, int keep) {
@@ -512,6 +550,7 @@ int main(void) {
     test_find();
     test_find_no_root();
     test_count();
+    test_backend_limit();
     test_error_resp();
     test_keep_alive();
     test_req_rewrite();
