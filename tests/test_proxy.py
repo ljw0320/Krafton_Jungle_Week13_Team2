@@ -1,5 +1,6 @@
 """Real TCP peers verify forwarding, framing, failure and resource ownership."""
 import concurrent.futures
+import errno
 import http.client
 import os
 import queue
@@ -126,6 +127,74 @@ class ProxyTests(ServerTestCase):
             result.begin()
             return result.status, result.getheaders(), result.read()
 
+    def logged_failures(self):
+        self.shutdown()
+        entries = []
+        for line in self.logs.splitlines():
+            self.assertTrue(line.startswith('proxy '), line)
+            fields = dict(field.split('=', 1) for field in line.split()[1:])
+            self.assertTrue({'phase', 'status', 'errno', 'expected', 'received', 'sent',
+                             'backend', 'route', 'elapsed_ms', 'reason'} <= fields.keys(), line)
+            self.assertGreaterEqual(float(fields['elapsed_ms']), 0)
+            entries.append(fields)
+        return entries
+
+    def test_failure_logs_identify_backend_reason_and_exclude_payload(self):
+        self.launch()
+        cases = [
+            (b'HTTP/1.1 200 OK\r\nBad Header\r\n\r\n', 'invalid_response_header'),
+            (b'HTTP/1.9 200 OK\r\nContent-Length: 0\r\n\r\n', 'invalid_status_line'),
+            (b'HTTP/1.1 200 OK\r\nContent-Length: -1\r\n\r\n', 'invalid_content_length'),
+            (b'HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n',
+             'unsupported_transfer_encoding'),
+        ]
+        for reply, _ in cases:
+            self.backend.reply = reply
+            self.assertEqual(self.exchange('/api/private?token=query-secret', 'POST',
+                                           b'body-secret', {'Host': 'example.com',
+                                           'Authorization': 'Bearer header-secret'})[0], 502)
+        self.other.reply = b'HTTP/1.1 200 OK\r\nX: upstream-secret\r\nBad Header\r\n\r\n'
+        self.assertEqual(self.exchange('/api/admin/private')[0], 502)
+        logs = self.logged_failures()
+        self.assertEqual(len(logs), 5)
+        self.assertEqual([entry['reason'] for entry in logs[:4]], [reason for _, reason in cases])
+        for entry in logs[:4]:
+            self.assertEqual(entry['backend'], f'127.0.0.1:{self.backend.port}')
+            self.assertEqual(entry['route'], '/api')
+            self.assertEqual(entry['errno'], '0')
+        self.assertEqual(logs[-1]['backend'], f'127.0.0.1:{self.other.port}')
+        self.assertEqual(logs[-1]['route'], '/api/admin')
+        for secret in ('query-secret', 'body-secret', 'header-secret', 'upstream-secret', 'private'):
+            self.assertNotIn(secret, self.logs)
+
+    def test_concurrent_failures_log_once_and_measure_wait(self):
+        def delayed_invalid(peer):
+            peer.recv(32768)
+            time.sleep(.1)
+            peer.sendall(b'HTTP/1.1 200 OK\r\nBad Header\r\n\r\n')
+        self.backend.handler = delayed_invalid
+        self.launch()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            self.assertEqual(list(pool.map(lambda _: self.exchange()[0], range(8))), [502] * 8)
+        entries = self.logged_failures()
+        self.assertEqual(len(entries), 8)
+        for entry in entries:
+            self.assertEqual(entry['reason'], 'invalid_response_header')
+            self.assertEqual(entry['errno'], '0')
+            self.assertTrue(80 <= float(entry['elapsed_ms']) < 5000)
+
+    def test_failure_log_bounds_configured_route(self):
+        prefix = '/' + 'a' * 600
+        self.config.write_text(f'{prefix} 127.0.0.1 {self.backend.port}\n')
+        self.backend.reply = b'HTTP/1.1 200 OK\r\nBad Header\r\n\r\n'
+        self.launch()
+        self.assertEqual(self.exchange(prefix + '/private')[0], 502)
+        entries = self.logged_failures()
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]['route'], prefix[:256])
+        self.assertEqual(entries[0]['route_truncated'], '1')
+        self.assertLess(len(self.logs.encode()), 1024)
+
     def test_backend_limit_isolates_services_and_shares_endpoint_limit(self):
         entered = threading.Event()
         release = threading.Event()
@@ -158,6 +227,12 @@ class ProxyTests(ServerTestCase):
             self.assertEqual(first.result(timeout=3)[2], b'ok')
         self.backend.handler = None
         self.assertEqual(self.exchange('/shared')[2], b'ok')
+        entries = self.logged_failures()
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]['reason'], 'backend_limit')
+        self.assertEqual(entries[0]['status'], '503')
+        self.assertEqual(entries[0]['errno'], '0')
+        self.assertEqual(entries[0]['route'], '/shared')
 
     def test_backend_limit_reclaims_killed_worker_and_client_cancellation(self):
         import signal
@@ -398,6 +473,10 @@ class ProxyTests(ServerTestCase):
         self.assertEqual(data.split(b'\r\n\r\n', 1)[1], b'abc')
         self.shutdown()
         self.assertIn('expected=1000 received=3 sent=3', self.logs)
+        entries = self.logged_failures()
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]['reason'], 'early_eof')
+        self.assertEqual(entries[0]['errno'], '0')
 
     def test_request_host_and_connection_validation(self):
         self.launch()
@@ -437,6 +516,12 @@ class ProxyTests(ServerTestCase):
         self.config.write_text(f'/api 127.0.0.1 {port}\n')
         self.launch()
         self.assertEqual(self.exchange()[0], 502)
+        entries = self.logged_failures()
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]['phase'], 'connect')
+        self.assertEqual(entries[0]['reason'], 'connect_failed')
+        self.assertEqual(int(entries[0]['errno']), errno.ECONNREFUSED)
+        self.assertEqual(entries[0]['backend'], f'127.0.0.1:{port}')
 
     def test_concurrent_requests_and_fd_recovery(self):
         self.launch()
@@ -458,6 +543,11 @@ class ProxyTests(ServerTestCase):
         start = time.monotonic()
         self.assertEqual(self.exchange()[0], 504)
         self.assertTrue(9 <= time.monotonic() - start < 13)
+        entries = self.logged_failures()
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]['reason'], 'upstream_timeout')
+        self.assertEqual(entries[0]['errno'], '0')
+        self.assertTrue(9000 <= float(entries[0]['elapsed_ms']) < 13000)
 
     def test_body_timeout_after_headers_only_closes_and_logs(self):
         def stalled(peer):
@@ -477,6 +567,10 @@ class ProxyTests(ServerTestCase):
         self.assertEqual(data.split(b'\r\n\r\n')[1], b'abc')
         self.shutdown()
         self.assertIn('phase=response_body status=504', self.logs)
+        entries = self.logged_failures()
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]['reason'], 'upstream_timeout')
+        self.assertEqual(entries[0]['errno'], '0')
 
     def test_early_final_response_during_post_does_not_deadlock(self):
         def early(peer):
@@ -545,6 +639,11 @@ class ProxyTests(ServerTestCase):
         self.shutdown()
         self.assertIn('phase=response_header status=0', self.logs)
         self.assertIn('phase=response_body status=0', self.logs)
+        entries = self.logged_failures()
+        self.assertEqual(len(entries), 2)
+        for entry in entries:
+            self.assertEqual(entry['reason'], 'client_cancelled')
+            self.assertEqual(entry['errno'], '0')
 
     def test_write_half_close_keeps_delayed_backend_response(self):
         def delayed(peer):
@@ -576,6 +675,7 @@ class ProxyTests(ServerTestCase):
         self.backend.reply = b'HTTP/1.1 500 Internal Error\r\nContent-Length: 4\r\n\r\noops'
         self.launch()
         self.assertEqual((self.exchange()[0], self.exchange()[2]), (500, b'oops'))
+        self.assertEqual(self.logged_failures(), [])
 
     def test_invalid_config_fails_with_line_number(self):
         cases = ['/api 127.0.0.1 0', '/api localhost 8000', '/api/ 127.0.0.1 8000',

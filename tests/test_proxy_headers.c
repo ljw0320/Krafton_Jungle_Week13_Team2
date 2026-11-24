@@ -19,7 +19,9 @@ int main(void)
     memcpy(raw + used, "\r\n", 3);
     char *out = NULL;
     uintmax_t length;
-    assert(proxy_response_header(raw, &request, &out, &length) == 0);
+    const char *reason;
+    assert(proxy_response_header(raw, &request, &out, &length, &reason) == 0);
+    assert(reason == NULL);
     assert(length == 0);
     free(out);
     puts("proxy header tests passed");

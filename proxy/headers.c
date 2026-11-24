@@ -251,13 +251,15 @@ done:
 }
 
 int proxy_response_header(const char *raw, const struct request *request,
-                          char **out, uintmax_t *length)
+                          char **out, uintmax_t *length, const char **reason)
 {
     int result = 502;
+    *reason = "invalid_response_header";
     struct proxy_headers *h = malloc(sizeof(*h));
     char *output = malloc(HEADER_LIMIT + 512);
     if (!h || !output) {
         result = 500;
+        *reason = "allocation_failed";
         goto done;
     }
     if (proxy_parse_headers(h, raw))
@@ -265,23 +267,31 @@ int proxy_response_header(const char *raw, const struct request *request,
     const char *line = h->first;
     if (strlen(line) < 13 || (strncmp(line, "HTTP/1.0 ", 9) && strncmp(line, "HTTP/1.1 ", 9)) ||
         line[9] < '2' || line[9] > '5' || line[10] < '0' || line[10] > '9' ||
-        line[11] < '0' || line[11] > '9' || line[12] != ' ')
+        line[11] < '0' || line[11] > '9' || line[12] != ' ') {
+        *reason = "invalid_status_line";
         goto done;
+    }
     int code = (line[9] - '0') * 100 + (line[10] - '0') * 10 + line[11] - '0';
     bool has_length = false;
     uintmax_t declared = 0;
     for (size_t i = 0; i < h->count; ++i) {
         const char *name = h->fields[i].name;
-        if (equal(name, "Transfer-Encoding"))
+        if (equal(name, "Transfer-Encoding")) {
+            *reason = "unsupported_transfer_encoding";
             goto done;
+        }
         if (equal(name, "Content-Length")) {
-            if (has_length || length_value(h->fields[i].value, &declared))
+            if (has_length || length_value(h->fields[i].value, &declared)) {
+                *reason = "invalid_content_length";
                 goto done;
+            }
             has_length = true;
         }
     }
-    if ((code == 204 && has_length) || (code != 204 && code != 304 && !has_length))
+    if ((code == 204 && has_length) || (code != 204 && code != 304 && !has_length)) {
+        *reason = "invalid_content_length";
         goto done;
+    }
     int n = snprintf(output, HEADER_LIMIT + 512, "HTTP/1.%d %s\r\n",
                      request->http11 ? 1 : 0, line + 9);
     if (n < 0 || n >= HEADER_LIMIT + 512)
@@ -302,6 +312,7 @@ int proxy_response_header(const char *raw, const struct request *request,
     *out = output;
     output = NULL;
     result = 0;
+    *reason = NULL;
 done:
     free(output);
     free(h);
