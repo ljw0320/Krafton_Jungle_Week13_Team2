@@ -1,0 +1,255 @@
+#!/bin/bash
+# 서버와 테스트 백엔드를 띄워 Reverse Proxy 동작을 확인하는 기능 테스트. 실패가 있으면 종료 코드 1
+# 10초 이상 걸리는 케이스(hang, stall, slow, drip, noaccept, fd 회수)는 넣지 않는다
+cd "$(dirname "$0")/.." || exit 1
+PORT=8080
+TMP=$(mktemp -d)
+ROOT=$TMP/www
+LOG=$(mktemp)
+pass=0
+fail=0
+# 느린 서버(valgrind)에서 시간 제한이 헛되이 실패하지 않게 넓힌다
+W=10; MT=5; XT=3
+[ -n "$SERVER_WRAP" ] && { W=60; MT=25; XT=15; }
+
+cleanup() {
+    kill $(jobs -p) 2>/dev/null   # 서버, 백엔드, 백그라운드 클라이언트
+    rm -rf "$TMP" "$LOG"
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+
+check() {   # 이름 기대 실제
+    if [ "$2" == "$3" ]; then pass=$((pass + 1))
+    else fail=$((fail + 1)); echo "FAIL $1: 기대 $2, 실제 $3" >&2; fi
+}
+
+# stdin을 보내고 서버가 닫을 때까지 받는다. 출력은 응답, 종료 코드 0이면 서버가 닫음
+xchg() {
+    python3 -c '
+import socket, sys
+s = socket.create_connection(("127.0.0.1", 8080))
+s.settimeout(float(sys.argv[1]))
+s.sendall(sys.stdin.buffer.read())
+out = b""
+code = 0
+try:
+    while True:
+        d = s.recv(65536)
+        if not d: break
+        out += d
+except socket.timeout:
+    code = 3
+sys.stdout.buffer.write(out)
+sys.exit(code)' "${1:-$XT}"
+}
+raw() { printf '%b' "$1" | xchg; }   # \r\n, \x01 같은 이스케이프를 해석해 보낸다
+status() { head -n1 <<<"$1" | tr -d '\r'; }
+hdr() { tr -d '\r' <<<"$1" | grep -m1 -i "^$2:"; }
+rbody() { printf '%s' "${1#*$'\r\n\r\n'}"; }   # 응답에서 헤더를 뺀 본문
+bodysha() {   # backend.py의 본문 규칙으로 N바이트의 sha256
+    python3 -B -c 'import sys, hashlib; sys.path.insert(0, "tests"); import backend
+print(hashlib.sha256(backend.body(int(sys.argv[1]))).hexdigest())' "$1"
+}
+fsha() { sha256sum "$1" | cut -d' ' -f1; }
+cu() { curl -s --path-as-is --max-time $MT "$@"; }
+code() { cu -o /dev/null -w '%{http_code}' "$U$1"; }
+# 한 curl에 URL 여러 개: 상태 코드 목록을 출력하고 연결 수는 conns로 본다
+multi() { local a=() p; for p; do a+=(-o /dev/null "$U$p"); done
+          curl -sv --max-time $MT -w '%{http_code},' "${a[@]}" 2>"$TMP/v"; }
+conns() { grep -c 'Connected to' "$TMP/v"; }
+waitport() {   # 포트 pid: 안 열리면 바로 실패로 끝낸다
+    local _
+    for _ in $(seq $((W * 10))); do
+        (exec 3<>/dev/tcp/127.0.0.1/$1) 2>/dev/null && return 0
+        kill -0 "$2" 2>/dev/null || break
+        sleep 0.1
+    done
+    echo "FAIL start: 포트 $1이 열리지 않음" >&2
+    cat "$LOG" >&2
+    exit 1
+}
+
+mkdir -p "$ROOT"
+printf '<h1>home</h1>\n' >"$ROOT/index.html"
+
+python3 -B tests/backend.py 8001 </dev/null &
+BP=$!
+python3 -B tests/backend.py 8003 noaccept </dev/null &
+$SERVER_WRAP ./server $PORT "$ROOT" /api/=127.0.0.1:8001 /dead/=127.0.0.1:8009 \
+    /noaccept/=127.0.0.1:8003 </dev/null 2>"$LOG" &
+SP=$!
+waitport 8001 $BP
+waitport $PORT $SP
+
+U=http://127.0.0.1:$PORT
+
+# 요청 다시 만들기: 새로 만들 헤더, 뺄 헤더, 이름 대소문자, 값 공백 정리
+out=$(raw 'POST /api/echo?x=1 HTTP/1.1\r\nHost: shop.com\r\nConnection: close, X-Debug\r\nX-Debug: 1\r\nX-Forwarded-For: 1.2.3.4\r\nKeep-Alive: 5\r\nProxy-Connection: x\r\nTE: trailers\r\nUpgrade: h2c\r\nExpect: 100-continue\r\nForwarded: for=1\r\nX-Real-IP: 1\r\naccept:   */*  \r\nContent-Length: 5\r\n\r\nhello')
+check "rewrite status" "HTTP/1.1 200 OK" "$(status "$out")"
+check "rewrite request" $'POST /api/echo?x=1 HTTP/1.1\r\nHost: shop.com\r\nConnection: close\r\nContent-Length: 5\r\naccept: */*\r\n\r\nhello' "$(rbody "$out")"
+out=$(raw 'GET /api/echo HTTP/1.0\r\n\r\n')
+check "rewrite 1.0 without Host" $'GET /api/echo HTTP/1.0\r\nHost: 127.0.0.1:8001\r\nConnection: close\r\n\r' "$(rbody "$out")"   # $()가 끝의 \n을 지운다
+out=$(raw 'POST /api/echo HTTP/1.1\r\nHost: h\r\nConnection: close, Content-Length, Host\r\nContent-Length: 2\r\n\r\nhi')
+check "Connection names CL and Host stay" $'POST /api/echo HTTP/1.1\r\nHost: h\r\nConnection: close\r\nContent-Length: 2\r\n\r\nhi' "$(rbody "$out")"
+out=$(raw 'GET /api/echo HTTP/1.1\r\nHost: h\r\nConnection: close\r\nContent-Length: 2\r\n\r\nhi')
+check "GET with body forwarded" $'GET /api/echo HTTP/1.1\r\nHost: h\r\nConnection: close\r\nContent-Length: 2\r\n\r\nhi' "$(rbody "$out")"
+out=$(raw 'GET /api/a%2Fb?x=%20 HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n')
+check "target forwarded as is" $'GET /api/a%2Fb?x=%20 HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r' "$(rbody "$out")"
+check "a..b passes" 200 "$(code /api/a..b)"
+check "query ../ passes" 200 "$(code '/api/x?y=../z')"
+
+# 요청 검사: 400, 405, 411, 501
+RQ='\r\nHost: x\r\nConnection: close\r\n\r\n'
+i=0
+for t in '/api/../admin' '/api/%2e%2e/admin' '/api/a%2f..%2f..%2fadmin' '/api/%zz' '/api/x#y' '/api/a%00b' \
+    '/api/\x01x' '/api/\x80x'; do
+    i=$((i + 1))
+    check "400 target $i" "HTTP/1.1 400 Bad Request" "$(status "$(raw "GET $t HTTP/1.1$RQ")")"
+done
+check "400 header 0x01" "HTTP/1.1 400 Bad Request" "$(status "$(raw 'GET /api/x HTTP/1.1\r\nHost: x\r\nX-A: a\x01b\r\nConnection: close\r\n\r\n')")"
+check "400 header 0x7F" "HTTP/1.1 400 Bad Request" "$(status "$(raw 'GET /api/x HTTP/1.1\r\nHost: x\r\nX-A: a\x7fb\r\nConnection: close\r\n\r\n')")"
+check "400 Host with space" "HTTP/1.1 400 Bad Request" "$(status "$(raw 'GET /api/x HTTP/1.1\r\nHost: a b/c\r\nConnection: close\r\n\r\n')")"
+check "400 empty Host" "HTTP/1.1 400 Bad Request" "$(status "$(raw 'GET /api/x HTTP/1.1\r\nHost:\r\nConnection: close\r\n\r\n')")"
+check "static path ignores odd Host" "HTTP/1.1 200 OK" "$(status "$(raw 'GET /index.html HTTP/1.1\r\nHost: a b/c\r\nConnection: close\r\n\r\n')")"
+out=$(raw "HEAD /api/x HTTP/1.1$RQ")
+check "405 backend path" "HTTP/1.1 405 Method Not Allowed|Allow: GET, POST" "$(status "$out")|$(hdr "$out" Allow)"
+out=$(raw 'POST /index.html HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\nConnection: close\r\n\r\n')
+check "405 static path" "HTTP/1.1 405 Method Not Allowed|Allow: GET" "$(status "$out")|$(hdr "$out" Allow)"
+check "411 POST without CL" "HTTP/1.1 411 Length Required" "$(status "$(raw "POST /api/x HTTP/1.1$RQ")")"
+check "501 unknown method" "HTTP/1.1 501 Not Implemented" "$(status "$(raw "BREW /api/x HTTP/1.1$RQ")")"
+
+# 백엔드 실패는 502. 본문 형식은 다른 오류 응답과 같다
+out=$(raw "GET /dead/x HTTP/1.1$RQ")
+check "502 backend down" "HTTP/1.1 502 Bad Gateway|Connection: close|<h1>502 Bad Gateway</h1>" \
+    "$(status "$out")|$(hdr "$out" Connection)|$(rbody "$out")"
+for n in bad lf dupcl tecl bighead 101 close rst head/8193; do
+    check "502 $n" 502 "$(code /api/$n)"
+done
+check "head 8191 is 200" 200 "$(code /api/head/8191)"
+check "head 8192 is 200" 200 "$(code /api/head/8192)"
+check "head 8193 is 502" 502 "$(code /api/head/8193)"
+out=$(raw "GET /api/1xx HTTP/1.1$RQ")
+check "1xx single status" "HTTP/1.1 200," "$(tr -d '\r' <<<"$out" | grep -o '^HTTP/1\.[01] [0-9]*' | tr '\n' ,)"
+check "1xx body" "after-1xx" "$(rbody "$out" | tr -d '\n')"
+cu -o /dev/null $U/api/short; check "short body: curl exit 18" 18 $?
+
+# 응답 길이와 유지
+check "cl body" "cl-body" "$(cu $U/api/cl)"
+out=$(multi /api/cl /index.html /api/cl)
+check "cl, static, cl reuse A" "200,200,200,|1" "$out|$(conns)"
+check "chunked body" "hello world" "$(cu $U/api/chunked)"
+out=$(multi /api/chunked /api/chunked)
+check "chunked closes A" "200,200,|2" "$out|$(conns)"
+check "nolen body" "nolen-body" "$(cu $U/api/nolen)"
+out=$(multi /api/nolen /api/nolen)
+check "nolen closes A" "200,200,|2" "$out|$(conns)"
+out=$(multi /api/empty /api/cl)
+check "204 keeps A" "204,200,|1" "$out|$(conns)"
+check "204 has no Content-Length" 0 "$(curl -si --max-time $MT $U/api/empty | grep -ic '^content-length')"
+out=$(multi /api/304 /api/cl)
+check "304 keeps A" "304,200,|1" "$out|$(conns)"
+check "304 keeps Content-Length" "Content-Length: 5" "$(curl -si --max-time $MT $U/api/304 | tr -d '\r' | grep -i '^content-length')"
+for p in over over/split; do
+    cu -o "$TMP/o1" $U/api/$p -o "$TMP/o2" $U/index.html
+    check "$p body" "hello" "$(<"$TMP/o1")"
+    check "$p next request" "<h1>home</h1>" "$(<"$TMP/o2")"
+    multi /api/$p /index.html >/dev/null
+    check "$p keeps A" 1 "$(conns)"
+done
+out=$(raw "GET /api/cl HTTP/1.1$RQ")
+check "Connection close request" "HTTP/1.1 200 OK|Connection: close" "$(status "$out")|$(hdr "$out" Connection)"
+check "split response body" "split-body" "$(cu $U/api/split)"
+
+# Review Focus 1: 파이프라이닝 20개
+out=$({ for _ in $(seq 19); do printf 'GET /api/cl HTTP/1.1\r\nHost: x\r\n\r\n'; done
+        printf 'GET /api/cl HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n'; } | xchg)
+check "pipeline 20 responses" "20|20" "$(tr -d '\r' <<<"$out" | grep -c '^HTTP/1.1 200')|$(grep -ao 'cl-body' <<<"$out" | wc -l)"
+# 파이프라이닝 3개: 순서
+out=$(raw 'GET /api/a HTTP/1.1\r\nHost: x\r\n\r\nGET /index.html HTTP/1.1\r\nHost: x\r\n\r\nGET /api/b HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n')
+check "pipeline order" "/api/a,home,/api/b," "$(grep -aoE '/api/[ab]|home' <<<"$out" | tr '\n' ,)"
+# nc -N처럼 요청 뒤 쓰기만 닫음
+out=$(python3 -c '
+import socket
+s = socket.create_connection(("127.0.0.1", 8080)); s.settimeout(3)
+s.sendall(b"GET /api/cl HTTP/1.1\r\nHost: x\r\n\r\n"); s.shutdown(socket.SHUT_WR)
+out = b""
+try:
+    while True:
+        d = s.recv(4096)
+        if not d: break
+        out += d
+except socket.timeout: pass
+print(out.decode().split("\r\n")[0], out.decode().split("\r\n\r\n")[1].strip())')
+check "half-closed request gets response" "HTTP/1.1 200 OK cl-body" "$out"
+
+# Review Focus 2: 응답 본문 길이가 버퍼 경계에 걸림. 같은 A의 다음 요청도 정상
+for n in 0 1 16383 16384 16385 32768; do
+    curl -sv --max-time $MT -o "$TMP/sz" -w '%{http_code},' $U/api/size/$n -o "$TMP/nx" $U/api/cl 2>"$TMP/v" >"$TMP/w"
+    check "size $n" "200,200,|1|$(bodysha $n)|cl-body" "$(<"$TMP/w")|$(conns)|$(fsha "$TMP/sz")|$(<"$TMP/nx")"
+done
+
+# Review Focus 4: 헤더와 본문을 합쳐 8192바이트인 POST가 여러 조각으로 옴
+out=$(python3 -c '
+import socket, time
+def mk(k): return b"POST /api/echo HTTP/1.1\r\nHost: x\r\nContent-Length: %d\r\nConnection: close\r\n\r\n" % k
+k = 8192 - len(mk(8192))
+while len(mk(k)) + k != 8192: k -= 1
+payload = bytes((i * 13 + 5) % 256 for i in range(k))
+req = mk(k) + payload
+assert len(req) == 8192
+s = socket.create_connection(("127.0.0.1", 8080)); s.settimeout(5)
+s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+for i in range(0, 8192, 1000):
+    s.sendall(req[i:i + 1000]); time.sleep(0.05)
+out = b""
+while True:
+    d = s.recv(65536)
+    if not d: break
+    out += d
+echo = out.split(b"\r\n\r\n", 1)[1]
+print(out.split(b"\r\n")[0].decode(), echo.split(b"\r\n\r\n", 1)[1] == payload)')
+check "POST 8192 in pieces" "HTTP/1.1 200 OK True" "$out"
+
+# 큰 응답: 8MB. 길이를 아는 것은 sha256, 모르는 것은 느린 클라이언트와 backpressure
+cu -o "$TMP/big" $U/api/big
+check "big sha256" "$(bodysha 8388608)" "$(fsha "$TMP/big")"
+python3 -c '
+import socket, hashlib, time
+s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
+s.settimeout(30); s.connect(("127.0.0.1", 8080))
+s.sendall(b"GET /api/bignolen HTTP/1.1\r\nHost: x\r\n\r\n")
+time.sleep(1.5)
+parts = []
+while True:
+    d = s.recv(65536)
+    if not d: break
+    parts.append(d)
+data = b"".join(parts)
+head, _, b = data.partition(b"\r\n\r\n")
+print(head.split(b"\r\n")[0].decode(), hashlib.sha256(b).hexdigest())' >"$TMP/slow" &
+slowpid=$!
+sleep 0.5
+LIM=1; [ -n "$SERVER_WRAP" ] && LIM=5
+fast() { curl -s -o /dev/null -w '%{http_code}' --max-time $LIM "$U$1"; }
+r1=$(fast /index.html); r2=$(fast /api/cl)
+kill -0 $slowpid 2>/dev/null && alive=alive || alive=done
+check "other requests fast while A is slow" "200,200,alive" "$r1,$r2,$alive"
+wait $slowpid
+check "slow reader bignolen sha256, A closes" "HTTP/1.1 200 OK $(bodysha 8388608)" "$(<"$TMP/slow")"
+offs=$(grep -Ec 'backend fd=[0-9]+ off' "$LOG"); ons=$(grep -Ec 'backend fd=[0-9]+ on' "$LOG")
+check "backpressure off and on logged" "yes" "$([ "$offs" -ge 1 ] && [ "$ons" -ge 1 ] && echo yes || echo "off=$offs on=$ons")"
+check "connect logged" "yes" "$(grep -q 'backend fd=[0-9]* connect 127.0.0.1:8001' "$LOG" && echo yes || echo no)"
+
+# 시작 뒤에도 서버가 산다
+check "server alive: static" 200 "$(code /index.html)"
+check "server alive: proxy" 200 "$(code /api/cl)"
+
+kill $SP
+wait $SP 2>/dev/null
+if grep -qE 'AddressSanitizer|runtime error' "$LOG"; then
+    fail=$((fail + 1)); echo "FAIL sanitizer: 기대 오류 없음, 실제 서버 로그에 있음" >&2
+    grep -E 'AddressSanitizer|runtime error' "$LOG" >&2
+fi
+echo "$pass passed, $fail failed"
+[ "$fail" -eq 0 ]
