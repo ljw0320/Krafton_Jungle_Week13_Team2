@@ -77,17 +77,32 @@ static void test_response(void)
 {
     char out[512];
 
-    assert(http_response(out, sizeof(out), 405, 4, "text/plain") > 0);
+    assert(http_response(out, sizeof(out), 405, 4, "text/plain", false) > 0);
     assert(strstr(out, "Content-Length: 4\r\n"));
     assert(strstr(out, "Connection: close\r\n"));
     assert(strstr(out, "Allow: GET, POST\r\n"));
     assert(http_header_end(out, strlen(out)) == strlen(out));
 
-    assert(http_response(out, 8, 200, 0, "text/plain") == -1);
-    assert(http_response(out, sizeof(out), 204, 0, "text/plain") > 0);
+    assert(http_response(out, 8, 200, 0, "text/plain", true) == -1);
+    assert(http_response(out, sizeof(out), 204, 0, "text/plain", true) > 0);
     assert(!strstr(out, "Content-Length:"));
+    assert(strstr(out, "Connection: keep-alive\r\n"));
 
     puts("PASS response headers / output bound");
+}
+
+static void test_connection(void)
+{
+    struct request request;
+    assert(parse("GET / HTTP/1.1\r\nHost: x\r\n\r\n", &request) == 0);
+    assert(request.http11 && !request.close_connection);
+    assert(parse("GET / HTTP/1.1\r\nHost: x\r\n"
+                 "Connection: Keep-Alive, cLoSe\r\nConnection: upgrade\r\n\r\n", &request) == 0);
+    assert(request.close_connection);
+    assert(parse("GET / HTTP/1.0\r\nConnection: keep-alive\r\n\r\n", &request) == 0);
+    assert(!request.http11 && !request.close_connection);
+    assert(parse("GET / HTTP/1.1\r\nHost: x\r\nConnection: bad token\r\n\r\n", &request) == 400);
+    puts("PASS Connection tokens / close precedence / HTTP version");
 }
 
 static void test_files(const char *path)
@@ -119,9 +134,10 @@ int main(int argc, char **argv)
     test_post();
     test_errors();
     test_response();
+    test_connection();
     test_files(argv[1]);
 
-    puts("All 5 unit groups passed.");
+    puts("All 6 unit groups passed.");
 
     return 0;
 }

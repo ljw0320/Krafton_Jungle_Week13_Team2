@@ -2,6 +2,7 @@
 /test_http
 /test_drain
 /cgi-bin/adder
+/keep-alive-report.json
 *.o
 __pycache__/
 /tests/.tmp/

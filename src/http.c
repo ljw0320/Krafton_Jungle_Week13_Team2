@@ -103,6 +103,24 @@ static int parse_content_type(const char *value, struct request *request)
     return 0;
 }
 
+/* 여러 Connection 헤더와 쉼표 목록에서 close가 한 번이라도 나오면 종료합니다. */
+static int parse_connection(char *value, struct request *request)
+{
+    for (char *part = value; ; ) {
+        char *next = strchr(part, ',');
+        if (next)
+            *next++ = '\0';
+        part = trim(part);
+        if (!token(part))
+            return 400;
+        if (!strcasecmp(part, "close"))
+            request->close_connection = true;
+        if (!next)
+            return 0;
+        part = next;
+    }
+}
+
 static int parse_header(char *line, struct request *request)
 {
     char *value = strchr(line, ':');
@@ -124,6 +142,8 @@ static int parse_header(char *line, struct request *request)
         return parse_length(value, request);
     if (!strcasecmp(line, "Content-Type"))
         return parse_content_type(value, request);
+    if (!strcasecmp(line, "Connection"))
+        return parse_connection(value, request);
     if (!strcasecmp(line, "Transfer-Encoding"))
         return 400;
     if (!strcasecmp(line, "Expect"))
@@ -226,17 +246,17 @@ const char *http_reason(int status)
     }
 }
 
-/* 본문 길이를 명시하고 모든 응답 뒤 연결을 닫습니다. */
+/* 응답 경계를 길이로 명시하고 실제 연결 유지 정책을 헤더에 반영합니다. */
 int http_response(char *out, size_t capacity, int status, off_t length,
-                  const char *type)
+                  const char *type, bool keep_alive)
 {
     char length_header[64] = "";
     if (status != 204 && status != 304)
         snprintf(length_header, sizeof(length_header), "Content-Length: %jd\r\n", (intmax_t)length);
     int size = snprintf(out, capacity,
         "HTTP/1.1 %d %s\r\n%s"
-        "Content-Type: %s\r\nConnection: close\r\n%s\r\n",
-        status, http_reason(status), length_header, type,
+        "Content-Type: %s\r\nConnection: %s\r\n%s\r\n",
+        status, http_reason(status), length_header, type, keep_alive ? "keep-alive" : "close",
         status == 405 ? "Allow: GET, POST\r\n" : "");
 
     return size < 0 || (size_t)size >= capacity ? -1 : size;

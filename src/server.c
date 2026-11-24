@@ -6,7 +6,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-/* 메인만 close합니다. RUNNING 자원은 join 전까지 건드리지 않습니다. */
+/* 연결 소켓은 메인만 close합니다. RUNNING 자원은 join 전까지 건드리지 않습니다. */
 void connection_close(struct connection *client)
 {
     cgi_close(client);
@@ -76,6 +76,8 @@ static int64_t connection_deadline(const struct connection *client)
 {
     if (client->phase == DRAIN_INPUT)
         return client->drain_deadline;
+    if (connection_idle(client))
+        return client->progress + KEEP_ALIVE_TIMEOUT_MS;
 
     int limit = client->phase == WRITE_RESPONSE ? SEND_TIMEOUT_MS : RECV_TIMEOUT_MS;
     return client->progress + limit;
@@ -85,6 +87,8 @@ static const char *timeout_reason(const struct connection *client)
 {
     if (client->phase == DRAIN_INPUT)
         return "drain_timeout";
+    if (connection_idle(client))
+        return "keep_alive_timeout";
 
     return client->phase == WRITE_RESPONSE ? "send_timeout" : "recv_timeout";
 }
@@ -117,6 +121,8 @@ static bool poll_client(struct connection *client, struct pollfd *fd, int *timeo
 
     if (*timeout < 0 || left < *timeout)
         *timeout = (int)left;
+    if (connection_buffered(client))
+        *timeout = 0;
 
     *fd = (struct pollfd){.fd = client->fd,
                          .events = writing ? POLLOUT : POLLIN};
@@ -158,7 +164,7 @@ static void dispatch(struct server *server, struct pollfd *fds, struct connectio
         if (fds[i].revents & POLLNVAL) {
             owners[i]->reason = "invalid_socket";
             connection_close(owners[i]);
-        } else if (fds[i].revents || (owners[i]->phase == CGI_OUTPUT &&
+        } else if (fds[i].revents || connection_buffered(owners[i]) || (owners[i]->phase == CGI_OUTPUT &&
                    (now_ms() >= owners[i]->cgi.next_check || now_ms() >= owners[i]->cgi.deadline))) {
             enqueue_turn(server, owners[i]);
         }

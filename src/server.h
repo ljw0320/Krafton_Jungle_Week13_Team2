@@ -10,8 +10,8 @@
 
 enum {
     WORKERS = 4,
-    MAX_CONNECTIONS = 8,
-    QUEUE_CAPACITY = 8,
+    MAX_CONNECTIONS = 16,
+    QUEUE_CAPACITY = 16,
 
     IO_BUDGET = 65536,
     CALL_BUDGET = 64,
@@ -21,6 +21,8 @@ enum {
     SEND_TIMEOUT_MS = 3000,
     DRAIN_TIMEOUT_MS = 2000,
     DRAIN_BUFFER_SIZE = 4096,
+    KEEP_ALIVE_TIMEOUT_MS = 5000,
+    KEEP_ALIVE_MAX_REQUESTS = 100,
     CGI_TIMEOUT_MS = 2000,
     CGI_POLL_MS = 50
 };
@@ -76,6 +78,8 @@ struct connection {
     int64_t drain_deadline;
     size_t drain_remaining;
     bool write_shutdown;
+    bool keep_alive;
+    unsigned requests;
     const char *reason;
 };
 
@@ -117,6 +121,8 @@ void pool_stop(struct server *server);
 void enqueue_turn(struct server *server, struct connection *client);
 
 void process_turn(struct server *server, struct connection *client);
+bool connection_buffered(const struct connection *client);
+bool connection_idle(const struct connection *client);
 void respond(struct connection *client, int status, off_t size,
              const char *type);
 void respond_error(struct connection *client, int status);

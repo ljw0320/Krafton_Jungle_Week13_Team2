@@ -27,6 +27,7 @@ struct request {
 
     bool has_host;
     bool http11;
+    bool close_connection;
     bool suppress_body;
 };
 
@@ -35,7 +36,7 @@ int http_parse(const char *data, size_t length, struct request *request);
 
 const char *http_reason(int status);
 int http_response(char *out, size_t capacity, int status, off_t length,
-                  const char *type);
+                  const char *type, bool keep_alive);
 
 int file_open(int root, const char *target, off_t *size, int *status);
 const char *file_type(const char *target);

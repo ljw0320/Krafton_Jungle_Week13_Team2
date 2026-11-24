@@ -5,7 +5,7 @@ LDLIBS = -pthread
 SOURCES = $(wildcard src/*.c)
 HEADERS = src/server.h src/http.h
 
-.PHONY: all test test_cgi clean
+.PHONY: all test test_cgi test_keep_alive check_keep_alive clean
 all: webserver cgi-bin/adder
 
 cgi-bin/adder: src/cgi-bin/adder.c
@@ -29,6 +29,12 @@ test: test_http test_drain
 
 test_cgi: all
 	python3 src/tests/test_cgi.py
+
+test_keep_alive: all
+	python3 src/tests/test_keep_alive.py
+
+check_keep_alive: all
+	python3 src/tests/run_keep_alive_checks.py --output keep-alive-report.json
 
 clean:
 	rm -f webserver test_http test_drain cgi-bin/adder

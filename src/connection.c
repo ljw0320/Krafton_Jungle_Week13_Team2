@@ -10,7 +10,7 @@
 void respond(struct connection *client, int status, off_t size, const char *type)
 {
     int length = http_response(client->header, sizeof(client->header),
-                               status, size, type);
+                               status, size, type, client->keep_alive);
 
     if (length == -1) {
         client->reason = "response_error";
@@ -31,6 +31,7 @@ void respond(struct connection *client, int status, off_t size, const char *type
 /* 크기 초과 등 오류도 먼저 HTTP 응답을 보내고 공통 종료 절차를 따릅니다. */
 void respond_error(struct connection *client, int status)
 {
+    client->keep_alive = false;
     int length = snprintf((char *)client->data, sizeof(client->data),
                           "%d %s\n", status, http_reason(status));
 
@@ -63,12 +64,20 @@ static void body_received(struct server *server, struct connection *client)
         respond(client, 200, (off_t)client->length, "application/octet-stream");
 }
 
+/* 현재 요청만 소비하고 미리 받은 다음 요청은 입력 버퍼에 남깁니다. */
+static void consume_input(struct connection *client, size_t size)
+{
+    client->input_length -= size;
+    memmove(client->input, client->input + size, client->input_length);
+}
+
 static void prepare_body(struct server *server, struct connection *client, size_t end)
 {
     client->length = client->input_length - end;
     if (client->length > client->request.content_length)
         client->length = client->request.content_length;
     memcpy(client->data, client->input + end, client->length);
+    consume_input(client, end + client->length);
     client->phase = READ_BODY;
     if (client->length == client->request.content_length)
         body_received(server, client);
@@ -86,17 +95,11 @@ static void reject_request(struct connection *client, int status, size_t end)
     respond_error(client, status);
 }
 
-/* 헤더 뒤에 함께 도착한 POST 본문도 보존하고 지정된 길이만 처리합니다. */
-static void prepare_request(struct server *server, struct connection *client,
-                            size_t end)
+/* GET은 헤더만 소비하고 POST는 선언된 본문까지 분리해 후속 요청을 보존합니다. */
+static void route_request(struct server *server, struct connection *client, size_t end)
 {
-    int status = http_parse(client->input, end, &client->request);
-    if (status) {
-        reject_request(client, status, end);
-        return;
-    }
-
     if (client->request.method == METHOD_GET) {
+        consume_input(client, end);
         if (cgi_target(client->request.target))
             cgi_start(server, client);
         else
@@ -110,6 +113,32 @@ static void prepare_request(struct server *server, struct connection *client,
     }
 
     prepare_body(server, client, end);
+}
+
+static void prepare_request(struct server *server, struct connection *client, size_t end)
+{
+    int status = http_parse(client->input, end, &client->request);
+    if (status) {
+        reject_request(client, status, end);
+        return;
+    }
+    client->requests++;
+    client->keep_alive = client->request.http11 && !client->request.close_connection &&
+                         client->requests < KEEP_ALIVE_MAX_REQUESTS;
+    route_request(server, client, end);
+}
+
+/* 소켓에 새 바이트가 없어도 완성된 선행 수신 요청은 바로 처리할 수 있습니다. */
+bool connection_buffered(const struct connection *client)
+{
+    return client->phase == READ_HEADER &&
+           (client->input_length == HEADER_LIMIT ||
+            http_header_end(client->input, client->input_length) != 0);
+}
+
+bool connection_idle(const struct connection *client)
+{
+    return client->phase == READ_HEADER && client->requests > 0 && !client->input_length;
 }
 
 static void header_received(struct server *server, struct connection *client)
@@ -172,6 +201,16 @@ static bool receive_step(struct server *server, struct connection *client, size_
     return true;
 }
 
+/* 이미 완성된 헤더는 recv를 기다리지 않고 파싱하고, 일부 헤더는 이어서 받습니다. */
+static bool receive_request(struct server *server, struct connection *client, size_t *received)
+{
+    if (connection_buffered(client)) {
+        header_received(server, client);
+        return true;
+    }
+    return receive_step(server, client, received);
+}
+
 /* 응답을 모두 넘겼는지 확인합니다. 상대의 수신 완료를 뜻하지는 않습니다. */
 static bool response_sent(const struct connection *client)
 {
@@ -201,6 +240,28 @@ static bool begin_drain(struct connection *client)
     client->drain_deadline = now_ms() + DRAIN_TIMEOUT_MS;
 
     return client->drain_remaining ? true : shutdown_write(client);
+}
+
+/* 소켓·요청 횟수·선행 수신 데이터는 보존하고 요청별 자원과 상태만 정리합니다. */
+static bool finish_response(struct connection *client)
+{
+    if (!client->keep_alive)
+        return begin_drain(client);
+    cgi_close(client);
+    if (client->file_fd >= 0)
+        close(client->file_fd);
+    client->file_fd = -1;
+    client->file_left = 0;
+    memset(&client->request, 0, sizeof(client->request));
+    client->cgi.length = 0;
+    client->header_length = client->header_sent = 0;
+    client->length = client->sent = 0;
+    client->drain_remaining = 0;
+    client->drain_deadline = 0;
+    client->write_shutdown = client->keep_alive = false;
+    client->phase = READ_HEADER;
+    client->progress = now_ms();
+    return true;
 }
 
 /* 본문을 버린 양만 기록합니다. 상대가 먼저 끝내면 남은 길이에 관계없이 송신도 종료합니다. */
@@ -253,11 +314,11 @@ static bool drain_step(struct connection *client, size_t *received)
     return discard_received(client, result, received);
 }
 
-/* 최대 16KiB씩 채우고, 파일도 모두 보냈으면 반쪽 종료를 시작합니다. */
+/* 최대 16KiB씩 채우고, 응답 완료 시 연결 유지 또는 종료를 선택합니다. */
 static bool refill_file(struct connection *client)
 {
     if (client->file_left == 0)
-        return begin_drain(client);
+        return finish_response(client);
 
     size_t size = client->file_left > 16384 ? 16384 : (size_t)client->file_left;
     ssize_t result = read(client->file_fd, client->data, size);
@@ -277,7 +338,7 @@ static bool refill_file(struct connection *client)
     return true;
 }
 
-/* 부분 송신 위치를 보존하며 마지막 바이트를 넘기면 연결 정리 단계를 시작합니다. */
+/* 부분 송신 위치를 보존하며 마지막 바이트를 넘기면 다음 요청 또는 종료로 전환합니다. */
 static bool send_step(struct connection *client, size_t *transmitted)
 {
     bool header = client->header_sent < client->header_length;
@@ -300,7 +361,7 @@ static bool send_step(struct connection *client, size_t *transmitted)
         *transmitted += (size_t)result;
     }
 
-    return response_sent(client) ? begin_drain(client) : true;
+    return response_sent(client) ? finish_response(client) : true;
 }
 
 /* 정리 수신도 일반 수신과 같은 64KiB/64단계 예산 안에서 처리합니다. */
@@ -319,7 +380,7 @@ void process_turn(struct server *server, struct connection *client)
             if (received == IO_BUDGET || !drain_step(client, &received))
                 break;
         } else {
-            if (received == IO_BUDGET || !receive_step(server, client, &received))
+            if (received == IO_BUDGET || !receive_request(server, client, &received))
                 break;
         }
     }

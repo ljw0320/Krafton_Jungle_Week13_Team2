@@ -63,7 +63,8 @@ class CgiTests(unittest.TestCase):
     def request(self, target, body=None, headers=None):
         connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
         try:
-            connection.request("POST" if body is not None else "GET", target, body, headers or {})
+            request_headers = {"Connection": "close", **(headers or {})}
+            connection.request("POST" if body is not None else "GET", target, body, request_headers)
             response = connection.getresponse()
             data = response.read()
             if response.status in (204, 304):

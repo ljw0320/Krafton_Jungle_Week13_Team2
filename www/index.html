@@ -5,6 +5,7 @@
 <title>Team 2 Web Server</title>
 <link rel="stylesheet" href="/style.css">
 <script src="/cgi-test.js" defer></script>
+<script src="/keep-alive-test.js" defer></script>
 <main>
   <img src="/jungle.svg" alt="정글의 나무" width="120" height="120">
   <h1>Team 2 Web Server</h1>
@@ -52,6 +53,60 @@
     <p class="test-note">CGI를 사용하려면 WSL에서 <code>make</code> 후
       <code>./webserver 19006 ./www ./cgi-bin</code>으로 서버를 실행하세요.
       정상 덧셈 요청도 404라면 CGI 실행 인자와 프로그램 파일을 확인하세요.</p>
+  </section>
+
+  <section aria-labelledby="keep-alive-title">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">HTTP 응답 확인 · TCP 연결 정책</p>
+        <h2 id="keep-alive-title">keep-alive 테스트</h2>
+      </div>
+      <button id="keep-alive-http-run" type="button">GET·POST·CGI 응답 확인</button>
+    </div>
+    <p>이 페이지에서 일반 HTTP 응답을 확인합니다. TCP 연결 재사용과 종료 조건은 아래의 별도 실행기로 검사합니다.</p>
+    <div class="policy-grid" aria-label="검증할 연결 정책">
+      <div><span>연결 유지</span><strong>HTTP/1.1</strong><small>HTTP/1.0 · close 요청은 종료</small></div>
+      <div><span>유휴 제한</span><strong>5초</strong><small>다음 요청 없이 대기한 시간</small></div>
+      <div><span>요청 상한</span><strong>100개 / 연결</strong><small>100번째 응답 후 종료</small></div>
+      <div><span>연결 슬롯</span><strong>16개</strong><small>17번째 연결은 거절</small></div>
+    </div>
+    <h3>웹페이지에서 확인: GET·POST·CGI 응답</h3>
+    <p id="keep-alive-http-summary" role="status" aria-live="polite">응답 확인 버튼을 누르면 네 요청을 순서대로 보내 상태·타입·본문을 검사합니다.</p>
+    <div class="table-scroll">
+      <table>
+        <caption>브라우저 HTTP 요청 결과 · TCP 연결 재사용 여부는 별도 검사</caption>
+        <thead><tr><th scope="col">요청</th><th scope="col">HTTP</th><th scope="col">Content-Type</th>
+          <th scope="col">응답 크기</th><th scope="col">소요 시간</th><th scope="col">결과</th></tr></thead>
+        <tbody id="keep-alive-http-results"></tbody>
+      </table>
+    </div>
+    <p class="test-note">브라우저가 연결을 관리하므로 HTTP 응답 검사가 통과해도 같은 TCP 연결을 재사용했다고 판정하지 않습니다.</p>
+    <h3>TCP 연결 정책: 별도 실행기</h3>
+    <p>WSL의 프로젝트 폴더에서 아래 명령을 실행하세요. 실행기는 빌드된 서버를 임시 포트와 테스트 데이터로 실행하고
+      TCP 소켓으로 직접 검사한 뒤 정리합니다. CGI 실행 인자는 실행기가 준비합니다.</p>
+    <div class="test-controls runner-controls">
+      <button id="keep-alive-copy-all" type="button">전체 검사 명령 복사</button>
+      <label for="keep-alive-report">JSON 보고서 불러오기</label>
+      <input id="keep-alive-report" type="file" accept="application/json,.json">
+    </div>
+    <pre id="keep-alive-command">make
+python3 src/tests/run_keep_alive_checks.py --case all --output keep-alive-report.json</pre>
+    <p id="keep-alive-summary" role="status" aria-live="polite">TCP 검사는 별도 실행기에서 수행합니다. 결과 보고서를 불러오면 항목별 결과를 표시합니다.</p>
+    <p id="keep-alive-target" class="test-note">보고서 미선택 · 파일은 브라우저에서만 읽으며 서버로 전송하지 않습니다.</p>
+    <div class="table-scroll">
+      <table class="keep-alive-table">
+        <caption>별도 TCP 검사 결과 · 페이지에서 직접 실행하지 않음</caption>
+        <thead><tr><th scope="col">검사 항목</th><th scope="col">예상 동작</th>
+          <th scope="col">실행기 결과</th><th scope="col">소요 시간</th><th scope="col">상태</th><th scope="col">명령</th></tr></thead>
+        <tbody id="keep-alive-results"></tbody>
+      </table>
+    </div>
+    <details class="diagnostic-details">
+      <summary>보고서 측정값 보기</summary>
+      <pre id="keep-alive-evidence">별도 실행기의 JSON 보고서를 불러오면 측정값과 실행 정보를 표시합니다.</pre>
+    </details>
+    <p class="test-note">유휴 종료는 응답 수신 후 EOF까지 측정하며, 스케줄링 오차를 고려해 4.5~7초를 통과 범위로 사용합니다.
+      보고서는 해당 실행 시점의 결과입니다. HTTP 응답 확인의 CGI 항목에는 <code>./webserver 19006 ./www ./cgi-bin</code>으로 실행한 서버가 필요합니다.</p>
   </section>
 
   <section aria-labelledby="test-title">
