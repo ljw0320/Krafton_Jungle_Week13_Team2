@@ -591,4 +591,30 @@ poll 감시 배열 구성과 pending/FIFO 재검사는 여전히 연결 배열�
 최소 검증: `make test_scheduler test_context_pool webserver`,
 `./test_scheduler`, `./test_context_pool`, `python3 src/tests/test_stage3.py`.
 
-CGI 추가 회귀 검사는 8개 중 4개 성공, 3개 실패·1개 오류였다. 임시 HEAD 빌드에서도 동일한 실패가 재현되어 이번 변경의 회귀로 확인되지는 않았다.
+CGI 회귀 실패 원인은 동일 FD의 posix_spawn dup2에서 CLOEXEC 해제를 기대한 코드였다. 실행 파일을 F_DUPFD_CLOEXEC으로 별도 예약하고 자식 FD 3으로 복제하도록 수정했다. 부모의 FD는 CLOEXEC을 유지하고, 자식에서는 스크립트 인터프리터가 /proc/self/fd/3을 열 수 있다. 수정 후 CGI 테스트 8개가 모두 통과했다.
+
+
+## 6·7단계 (poll 유지)
+
+6단계의 epoll 전환은 제외했다. poll은 그대로 사용하며 CGI의 poll 대기 시간
+중복 계산을 제거하고 WAITING 소유권을 확인한 뒤 이벤트를 배정한다.
+매 루프 감시 배열 재구성 및 전체 순회는 남아 있다.
+
+7단계는 CGI_CAPACITY=4, FILE_CAPACITY=4의 독립 상한을 적용한다.
+원자적 예약 후 파일 열기/프로세스 실행을 수행하고, 한도 초과는 503으로 종료한다.
+CGI 실패·정상 종료·타임아웃·서버 종료에서 예약을 반환한다.
+정적 파일은 열기 실패·응답 완료·연결 종료 때 FD와 예약을 반환한다.
+POST는 기존 64KiB 한도 및 context 8개 풀을 유지한다. CGI 출력 상한과
+부분 I/O 버퍼 보존 정책도 유지한다. 이 단계는 C10K 성능 검증이 아니다.
+
+검증: make webserver test_scheduler, ./test_scheduler,
+python3 src/tests/test_cgi.py, python3 src/tests/test_stage3.py.
+CGI 상한 4개 점유 중 추가 CGI 503·정적 요청 200, 타임아웃 회수 뒤 CGI 200을 검사한다.
+
+
+## 별도 리버스 프록시
+
+`make reverse_proxy`로 빌드하고 `./reverse_proxy 8080 127.0.0.1 8081`로 실행한다.
+백엔드는 기존 `./webserver 8081 www cgi-bin`이다.
+합의한 요구사항·오류 정책·테스트는 [proxy/README.md](proxy/README.md)에 정리했다.
+최소 검증 명령은 `make test_proxy`이다.

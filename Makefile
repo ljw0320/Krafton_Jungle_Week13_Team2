@@ -5,8 +5,8 @@ LDLIBS = -pthread
 SOURCES = $(wildcard src/*.c)
 HEADERS = src/server.h src/http.h
 
-.PHONY: all test test_stage1 test_stage2 test_cgi test_keep_alive check_keep_alive clean
-all: webserver cgi-bin/adder
+.PHONY: all test test_stage1 test_stage2 test_cgi test_keep_alive check_keep_alive test_proxy clean
+all: webserver cgi-bin/adder reverse_proxy
 
 cgi-bin/adder: src/cgi-bin/adder.c
 	mkdir -p cgi-bin
@@ -18,7 +18,7 @@ webserver: $(SOURCES) $(HEADERS)
 test_http: src/tests/test_http.c src/http.c src/files.c src/http.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc src/tests/test_http.c src/http.c src/files.c -o $@
 
-CONNECTION_SOURCES = src/connection.c src/context_pool.c src/platform.c src/http.c src/files.c src/cgi.c src/cgi_spawn.c src/cgi_response.c
+CONNECTION_SOURCES = src/resources.c src/connection.c src/context_pool.c src/platform.c src/http.c src/files.c src/cgi.c src/cgi_spawn.c src/cgi_response.c
 
 test_drain: src/tests/test_drain.c $(CONNECTION_SOURCES) $(HEADERS)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc src/tests/test_drain.c $(CONNECTION_SOURCES) -o $@ $(LDLIBS)
@@ -54,7 +54,18 @@ check_keep_alive: all
 	python3 src/tests/run_keep_alive_checks.py --output keep-alive-report.json
 
 clean:
-	rm -f webserver test_http test_drain test_context test_context_pool cgi-bin/adder
+	rm -f webserver reverse_proxy test_proxy_headers test_http test_drain test_context test_context_pool cgi-bin/adder
+
+PROXY_SOURCES = proxy/main.c proxy/headers.c src/http.c
+reverse_proxy: $(PROXY_SOURCES) proxy/proxy.h src/http.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc $(PROXY_SOURCES) -o $@
+
+test_proxy_headers: proxy/tests/test_headers.c proxy/headers.c proxy/proxy.h src/http.c src/http.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc -Iproxy proxy/tests/test_headers.c proxy/headers.c src/http.c -o $@
+
+test_proxy: reverse_proxy test_proxy_headers all
+	./test_proxy_headers
+	python3 proxy/tests/test_proxy.py
 
 test_scheduler: src/tests/test_scheduler.c $(CONNECTION_SOURCES) src/thread_pool.c src/timers.c $(HEADERS)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc src/tests/test_scheduler.c $(CONNECTION_SOURCES) src/thread_pool.c src/timers.c -o $@ $(LDLIBS)

@@ -20,3 +20,5 @@ core.*
 /src/tests/verify_stage2_failure.py
 
 /test_scheduler
+/reverse_proxy
+/test_proxy_headers
