@@ -212,14 +212,14 @@ Task 2 (route, main, Makefile, 테스트) ─┴─ Task 3 (http.c, test_proxy.c
 **Interfaces:**
 - Produces: `int proxy_timeout(struct conn *c, time_t now)` → 0 / -1
 
-- [ ] **Step 1: 실패하는 테스트** — 백그라운드로 동시에 돌리고 PID로 `wait`한다. `time.time()`으로 잰다. 범위는 점검 2.
+- [x] **Step 1: 실패하는 테스트** — 백그라운드로 동시에 돌리고 PID로 `wait`한다. `time.time()`으로 잰다. 범위는 점검 2.
   - `hang` → 504, 10~13초. `stall` → A가 10~13초에 닫힘, `curl` 종료 코드 18. `slow` → 200. `drip`(5초마다, 총 15초) → 끝까지 받음
   - `noaccept`: 먼저 연결 하나로 큐를 채운 뒤 → 504, 3~6초
   - `nolen`처럼 길이가 없는데 닫지 않는 응답 → 10~13초에 A가 닫힘
   - 504의 `Connection: close`와 본문 `<h1>504 Gateway Timeout</h1>`
-- [ ] **Step 2: 실패 확인** → **Step 3: 구현** ("타이머"의 표. 비교는 `now - since > 한도`) → **Step 4: 공통 확인**
-- [ ] **Step 5: verifier** — 고의 결함: `proxy_resume`의 `since = now` 제거, sweep에서 `PROXYING`도 유휴 검사를 하게 함(`slow`가 실패), 첫 본문 뒤 `last_active` 제거. 잡히지 않는 것은 보고한다.
-- [ ] **Step 6: 커밋, push** — `feat: 프록시 타이머와 504`
+- [x] **Step 2: 실패 확인** → **Step 3: 구현** ("타이머"의 표. 비교는 `now - since > 한도`) → **Step 4: 공통 확인**
+- [x] **Step 5: verifier** — 고의 결함: `proxy_resume`의 `since = now` 제거, sweep에서 `PROXYING`도 유휴 검사를 하게 함(`slow`가 실패), 첫 본문 뒤 `last_active` 제거. 잡히지 않는 것은 보고한다.
+- [x] **Step 6: 커밋, push** — `feat: 프록시 타이머와 504`
 
 ### Task 7: 자원 회수 (설계 6단계)
 
@@ -267,3 +267,4 @@ Task 2 (route, main, Makefile, 테스트) ─┴─ Task 3 (http.c, test_proxy.c
 
 - Task 1: `event_loop.c:12` 주석의 `loop_unwatch가 재개할`을 `loop_accept_resume`으로, `event_loop.h:8`의 쓰지 않는 `struct conn;` 삭제 (Task 5에서 고침)
 - Task 5: `up_send`의 부분 전송 검사를 빼도 기능 테스트가 잡지 못한다. 요청이 8.4KB 이하라 보통 한 번에 나간다(사본에서 `send`를 잘라 확인함). `start_fail`의 `free` 누락은 valgrind(Task 9)로만 잡힌다
+- Task 6: 테스트가 잡지 못하는 결함(비용이 커서 문서화만): `proxy_resume`·`up_send`·연결 완료의 `since` 제거, `relay`와 `proxy_fail`의 `last_active` 제거, 한도 비교의 `>`를 `>=`로(3회 중 1회만 실패). 원본은 코드 대조와 사본 실험으로 확인했다(SENDING 타이머 포함)

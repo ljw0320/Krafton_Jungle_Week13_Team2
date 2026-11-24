@@ -302,7 +302,7 @@ WRITING ── 다 보냄, B가 없음, keep_alive 아님 ─────▶ con
 | `SENDING` | 연결이 됐을 때, `send`가 1바이트 이상 보냈을 때 | 10초 | 504 |
 | `RECEIVING` | 요청을 다 보냈을 때, `recv`가 1바이트 이상 받았을 때, `proxy_resume` | 10초 | `head_done`이 아니면 504, 맞으면 A를 닫음 |
 
-- 비교는 `now - since > 한도`다. `time()`이 초 단위라 실제로는 3~4초, 10~11초다.
+- 비교는 `now - since > 한도`다. `time()`이 초 단위이고 sweep이 `epoll_wait(1000)` 뒤에 돌아서 실제로는 최대 약 5초, 12초다. 테스트 범위는 연결 3~6초, 응답 10~13초다(2026-11-24).
 - B를 끈 동안(A가 `WRITING`)은 재지 않는다. 늦은 쪽이 클라이언트라 A의 유휴 검사가 맡는다.
 
 ## `proxy_start`
@@ -570,8 +570,8 @@ static int proxy_fail(struct conn *c, int status, const char *why) {
 | `Connection: Content-Length`, `Connection: Host` | 요청 | 둘 다 새로 만들어 남는다 |
 | `Connection: close` 요청 | 응답 | A를 닫는다. B에는 항상 `Connection: close` |
 | 백엔드가 꺼짐 | `CONNECTING` | 502 |
-| 백엔드가 `accept`를 안 부르고 큐에 자리가 있음 | `RECEIVING` | 연결과 `send`는 성공. 10~11초에 504 |
-| accept 큐가 가득 참 | `CONNECTING` | 3~4초에 504 |
+| 백엔드가 `accept`를 안 부르고 큐에 자리가 있음 | `RECEIVING` | 연결과 `send`는 성공. 10~12초에 504 |
+| accept 큐가 가득 참 | `CONNECTING` | 3~5초에 504 |
 | 응답 없이 닫음, 헤더 중간에 닫음, RST | 헤더 전 | 502 |
 | 상태 라인이 깨짐, LF만 쓰는 응답, CL 두 개, TE + CL, 8192바이트 넘는 헤더 | 헤더 검사 | 502 |
 | `100` 뒤 `200`, `103` 여러 개 뒤 `200`이 한 번에 옴 | 헤더 | `1xx`를 버리고 `200`만 보낸다 |
@@ -582,7 +582,7 @@ static int proxy_fail(struct conn *c, int status, const char *why) {
 | 1.0 요청에 chunked로 답함 | 헤더 검사 | 502 |
 | CL보다 적게 보내고 닫음 | 본문 | A를 닫는다. 클라이언트는 잘린 것을 안다 |
 | CL보다 더 보냄 (헤더와 한 번에 / 나눠서) | 본문 | CL까지만 보낸다. 같은 A의 다음 요청이 정상이다 |
-| 응답을 다 보냈는데 B를 안 닫는 백엔드 | 본문 | 길이를 알면 기다리지 않는다. 모르면 10~11초에 A를 닫는다 |
+| 응답을 다 보냈는데 B를 안 닫는 백엔드 | 본문 | 길이를 알면 기다리지 않는다. 모르면 10~12초에 A를 닫는다 |
 | 본문 중 10초 멈춤 | sweep | A를 닫는다 |
 | 8MB 응답, 느린 클라이언트 | `conn_send` | B off → on을 반복한다. 받은 바이트가 같다. 다른 연결은 바로 응답받는다 |
 | B가 꺼진 동안 백엔드가 다 보내고 닫음 / RST | `proxy_resume` | 다시 등록하면 이벤트가 온다. 남은 데이터를 `recv`한 뒤 0이나 오류로 끝난다 |
@@ -640,16 +640,16 @@ static int proxy_fail(struct conn *c, int status, const char *why) {
 ### 5단계: 타이머와 504
 - `since`, `proxy_timeout`, sweep의 `PROXYING` 분기.
 - 확인 (`proxy_test.sh`)
-	- 응답하지 않는 백엔드: 10~11초에 504. `accept`하지 않는 백엔드(`listen(0)`에 연결 하나를 채움): 3~4초에 504. 시간은 벽시계(`time.time()`)로 잰다(lessons.md).
-	- 본문 중 멈춘 백엔드: 10~11초에 A가 닫히고 `curl` 종료 코드가 18이다.
+	- 응답하지 않는 백엔드: 10~13초에 504. `accept`하지 않는 백엔드(`listen(0)`에 연결을 채움): 3~6초에 504. 시간은 벽시계(`time.time()`)로 잰다(lessons.md).
+	- 본문 중 멈춘 백엔드: 10~13초에 A가 닫히고 `curl` 종료 코드가 18이다.
 	- 9초 뒤에 답하는 백엔드: 200이다(A의 유휴, 408이 먼저 닫지 않는다).
-	- 5초마다 나눠 보내는 응답(총 15초): 끝까지 받는다.
+	- 5초마다 나눠 보내는 응답(총 15초): 끝까지 받는다. 헤더를 나눠 보내는 것과 본문을 나눠 보내는 것 둘 다(본문은 `proxy_resume`이 `since`를 다시 적어 `recv`의 기록을 확인하지 못한다).
 
 ### 6단계: 자원 회수
 - 확인 (`proxy_test.sh`). 코드가 바뀌지 않을 수도 있다.
 	- 기다리는 중 `SO_LINGER {1, 0}`으로 닫은(RST) 클라이언트: 1초 안에 서버의 fd 수가 처음 값으로 돌아온다.
-	- 중계 중 `curl --max-time 0.1`로 끊기, 기다리는 중 FIN으로 떠나기, 백엔드 강제 종료(`kill -9`) 뒤에도 12초 안에 fd 수와 `conn_count`가 처음 값으로 돌아온다.
-	- 느린 클라이언트가 완전히 멈추면 10~13초에 A와 B가 닫힌다.
+	- 중계 중 `curl --max-time 0.1`로 끊기, 기다리는 중 FIN으로 떠나기, 백엔드 강제 종료(`kill -9`) 뒤에도 13초 안에 fd 수와 `conn_count`가 처음 값으로 돌아온다.
+	- 느린 클라이언트가 완전히 멈추면 10~14초에 A와 B가 닫힌다.
 	- 동시 요청: `seq 200 | xargs -P 100 -I{} curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/api/cl | sort | uniq -c`가 `200 200`
 	- RST 클라이언트와 정상 요청을 섞은 동시 요청 300건 뒤 ASan 오류가 0개다(한 배치 안의 해제).
 	- `ulimit -n`을 낮춰 프록시 요청을 동시에 보내면 500이 나오거나 기다렸다가 처리되고, 그 뒤 `curl`이 200이다.
