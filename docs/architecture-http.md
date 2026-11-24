@@ -11,7 +11,7 @@
 | 2 | 파싱 엄격도 | 엄격. 줄 끝은 `\r\n`만, SP 하나, 이름과 콜론 사이 공백·obs-fold는 400, CL은 숫자만 한 번 | 입력 하나에 결과 하나다. 관대한 파서는 프록시를 붙일 때 smuggling 경로가 된다 |
 | 3 | chunked 요청 | `Transfer-Encoding`이 있으면 값과 관계없이 501 + 닫기 | 이번 단계에 본문을 쓰는 곳이 없다. RFC 9112 6.1의 "이해하지 못하는 transfer coding은 501"과 맞는다 |
 | 4 | 한도 | 요청 전체(헤더 + 본문)를 `rbuf[8192]` 안에서 판단한다. 본문 버퍼를 따로 두지 않는다 | 본문은 경계만 계산하고 버린다. 한도가 하나라 경계값 테스트가 정확하다 |
-| 5 | 메서드 | RFC 9110 8개(GET HEAD POST PUT DELETE CONNECT OPTIONS TRACE)를 안다. 허용은 GET만, `Allow: GET` | 모르는 메서드(501)와 이 자원에 허용 안 함(405)을 구분한다. POST는 처리할 곳이 없어 405다. `CONNECT`도 대상이 `/`로 시작하면 405지만, 규격의 authority-form(`CONNECT host:443`)은 대상이 `/`로 시작하지 않아 400이다. **프록시**: 백엔드 경로는 GET, POST를 전달하고 `Allow: GET, POST` |
+| 5 | 메서드 | RFC 9110 8개(GET HEAD POST PUT DELETE CONNECT OPTIONS TRACE)를 안다. 허용은 GET만, `Allow: GET` | 모르는 메서드(501)와 이 자원에 허용 안 함(405)을 구분한다. POST는 처리할 곳이 없어 405다. `CONNECT`도 대상이 `/`로 시작하면 405지만, 규격의 authority-form(`CONNECT host:443`)은 대상이 `/`로 시작하지 않아 400이다. **프록시**(4단계에서 연결): 백엔드 경로는 GET, POST를 전달하고 `Allow: GET, POST` |
 | 6 | 검사 순서 | 메시지 단계(`http_parse`)를 모두 끝낸 뒤 의미 단계(`http_handle`). 411은 405보다 앞. 닫기는 상태 코드로만 정한다 | 413을 501/405보다 먼저 봐야 큰 본문이 다음 요청으로 해석되지 않는다. 411을 앞에 둬야 이번 단계에서 411이 나간다 |
 | 7 | 응답 헤더 | 모든 응답에 `Date`, `Content-Type`, `Content-Length`, `Connection`. 405에만 `Allow`. 오류 본문은 `<h1>코드 이유</h1>\n` | RFC 9110의 `Date` MUST를 지킨다. 헤더 집합이 항상 같아 테스트가 단순하다 |
 | 8 | 정적 루트 | `./server <port> <root>` 필수 인자. `http_init`이 시작할 때 `realpath`를 한 번 구해 `http.c`의 `static` 변수에 둔다 | 요구사항의 "루트를 CLI 인자로"와 같다. epoll fd를 `event_loop.c`의 `static`으로 둔 기존 구조와 같다 |
@@ -67,9 +67,9 @@ Allow: GET\r\n
 | 404 | Not Found | 431 | Request Header Fields Too Large |
 | 405 | Method Not Allowed | 500 | Internal Server Error |
 | 408 | Request Timeout | 501 | Not Implemented |
+| | | 502 | Bad Gateway (프록시 3단계) |
+| | | 504 | Gateway Timeout (프록시 3단계) |
 | | | 505 | HTTP Version Not Supported |
-
-**프록시**: 502 Bad Gateway, 504 Gateway Timeout을 더한다.
 
 MIME
 
@@ -116,6 +116,7 @@ struct http_req {
     int conn_close, conn_keep_alive;  // Connection 헤더 토큰
     int has_cl;
     size_t content_length, head_len;
+    int backend;                      // 백엔드 경로면 1. 405의 Allow를 고른다 (프록시 3단계)
 };
 
 struct http_resp {
@@ -166,7 +167,8 @@ if (r <= 0) return r;
 
 - 순서는 `http_parse` → `http_handle` → `memmove` → `conn_send`다.
 - 기존 `http_request_len`, `/big` stub, `hello\n` 응답은 지운다.
-- **프록시**: `http_keep_alive`, `http_proxy_request`, `http_proxy_response`와 `http_req.backend`를 더한다. `conn_process`는 `http_handle` 전에 라우팅한다. 408은 `conn_error`를 쓴다. `http_parse`의 헤더 끝 찾기를 `static` 함수로 꺼내 응답 파서와 같이 쓴다(동작은 그대로).
+- 프록시 3단계에서 `http_keep_alive`, `http_proxy_request`, `http_proxy_response`([architecture-proxy.md](architecture-proxy.md) "함수")와 `http_req.backend`를 더했다. `http_parse`의 헤더 끝 찾기(`head_end`), 헤더 한 줄 파싱(`hdr_next`), CL 파싱(`parse_cl`)을 `static` 함수로 꺼내 응답 파서와 같이 쓴다(동작은 그대로). 501/411/405 판단은 `method_check`로 꺼내 백엔드 경로와 같이 쓴다.
+- **프록시**: `conn_process`는 `http_handle` 전에 라우팅한다. 408은 `conn_error`를 쓴다.
 
 ---
 # `struct conn` 변경
@@ -278,7 +280,7 @@ sweep (1초마다)
 ## 연결 유지 판단
 
 ```
-1. 닫는 코드인가? 400, 408, 411, 413, 414, 431, 500, 501, 505 (프록시: 502, 504도) → 닫기
+1. 닫는 코드인가? 400, 408, 411, 413, 414, 431, 500, 501, 502, 504, 505 → 닫기
 2. 아니면 (200, 403, 404, 405) 클라이언트 요청대로
      HTTP/1.1: Connection 토큰에 close가 있으면 닫기, 아니면 유지
      HTTP/1.0: Connection 토큰에 keep-alive가 있으면 유지, 아니면 닫기

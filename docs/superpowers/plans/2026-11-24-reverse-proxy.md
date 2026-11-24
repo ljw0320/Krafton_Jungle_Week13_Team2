@@ -157,8 +157,8 @@ Task 2 (route, main, Makefile, 테스트) ─┴─ Task 3 (http.c, test_proxy.c
 **Interfaces:**
 - Produces: `HTTP_HEAD_MAX 8192`, `http_req.backend`, `struct http_upresp`, `http_keep_alive`, `http_proxy_request`, `http_proxy_response` (시그니처는 "함수"의 코드 그대로). `http.c`는 여전히 `conn.h`, `route.h`, `proxy.h`를 모른다.
 
-- [ ] **Step 1: 리팩터링** — 헤더 끝 찾기, `Content-Length` 파싱, 메서드 검사(허용 메서드에 POST가 있는지를 인자로), 연결 유지 판단을 함수로 꺼낸다. `reason()`과 닫는 코드에 502, 504. 405의 `Allow`는 `req->backend`로 고른다. 이 시점에 `test_http.c`가 그대로 통과한다.
-- [ ] **Step 2: 실패하는 테스트** (`tests/test_proxy.c`)
+- [x] **Step 1: 리팩터링** — 헤더 끝 찾기, `Content-Length` 파싱, 메서드 검사(허용 메서드에 POST가 있는지를 인자로), 연결 유지 판단을 함수로 꺼낸다. `reason()`과 닫는 코드에 502, 504. 405의 `Allow`는 `req->backend`로 고른다. 이 시점에 `test_http.c`가 그대로 통과한다.
+- [x] **Step 2: 실패하는 테스트** (`tests/test_proxy.c`)
   - 응답: `{.status = 502, .minor = 1}`, `504`가 `Connection: close`. `{.status = 405, .minor = 1, .backend = 1}`이 `Allow: GET, POST`, `backend = 0`이면 `Allow: GET`
   - 요청 재작성: 설계의 예시(입력과 출력 전체를 바이트로 비교), "요청 재작성" 처리 표의 모든 헤더 이름(대소문자 섞어서), `Connection` 여러 줄, `Connection: Content-Length, Host, Transfer-Encoding`, `Connection: x-a ,, X-B`, 1.0에서 `Host` 없음 / 있음, 본문 있는 GET, `X-Forwarded`(접두사보다 짧아 남음), 값이 빈 헤더, `\t값\t`, 값에 `0x80`
   - 요청 검사: 순서 1~8의 모든 줄과 엣지 케이스 표의 `요청 검사` 행. 순서 확인: `BREW` + `..` → 501, CL 없는 POST + `..` → 411, `HEAD` + `..` → 405, `%zz` + 나쁜 `Host` → 400. `cap`을 1씩 줄여 정확한 길이에서는 0, 1바이트 모자라면 500(버퍼 밖 쓰기는 ASan이 본다)
@@ -167,11 +167,11 @@ Task 2 (route, main, Makefile, 테스트) ─┴─ Task 3 (http.c, test_proxy.c
   - 응답 재작성: "헤더 재작성" 표의 모든 줄, "응답의 끝" 표의 모든 줄의 `has_len`·`body_len`·`keep_alive`(`keep` 0/1), `1xx`는 `out`을 쓰지 않고 원본 헤더 길이를 반환, `Set-Cookie` 두 줄 유지, `Connection: Transfer-Encoding`이어도 TE 유지
   - 덜 온 입력: 정상 응답 헤더를 한 바이트씩 늘리면 끝나기 전에는 모두 0. 뒤에 본문이 붙어도 반환값은 헤더 길이. `cap`을 작게 주면 -1
   - `http_keep_alive`: 1.1 기본 / `close`, 1.0 기본 / `keep-alive` / 둘 다
-- [ ] **Step 3: 실패 확인** — `make test` 종료 코드가 0이 아니다.
-- [ ] **Step 4: 구현** — 쓸 때마다 남은 크기를 검사한다. `Connection` 토큰 비교는 헤더 전체를 다시 훑는다("알려진 한계").
-- [ ] **Step 5: 확인** — 공통 확인, `git diff --stat tests/test_http.c`가 비어 있다.
-- [ ] **Step 6: verifier** — 검사 표와 한 줄씩 대조. 고의 결함 5개가 각각 실패로 잡힌다: `Host` 글자 검사 제거, `Connection` 토큰 제거 안 함, 응답 CL 중복 허용, 204에서 TE 남김, `..` 검사를 원래 대상에 함. 무작위 요청·응답 1,000건을 ASan으로 돌린다.
-- [ ] **Step 7: 커밋, push** — `feat: 프록시 요청과 응답 재작성`
+- [x] **Step 3: 실패 확인** — `make test` 종료 코드가 0이 아니다.
+- [x] **Step 4: 구현** — 쓸 때마다 남은 크기를 검사한다. `Connection` 토큰 비교는 헤더 전체를 다시 훑는다("알려진 한계").
+- [x] **Step 5: 확인** — 공통 확인, `git diff --stat tests/test_http.c`가 비어 있다.
+- [x] **Step 6: verifier** — 검사 표와 한 줄씩 대조. 고의 결함 5개가 각각 실패로 잡힌다: `Host` 글자 검사 제거, `Connection` 토큰 제거 안 함, 응답 CL 중복 허용, 204에서 TE 남김, `..` 검사를 원래 대상에 함. 무작위 요청·응답 1,000건을 ASan으로 돌린다.
+- [x] **Step 7: 커밋, push** — `feat: 프록시 요청과 응답 재작성`
 
 ### Task 4: 테스트 백엔드와 기능 테스트 골격 (설계 4단계의 테스트) — Task 3과 병렬
 
@@ -183,10 +183,10 @@ Task 2 (route, main, Makefile, 테스트) ─┴─ Task 3 (http.c, test_proxy.c
 - `python3 tests/backend.py <포트> noaccept`: `listen(0)`만 한다.
 - `proxy_test.sh`: `http_test.sh`의 `check`, `cleanup`, 포트 대기, `SERVER_WRAP`, 로그의 `AddressSanitizer` / `runtime error` 검사, 마지막 줄 형식을 같게 쓴다. 서버 규칙은 `/api/=127.0.0.1:8001 /dead/=127.0.0.1:8009 /noaccept/=127.0.0.1:8003`이다.
 
-- [ ] **Step 1: `backend.py`** — 확인: 이름마다 `curl -s --path-as-is -i localhost:8001/api/<이름>`(깨진 응답은 `nc`)이 예상한 바이트를 준다.
-- [ ] **Step 2: `proxy_test.sh`** — 설계 4단계 확인 목록과 엣지 케이스 표의 `요청 검사`, `요청`, `헤더`, `헤더 검사`, `본문`, `conn_send`, `conn_process` 행, Review Focus 1~5를 케이스로 넣는다. 시간이 걸리는 5, 6단계 케이스는 넣지 않는다. 깨진 응답 502: `bad`, `lf`, `dupcl`, `tecl`, `bighead`, `101`, `close`, `rst`.
-- [ ] **Step 3: 실패 확인** — `bash -n tests/proxy_test.sh` 종료 코드 0. 실제 실행은 Task 5의 첫 단계다.
-- [ ] **Step 4: 커밋, push** — `test: 프록시 테스트 백엔드와 기능 테스트`
+- [x] **Step 1: `backend.py`** — 확인: 이름마다 `curl -s --path-as-is -i localhost:8001/api/<이름>`(깨진 응답은 `nc`)이 예상한 바이트를 준다.
+- [x] **Step 2: `proxy_test.sh`** — 설계 4단계 확인 목록과 엣지 케이스 표의 `요청 검사`, `요청`, `헤더`, `헤더 검사`, `본문`, `conn_send`, `conn_process` 행, Review Focus 1~5를 케이스로 넣는다. 시간이 걸리는 5, 6단계 케이스는 넣지 않는다. 깨진 응답 502: `bad`, `lf`, `dupcl`, `tecl`, `bighead`, `101`, `close`, `rst`.
+- [x] **Step 3: 실패 확인** — `bash -n tests/proxy_test.sh` 종료 코드 0. 실제 실행은 Task 5의 첫 단계다.
+- [x] **Step 4: 커밋, push** — `test: 프록시 테스트 백엔드와 기능 테스트`
 
 ### Task 5: 프록시 연결 (설계 4단계)
 

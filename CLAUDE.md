@@ -37,7 +37,7 @@
 - 연결 핸들러는 살아 있으면 0, `conn_close`로 닫았으면 -1을 반환한다. -1을 받은 쪽은 `c`를 다시 건드리지 않는다.
 - `conn_close` 순서: `loop_unwatch` → `close` → `loop_accept_resume` → `free(wbuf)` → `close(file_fd)`(-1이면 생략) → 리스트 제거 → `free(c)`. 프록시 4단계부터 맨 앞에 `proxy_close`가 들어간다.
 - WRITING 동안 `EPOLLIN`을 감시하지 않는다. 응답을 다 보낸 뒤 rbuf에 남은 바이트가 있으면 바로 다시 처리한다.
-- HTTP는 `http_init`, `http_parse`, `http_handle` 세 함수로만 붙는다. 프록시 단계에서 `http_keep_alive`, `http_proxy_request`, `http_proxy_response`를 더한다.
+- HTTP는 `http_init`, `http_parse`, `http_handle`, `http_keep_alive`, `http_proxy_request`, `http_proxy_response`로만 붙는다.
 - 프록시: 백엔드 연결은 `struct conn` 안의 `struct upstream`이고 A → B 방향으로만 닫는다. `loop_unwatch`가 지금 배치에 남은 그 대상의 이벤트를 지운다. 백엔드를 기다리는 동안 A는 `EPOLLERR`만 감시한다.
 - `SIGPIPE`는 무시하고 `EPIPE`로 처리한다.
 
