@@ -230,6 +230,42 @@ class KeepAliveTests(unittest.TestCase):
             peers[0].send(request("/echo", b"still working"))
             self.check(peers[0], b"still working")
 
+    def test_context_pool_exhaustion_and_recovery(self):
+        # Arrange: eight real CGI processes hold all eight request contexts.
+        gate = self.directory / "release-cgi"
+        script = self.cgi / "hold"
+        script.write_text("#!/usr/bin/python3\nimport os, time\nfrom pathlib import Path\n"
+                          f"root = Path({str(self.directory)!r})\n"
+                          "(root / ('ready-' + str(os.getpid()))).touch()\n"
+                          "while not (root / 'release-cgi').exists(): time.sleep(0.005)\n"
+                          "print('Content-Type: text/plain\\r\\n\\r\\nheld', end='')\n")
+        script.chmod(0o700)
+        with ExitStack() as stack:
+            holders = [stack.enter_context(Peer(self.port)) for _ in range(8)]
+            for peer in holders:
+                peer.send(request("/cgi-bin/hold"))
+            deadline = time.monotonic() + 1.2
+            while len(list(self.directory.glob("ready-*"))) < 8 and time.monotonic() < deadline:
+                time.sleep(0.005)
+            try:
+                self.assertEqual(len(list(self.directory.glob("ready-*"))), 8)
+                # Act/assert: the ninth active request is closed without a response.
+                with Peer(self.port) as extra:
+                    extra.socket.settimeout(0.5)
+                    try:
+                        extra.send(request("/echo", b"over-capacity"))
+                        self.assertEqual(extra.reader.read(1), b"")
+                    except (ConnectionResetError, BrokenPipeError):
+                        pass
+            finally:
+                gate.touch()
+            # Assert: releasing contexts allows a new request, even with idle sockets open.
+            for peer in holders:
+                self.check(peer, b"held")
+            with Peer(self.port) as recovered:
+                recovered.send(request("/echo", b"recovered"))
+                self.check(recovered, b"recovered")
+
     def test_request_resources_are_released_before_reusing_connection(self):
         with Peer(self.port) as peer:
             peer.send(request("/echo", b"ready"))

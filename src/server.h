@@ -12,6 +12,7 @@ enum {
     WORKERS = 4,
     MAX_CONNECTIONS = 16,
     QUEUE_CAPACITY = 16,
+    CONTEXT_CAPACITY = 8,
 
     IO_BUDGET = 65536,
     CALL_BUDGET = 64,
@@ -49,10 +50,18 @@ struct cgi_state {
     int64_t deadline;
     int64_t next_check;
     size_t length;
-    char output[HEADER_LIMIT + BODY_LIMIT + 1];
 };
 
-/* 작업자가 바뀌어도 요청과 부분 송신 위치는 연결에 남습니다. */
+/* 요청을 처리하는 동안 풀에서 빌려 소유하는 요청 정보·처리 버퍼입니다. */
+struct request_context {
+    struct request request;
+    char input[HEADER_LIMIT + 1];
+    char header[1024];
+    unsigned char data[BODY_LIMIT];
+    char cgi_output[HEADER_LIMIT + BODY_LIMIT + 1];
+};
+
+/* 작업자가 바뀌어도 상태·진행 위치·context 소유권은 연결에 남습니다. */
 struct connection {
     enum state state;
     enum phase phase;
@@ -61,16 +70,14 @@ struct connection {
     int file_fd;
     off_t file_left;
 
-    struct request request;
+    struct request_context *context;
+    struct context_pool *context_pool;
     struct cgi_state cgi;
-    char input[HEADER_LIMIT + 1];
     size_t input_length;
 
-    char header[1024];
     size_t header_length;
     size_t header_sent;
 
-    unsigned char data[BODY_LIMIT];
     size_t length;
     size_t sent;
 
@@ -83,8 +90,15 @@ struct connection {
     const char *reason;
 };
 
+struct context_pool {
+    struct request_context entries[CONTEXT_CAPACITY];
+    struct connection *owners[CONTEXT_CAPACITY];
+    pthread_mutex_t mutex;
+};
+
 struct server {
     struct connection clients[MAX_CONNECTIONS];
+    struct context_pool contexts;
 
     struct connection *jobs[QUEUE_CAPACITY];
     size_t head, tail, count;
@@ -100,6 +114,11 @@ struct server {
 };
 
 extern volatile sig_atomic_t stop_requested;
+
+void context_pool_init(struct context_pool *pool);
+void context_pool_destroy(struct context_pool *pool);
+bool context_acquire(struct connection *client);
+void context_release(struct connection *client);
 
 void fail(const char *operation);
 void check_thread(int error);

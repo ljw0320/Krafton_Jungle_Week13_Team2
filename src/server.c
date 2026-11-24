@@ -14,6 +14,7 @@ void connection_close(struct connection *client)
         close(client->file_fd);
 
     close(client->fd);
+    context_release(client);
 
     printf("[close fd=%d] %s\n", client->fd,
            client->reason ? client->reason : "server_shutdown");
@@ -36,6 +37,7 @@ static void register_client(struct server *server, int fd)
             continue;
 
         memset(client, 0, sizeof(*client));
+        client->context_pool = &server->contexts;
         client->state = WAITING;
         client->phase = READ_HEADER;
         client->fd = fd;

@@ -1,6 +1,8 @@
 /webserver
 /test_http
 /test_drain
+/test_context
+/test_context_pool
 /cgi-bin/adder
 /keep-alive-report.json
 *.o
@@ -14,3 +16,5 @@ core.*
 *.log
 
 /www/test-data
+
+/src/tests/verify_stage2_failure.py

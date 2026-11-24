@@ -39,7 +39,7 @@ static int program_name(const char *target)
 /* 셸 명령 문자열을 만들지 않고 검증된 파일 fd를 posix_spawn에 전달합니다. */
 void cgi_start(struct server *server, struct connection *client)
 {
-    int status = program_name(client->request.target);
+    int status = program_name(client->context->request.target);
     off_t size;
     if (!status && server->cgi_root_fd < 0)
         status = 404;
@@ -47,7 +47,7 @@ void cgi_start(struct server *server, struct connection *client)
         respond_error(client, status);
         return;
     }
-    int fd = file_open(server->cgi_root_fd, client->request.target + 8, &size, &status);
+    int fd = file_open(server->cgi_root_fd, client->context->request.target + 8, &size, &status);
     if (fd >= 0) {
         struct stat info;
         status = fstat(fd, &info) == -1 ? 500 : !(info.st_mode & 0111) ? 403 : 0;
@@ -97,10 +97,10 @@ static void cgi_finished(struct connection *client)
 
 static bool read_output(struct connection *client, size_t *received)
 {
-    size_t space = sizeof(client->cgi.output) - 1 - client->cgi.length;
+    size_t space = sizeof(client->context->cgi_output) - 1 - client->cgi.length;
     size_t size = space < IO_BUDGET - *received ? space : IO_BUDGET - *received;
     char overflow;
-    char *out = size ? client->cgi.output + client->cgi.length : &overflow;
+    char *out = size ? client->context->cgi_output + client->cgi.length : &overflow;
     ssize_t n = read(client->cgi.fd, out, size ? size : 1);
     if ((n > 0 && !size) || (n < 0 && errno != EINTR && !would_block())) {
         cgi_failed(client, 502);

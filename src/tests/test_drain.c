@@ -20,6 +20,9 @@ static void fixture_open(struct fixture *fixture)
     assert(nonblocking(pair[0]) == 0 && nonblocking(pair[1]) == 0);
 
     memset(fixture, 0, sizeof(*fixture));
+    context_pool_init(&server.contexts);
+    fixture->client.context_pool = &server.contexts;
+    assert(context_acquire(&fixture->client));
     fixture->client.fd = pair[0];
     fixture->client.file_fd = -1;
     fixture->client.state = RUNNING;
@@ -29,6 +32,8 @@ static void fixture_open(struct fixture *fixture)
 
 static void fixture_close(struct fixture *fixture)
 {
+    context_release(&fixture->client);
+    context_pool_destroy(&server.contexts);
     close(fixture->client.fd);
     close(fixture->peer);
 }

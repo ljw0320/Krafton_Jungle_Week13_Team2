@@ -40,7 +40,7 @@ static int input_open(const struct connection *client)
         return -1;
     size_t offset = 0;
     while (offset < client->length) {
-        ssize_t n = write(fd, client->data + offset, client->length - offset);
+        ssize_t n = write(fd, client->context->data + offset, client->length - offset);
         if (n < 0 && errno == EINTR)
             continue;
         if (n <= 0) {
@@ -94,8 +94,8 @@ static int launch(int executable, int input, int output, struct connection *clie
     struct environment env;
     char path[64];
     snprintf(path, sizeof(path), "/proc/self/fd/%d", executable);
-    char *argv[] = {client->request.target, NULL};
-    make_environment(&env, &client->request);
+    char *argv[] = {client->context->request.target, NULL};
+    make_environment(&env, &client->context->request);
     int error = posix_spawn_file_actions_init(&actions);
     if (error)
         return error;

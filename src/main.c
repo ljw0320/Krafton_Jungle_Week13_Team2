@@ -42,6 +42,7 @@ static void server_setup(struct server *server, const char *root, const char *cg
 
     check_thread(pthread_mutex_init(&server->mutex, NULL));
     check_thread(pthread_cond_init(&server->ready, NULL));
+    context_pool_init(&server->contexts);
 
     signals_start(server->wake_fd);
     pool_start(server);
@@ -58,6 +59,7 @@ static void server_cleanup(struct server *server, int listener)
             connection_close(&server->clients[i]);
 
     signals_detach();
+    context_pool_destroy(&server->contexts);
     close(server->wake_fd);
     close(server->root_fd);
     if (server->cgi_root_fd >= 0)

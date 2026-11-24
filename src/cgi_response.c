@@ -61,17 +61,17 @@ int cgi_response(struct connection *client)
 {
     char type[256] = {0};
     int status = 200;
-    size_t end = http_header_end(client->cgi.output, client->cgi.length);
+    size_t end = http_header_end(client->context->cgi_output, client->cgi.length);
     if (!end || end > HEADER_LIMIT || client->cgi.length - end > BODY_LIMIT ||
-        !valid_header(client->cgi.output, end))
+        !valid_header(client->context->cgi_output, end))
         return 502;
-    client->cgi.output[end - 2] = '\0';
-    if (!parse_headers(client->cgi.output, type, &status))
+    client->context->cgi_output[end - 2] = '\0';
+    if (!parse_headers(client->context->cgi_output, type, &status))
         return 502;
     client->length = client->cgi.length - end;
     if ((status == 204 || status == 205 || status == 304) && client->length)
         return 502;
-    memcpy(client->data, client->cgi.output + end, client->length);
+    memcpy(client->context->data, client->context->cgi_output + end, client->length);
     respond(client, status, (off_t)client->length, type);
     return 0;
 }
