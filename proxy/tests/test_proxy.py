@@ -1,6 +1,7 @@
 """Bounded real-TCP proxy checks; no pre-running server required."""
 import concurrent.futures
 import http.client
+import http.server
 from pathlib import Path
 import queue
 import socket
@@ -39,6 +40,47 @@ class Handler(socketserver.BaseRequestHandler):
             self.server.reply(self.request, data)
         except (OSError, socket.timeout):
             pass  # Client/proxy abort is intentional in deadline and truncation cases.
+
+
+class PersistentBackend(Backend):
+    def get_request(self):
+        sock, address = super().get_request()
+        self.accepted += 1
+        self.sockets.append(sock)
+        return sock, address
+
+
+class PersistentHandler(http.server.BaseHTTPRequestHandler):
+    protocol_version = 'HTTP/1.1'
+
+    def log_message(self, *args):
+        pass
+
+    def do_GET(self):
+        self.serve()
+
+    def do_POST(self):
+        self.serve()
+
+    def serve(self):
+        body = self.rfile.read(int(self.headers.get('Content-Length', 0)))
+        self.server.seen.put((self.client_address, self.command, self.path, body))
+        self.server.paths[self.path] = self.server.paths.get(self.path, 0) + 1
+        count = self.server.paths[self.path]
+        if self.path in ('/post-drop', '/failtwice') or (self.path == '/drop-once' and count == 1):
+            self.close_connection = True
+            return
+        if self.path == '/partial':
+            self.wfile.write(b'HTTP/1.1 2')
+            self.close_connection = True
+            return
+        self.send_response(200)
+        self.send_header('Content-Length', str(len(body)))
+        if self.path == '/close':
+            self.send_header('Connection', 'close')
+            self.close_connection = True
+        self.end_headers()
+        self.wfile.write(body)
 
 
 class ProxyTests(unittest.TestCase):
@@ -112,6 +154,16 @@ class ProxyTests(unittest.TestCase):
             status, data = self.request(port, '/cgi-bin/adder?a=12&b=30')
             self.assertEqual(status, 200)
             self.assertIn(b'42', data)
+            # Exercise reuse against our actual webserver, including POST and a 404.
+            persistent = http.client.HTTPConnection('127.0.0.1', port, timeout=3)
+            try:
+                self.reusable_request(persistent, '/missing', expected=404)
+                original = persistent.sock
+                self.assertEqual(self.reusable_request(persistent, '/echo', b'reused')[1], b'reused')
+                self.reusable_request(persistent, '/cgi-bin/adder?a=1&b=2')
+                self.assertIs(persistent.sock, original)
+            finally:
+                persistent.close()
 
     def test_request_fully_buffered_path_headers_and_close(self):
         def reply(s, data):
@@ -134,7 +186,7 @@ class ProxyTests(unittest.TestCase):
             self.assertEqual(s.recv(1), b'')
         forwarded = backend.seen.get(timeout=1)
         self.assertTrue(forwarded.startswith(b'POST /echo?q=%26 HTTP/1.1\r\n'))
-        self.assertIn(b'Connection: close\r\n', forwarded)
+        self.assertIn(b'Connection: keep-alive\r\n', forwarded)
         self.assertIn(('Host: 127.0.0.1:%d\r\n' % backend.server_address[1]).encode(), forwarded)
         self.assertNotIn(b'X-Remove', forwarded)
 
@@ -232,7 +284,7 @@ class ProxyTests(unittest.TestCase):
             stream.close()
         self.assertEqual(backend.seen.qsize(), 100) # Separate backend connection for each request.
         while not backend.seen.empty():
-            self.assertIn(b'Connection: close\r\n', backend.seen.get())
+            self.assertIn(b'Connection: keep-alive\r\n', backend.seen.get())
         with socket.create_connection(('127.0.0.1', port), 3) as sock:
             sock.sendall(b'BAD / HTTP/1.1\r\nHost: x\r\n\r\n'
                          b'GET /must-not-run HTTP/1.1\r\nHost: x\r\n\r\n')
@@ -263,6 +315,75 @@ class ProxyTests(unittest.TestCase):
                 self.assertEqual(sock.recv(1), b'')
         finally:
             for sock in peers: sock.close()
+
+    def persistent(self):
+        b = PersistentBackend(('127.0.0.1', 0), PersistentHandler)
+        b.seen, b.paths, b.accepted, b.sockets = queue.Queue(), {}, 0, []
+        thread = threading.Thread(target=b.serve_forever, kwargs={'poll_interval': .02}, daemon=True)
+        thread.start()
+        self.addCleanup(b.server_close)
+        self.addCleanup(b.shutdown)
+        port, process = self.start(b.server_address[1])
+        return port, b, process
+
+    def reusable_request(self, client, path='/', body=None, expected=200):
+        client.request('GET' if body is None else 'POST', path, body)
+        response = client.getresponse()
+        data = response.read()
+        self.assertEqual(response.status, expected)
+        return response, data
+
+    def test_backend_reuse_close_and_client_cleanup(self):
+        port, backend, process = self.persistent()
+        client = http.client.HTTPConnection('127.0.0.1', port, timeout=3)
+        self.addCleanup(client.close)
+        self.reusable_request(client)
+        original = client.sock
+        self.assertEqual(self.reusable_request(client, '/echo', b'hello')[1], b'hello')
+        self.assertEqual(backend.accepted, 1)
+        self.reusable_request(client, '/close')
+        self.reusable_request(client)
+        self.assertEqual(backend.accepted, 2)
+        self.assertIs(client.sock, original)
+        # An idle EOF is detected independently of the frontend lifetime.
+        backend.sockets[-1].shutdown(socket.SHUT_RDWR)
+        time.sleep(.05)
+        self.reusable_request(client)
+        self.assertEqual(backend.accepted, 3)
+        client.close()
+        time.sleep(.15)
+        self.assertLessEqual(len(list(Path('/proc/%d/fd' % process.pid).iterdir())), 5)
+
+    def test_backend_idle_four_seconds_and_hundred_requests(self):
+        port, backend, _ = self.persistent()
+        client = http.client.HTTPConnection('127.0.0.1', port, timeout=3)
+        self.addCleanup(client.close)
+        self.reusable_request(client)
+        original = client.sock
+        time.sleep(4.15)
+        self.reusable_request(client)
+        self.assertIs(client.sock, original)
+        self.assertEqual(backend.accepted, 2)
+        # Finish frontend requests 3..100; the retained second backend is reused.
+        for _ in range(98): self.reusable_request(client)
+        self.assertIsNone(client.sock)
+        self.assertEqual(backend.accepted, 2)
+        records = [backend.seen.get(timeout=1) for _ in range(100)]
+        self.assertEqual(len(set(record[0] for record in records)), 2)
+
+    def test_backend_race_get_retry_post_never_replayed(self):
+        port, backend, _ = self.persistent()
+        for path, body, expected, attempts in [('/drop-once', None, 200, 2),
+                ('/post-drop', b'operation', 502, 1), ('/failtwice', None, 502, 2),
+                ('/partial', None, 502, 1)]:
+            with self.subTest(path=path):
+                client = http.client.HTTPConnection('127.0.0.1', port, timeout=3)
+                try:
+                    self.reusable_request(client) # Prime an actually reusable socket.
+                    self.reusable_request(client, path, body, expected)
+                    self.assertEqual(backend.paths[path], attempts)
+                finally:
+                    client.close()
 
     def test_idle_and_absolute_deadlines(self):
         def reply(s, data):

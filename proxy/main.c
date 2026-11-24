@@ -31,6 +31,10 @@ struct exchange {
     int64_t first, client_progress, upstream_progress, connect_started, drain_until;
     int64_t buffered_at;
     bool committed;
+    bool backend_reusable, reused_attempt, retried, is_get;
+    unsigned backend_requests, upstream_generation;
+    int64_t backend_idle_at;
+    size_t forwarded_header;
     size_t request_used, request_header, request_body;
     size_t outgoing_length, outgoing_sent, body_sent;
     size_t response_used;
@@ -56,6 +60,10 @@ static void close_upstream(struct exchange *c)
 {
     if (c->upstream >= 0) close(c->upstream);
     c->upstream = -1;
+    c->upstream_generation++;
+    c->backend_requests = 0;
+    c->backend_idle_at = 0;
+    c->backend_reusable = false;
 }
 
 static void release_buffers(struct exchange *c)
@@ -89,17 +97,23 @@ static void process_request(struct exchange *c);
 /* Half-close before draining unread input so an error response is not lost to RST. */
 static void finish(struct exchange *c)
 {
-    close_upstream(c);
+    if (!c->keep_alive) close_upstream(c);
     if (c->keep_alive) {
         size_t consumed = c->request_header + c->request_body;
         size_t left = c->request_used > consumed ? c->request_used - consumed : 0;
         int64_t buffered_at = c->buffered_at;
         struct buffers *buffers = c->buffers;
         if (left) memmove(buffers->request, buffers->request + consumed, left);
+        int upstream = c->upstream;
+        unsigned backend_requests = c->backend_requests, generation = c->upstream_generation;
+        int64_t backend_idle_at = c->backend_idle_at;
+        bool reusable = c->backend_reusable;
         int client = c->client;
         unsigned requests = c->requests;
         memset(c, 0, sizeof(*c));
-        c->client = client; c->upstream = -1;
+        c->client = client; c->upstream = upstream;
+        c->backend_requests = backend_requests; c->upstream_generation = generation;
+        c->backend_idle_at = backend_idle_at; c->backend_reusable = reusable;
         c->requests = requests; c->buffers = buffers;
         c->client_progress = now_ms();
         c->phase = left ? REQUEST : IDLE;
@@ -137,6 +151,9 @@ static void fail_request(struct exchange *c, int status)
 
 static void connect_backend(struct exchange *c)
 {
+    close_upstream(c);
+    c->backend_requests = 1;
+    c->reused_attempt = false;
     c->upstream = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
     if (c->upstream < 0) { fail_request(c, 502); return; }
     c->connect_started = c->upstream_progress = now_ms();
@@ -144,6 +161,42 @@ static void connect_backend(struct exchange *c)
     if (!result) c->phase = UPLOAD;
     else if (errno == EINPROGRESS) c->phase = CONNECTING;
     else fail_request(c, 502);
+}
+
+/* Never replay POST, received response bytes, or an already retried request. */
+static void backend_failed(struct exchange *c)
+{
+    if (c->reused_attempt && c->is_get && !c->retried && !c->response_used &&
+        !c->committed && now_ms() < c->first + TOTAL_MS) {
+        c->retried = true;
+        c->outgoing_length = c->forwarded_header;
+        c->outgoing_sent = c->body_sent = 0;
+        connect_backend(c);
+    } else fail_request(c, 502);
+}
+
+static void start_backend(struct exchange *c)
+{
+    if (c->upstream >= 0) {
+        unsigned char byte;
+        ssize_t ready = recv(c->upstream, &byte, 1, MSG_PEEK | MSG_DONTWAIT);
+        if (!c->backend_reusable || now_ms() - c->backend_idle_at >= BACKEND_IDLE_MS ||
+            c->backend_requests >= BACKEND_KEEP_MAX || ready >= 0 ||
+            (errno != EAGAIN && errno != EWOULDBLOCK)) close_upstream(c);
+    }
+    if (c->upstream < 0) { connect_backend(c); return; }
+    c->backend_requests++;
+    c->backend_idle_at = 0;
+    c->reused_attempt = true;
+    c->phase = UPLOAD;
+    c->upstream_progress = now_ms();
+}
+
+static void backend_complete(struct exchange *c)
+{
+    c->backend_idle_at = now_ms();
+    if (!c->backend_reusable || c->backend_requests >= BACKEND_KEEP_MAX || !c->keep_alive)
+        close_upstream(c);
 }
 
 static void read_request(struct exchange *c)
@@ -173,16 +226,17 @@ static void process_request(struct exchange *c)
         int result = proxy_request(c->buffers->request, end, backend_host, &request,
                                    c->buffers->outgoing, sizeof(c->buffers->outgoing));
         if (result < 0) { fail_request(c, -result); return; }
+        c->is_get = request.method == METHOD_GET;
         c->requests++;
         c->keep_alive = request.http11 && !request.close_connection && c->requests < KEEP_MAX;
         c->request_header = end;
         c->request_body = request.content_length;
-        c->outgoing_length = (size_t)result;
+        c->forwarded_header = c->outgoing_length = (size_t)result;
     }
     size_t consumed = c->request_header + c->request_body;
     if (c->request_used > consumed && !c->buffered_at)
         c->buffered_at = c->client_progress;
-    if (c->request_used >= consumed) connect_backend(c);
+    if (c->request_used >= consumed) start_backend(c);
 }
 
 static void complete_connect(struct exchange *c)
@@ -206,7 +260,7 @@ static void upload(struct exchange *c)
     if (*sent < length) {
         ssize_t n = send(c->upstream, data + *sent, length - *sent, MSG_NOSIGNAL);
         if (n < 0 && retry()) return;
-        if (n <= 0) { fail_request(c, 502); return; }
+        if (n <= 0) { backend_failed(c); return; }
         *sent += (size_t)n;
         c->upstream_progress = now_ms();
     }
@@ -221,7 +275,7 @@ static void read_response(struct exchange *c)
     ssize_t n = recv(c->upstream, c->buffers->response + c->response_used,
                      HEADER_LIMIT - c->response_used, 0);
     if (n < 0 && retry()) return;
-    if (n <= 0) { fail_request(c, 502); return; }
+    if (n <= 0) { backend_failed(c); return; }
     c->upstream_progress = now_ms();
     c->response_used += (size_t)n;
     size_t end = http_header_end(c->buffers->response, c->response_used);
@@ -233,6 +287,7 @@ static void read_response(struct exchange *c)
                                 c->buffers->outgoing, sizeof(c->buffers->outgoing));
     size_t buffered = c->response_used - end;
     if (result < 0 || buffered > c->remaining) { fail_request(c, 502); return; }
+    c->backend_reusable = proxy_backend_reusable(c->buffers->response, end);
     if (c->keep_alive) {
         char *close = strstr(c->buffers->outgoing, "\r\nConnection: close\r\n");
         if (!close || (size_t)result + 5 >= sizeof(c->buffers->outgoing)) {
@@ -250,7 +305,7 @@ static void read_response(struct exchange *c)
     c->remaining -= buffered;
     c->phase = RELAY;
     c->client_progress = now_ms();
-    if (!c->remaining) close_upstream(c);
+    if (!c->remaining) backend_complete(c);
 }
 
 static void read_body(struct exchange *c)
@@ -258,13 +313,13 @@ static void read_body(struct exchange *c)
     size_t size = c->remaining < RELAY_SIZE ? (size_t)c->remaining : RELAY_SIZE;
     ssize_t n = recv(c->upstream, c->buffers->relay, size, 0);
     if (n < 0 && retry()) return;
-    if (n <= 0) { fail_request(c, 502); return; }
+    if (n <= 0) { backend_failed(c); return; }
     c->upstream_progress = now_ms();
     c->relay_used = (size_t)n;
     c->relay_sent = 0;
     c->remaining -= (size_t)n;
     c->client_progress = now_ms();
-    if (!c->remaining) close_upstream(c);
+    if (!c->remaining) backend_complete(c);
 }
 
 static void send_response(struct exchange *c)
@@ -336,10 +391,16 @@ static nfds_t prepare(struct pollfd *fds, int listener, int *timeout)
     *timeout = 1000; /* also bounds signal-driven shutdown latency */
     for (int i = 0; i < PROXY_CLIENTS; i++) {
         struct exchange *c = &clients[i];
+        if (c->upstream >= 0 && c->backend_idle_at) {
+            int64_t left = c->backend_idle_at + BACKEND_IDLE_MS - now;
+            if (left <= 0) close_upstream(c);
+            else if (left < *timeout) *timeout = (int)left;
+        }
         if (c->phase != UNUSED && deadline(c) <= now) expire(c);
         short client_events = 0, upstream_events = 0;
         if (c->phase == IDLE || c->phase == REQUEST || c->phase == DRAIN) client_events = POLLIN;
         if (c->phase == ERROR_REPLY || (c->phase == RELAY && has_output(c))) client_events = POLLOUT;
+        if (c->backend_idle_at) upstream_events = POLLIN;
         if (c->phase == CONNECTING || c->phase == UPLOAD) upstream_events = POLLOUT;
         if (c->phase == RESPONSE || (c->phase == RELAY && !has_output(c) && c->remaining))
             upstream_events = POLLIN;
@@ -354,7 +415,7 @@ static nfds_t prepare(struct pollfd *fds, int listener, int *timeout)
     return 1 + 2 * PROXY_CLIENTS;
 }
 
-static void dispatch(struct exchange *c, short client_events, short upstream_events)
+static void dispatch(struct exchange *c, short client_events, short upstream_events, unsigned generation)
 {
     if (c->phase == UNUSED) return;
     if (deadline(c) <= now_ms()) { expire(c); return; }
@@ -378,6 +439,8 @@ static void dispatch(struct exchange *c, short client_events, short upstream_eve
     }
     if (c->phase == UNUSED || c->phase == DRAIN || c->phase == ERROR_REPLY) return;
     if (client_events & POLLHUP) { dispose(c); return; }
+    if (generation != c->upstream_generation) return;
+    if (c->backend_idle_at && upstream_events) { close_upstream(c); return; }
     if (upstream_events & POLLNVAL) { fail_request(c, 502); return; }
     if (upstream_events & (POLLIN | POLLOUT | POLLHUP | POLLERR)) {
         if (c->phase == CONNECTING) complete_connect(c);
@@ -489,14 +552,16 @@ int main(int argc, char **argv)
     while (!stopping) {
         struct pollfd fds[1 + PROXY_CLIENTS*2 + REJECT_SLOTS];
         int timeout;
+        unsigned generations[PROXY_CLIENTS];
         nfds_t count = prepare(fds, listener, &timeout);
         prepare_rejections(fds + count, &timeout);
+        for (int i = 0; i < PROXY_CLIENTS; i++) generations[i] = clients[i].upstream_generation;
         if (poll(fds, count + REJECT_SLOTS, timeout) < 0) {
             if (errno == EINTR) continue;
             perror("proxy poll"); break;
         }
         for (int i = 0; i < PROXY_CLIENTS; i++)
-            dispatch(&clients[i], fds[1+2*i].revents, fds[2+2*i].revents);
+            dispatch(&clients[i], fds[1+2*i].revents, fds[2+2*i].revents, generations[i]);
         dispatch_rejections(fds + count);
         if (fds[0].revents & POLLIN) accept_clients(listener);
     }

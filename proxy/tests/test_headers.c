@@ -20,7 +20,7 @@ int main(void)
     CHECK(proxy_request(input, strlen(input), "127.0.0.1:8081", &request, out, sizeof(out)) > 0);
     CHECK(request.content_length == 3 && !strcmp(request.target, "/echo?q=%26"));
     CHECK(strstr(out, "Host: 127.0.0.1:8081\r\n"));
-    CHECK(strstr(out, "Connection: close\r\n") && strstr(out, "Via: 1.1 jungle-proxy\r\n"));
+    CHECK(strstr(out, "Connection: keep-alive\r\n") && strstr(out, "Via: 1.1 jungle-proxy\r\n"));
     CHECK(!strstr(out, "X-Private") && !strstr(out, "X-Other") && strstr(out, "X-End: keep"));
     input = "POST /echo HTTP/1.1\r\nHost: x\r\nContent-Length: 65537\r\n\r\n";
     CHECK(proxy_request(input, strlen(input), "x", &request, out, sizeof(out)) == -413);

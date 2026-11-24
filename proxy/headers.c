@@ -113,7 +113,13 @@ static bool append(char *out, size_t capacity, size_t *used, const char *name, c
 
 static int forward(struct headers *h, char *out, size_t capacity, const char *host)
 {
-    int n = snprintf(out, capacity, "%s\r\n", h->line);
+    char request_line[TARGET_LIMIT + 32];
+    if (host) {
+        char *version = strrchr(h->line, ' ');
+        if (!version) return -1;
+        snprintf(request_line, sizeof(request_line), "%.*s HTTP/1.1", (int)(version - h->line), h->line);
+    }
+    int n = snprintf(out, capacity, "%s\r\n", host ? request_line : h->line);
     if (n < 0 || (size_t)n >= capacity) return -1;
     size_t used = (size_t)n;
     for (size_t i = 0; i < h->count; i++) {
@@ -123,7 +129,7 @@ static int forward(struct headers *h, char *out, size_t capacity, const char *ho
     }
     if (host && !append(out, capacity, &used, "Host", host)) return -1;
     if (!append(out, capacity, &used, "Via", "1.1 jungle-proxy") ||
-        !append(out, capacity, &used, "Connection", "close") || capacity - used < 3) return -1;
+        !append(out, capacity, &used, "Connection", host ? "keep-alive" : "close") || capacity - used < 3) return -1;
     memcpy(out + used, "\r\n", 3);
     return (int)(used + 2);
 }
@@ -168,4 +174,11 @@ int proxy_response(const char *header, size_t length, uint64_t *body,
     if (status != 204 && status != 304 && !has_length) return -502;
     *body = status == 204 || status == 304 ? 0 : size;
     return forward(&h, out, capacity, NULL);
+}
+
+/* Called only after the complete response header has passed framing validation. */
+bool proxy_backend_reusable(const char *header, size_t length)
+{
+    struct headers h;
+    return parse(&h, header, length) && !strncmp(h.line, "HTTP/1.1 ", 9) && !hop(&h, "close");
 }
