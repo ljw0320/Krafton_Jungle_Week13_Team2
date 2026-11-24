@@ -1,6 +1,7 @@
 #!/bin/bash
 # 서버와 테스트 백엔드를 띄워 Reverse Proxy 동작을 확인하는 기능 테스트. 실패가 있으면 종료 코드 1
-# 10초 이상 걸리는 케이스(hang, stall, slow, drip, noaccept, fd 회수)는 넣지 않는다
+# 타이머 케이스(hang, stall, slow, drip, noaccept, nolenopen)는 동시에 돌려 약 15초가 걸린다
+# 요청을 보내는 중 10초 초과(SENDING 타이머)는 테스트하지 않는다: 작은 요청은 바로 보내지고, 백엔드 수신 버퍼를 채우려면 수 MB가 필요하며 시점도 정하기 어렵다
 cd "$(dirname "$0")/.." || exit 1
 PORT=8080
 TMP=$(mktemp -d)
@@ -236,10 +237,14 @@ s.settimeout(30); s.connect(("127.0.0.1", 8080))
 s.sendall(b"GET /api/bignolen HTTP/1.1\r\nHost: x\r\n\r\n")
 time.sleep(1.5)
 parts = []
+got = 0
 while True:
     d = s.recv(65536)
     if not d: break
     parts.append(d)
+    got += len(d)
+    if got >= 1 << 20:   # 1MB마다 쉬어 서버가 느린 읽기를 여러 번 겪게 한다(valgrind에서도 off/on이 반복된다)
+        got = 0; time.sleep(0.2)
 data = b"".join(parts)
 head, _, b = data.partition(b"\r\n\r\n")
 print(head.split(b"\r\n")[0].decode(), hashlib.sha256(b).hexdigest())' >"$TMP/slow" &
@@ -255,6 +260,61 @@ seg=$(tail -n +$((slog + 1)) "$LOG")
 offs=$(grep -Ec 'backend fd=[0-9]+ off' <<<"$seg"); ons=$(grep -Ec 'backend fd=[0-9]+ on' <<<"$seg")
 check "backpressure off and on repeat" "yes" "$([ "$offs" -ge 2 ] && [ "$ons" -ge 2 ] && echo yes || echo "off=$offs on=$ons")"
 check "connect logged" "yes" "$(grep -q 'backend fd=[0-9]* connect 127.0.0.1:8001' "$LOG" && echo yes || echo no)"
+
+# --- 타이머와 504 ---
+# 모두 백그라운드로 동시에 돌린다. 시간은 서버와 같은 벽시계(time.time())로 잰다. sweep이 최대 1초 늦어 상한은 한도 + 3이다
+H=0; [ -n "$SERVER_WRAP" ] && H=40   # valgrind에서는 상한만 넓힌다
+ptimer() {   # 이름 경로 하한 상한 [hold]. 출력: 상태 라인|Connection|본문|ok. exec라서 $!가 python의 PID다
+    exec python3 -c '
+import socket, sys, time
+name, path, lo, hi, hold = sys.argv[1], sys.argv[2], float(sys.argv[3]), float(sys.argv[4]), sys.argv[5]
+keep = []
+if hold == "1":   # accept 큐를 채워 둔다. 이어 오는 연결은 SYN이 버려져 connect가 끝나지 않는다
+    for _ in range(2):
+        h = socket.socket(); h.settimeout(1)
+        try: h.connect(("127.0.0.1", 8003))
+        except OSError: pass
+        keep.append(h)
+t0 = time.time()
+s = socket.create_connection(("127.0.0.1", 8080))
+s.settimeout(hi + 10)
+s.sendall(("GET %s HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" % path).encode())
+out = b""
+try:
+    while True:
+        d = s.recv(65536)
+        if not d: break
+        out += d
+except socket.timeout: pass
+t = time.time() - t0
+head, _, body = out.decode("latin-1").partition("\r\n\r\n")
+lines = head.split("\r\n")
+conn = [l for l in lines if l.startswith("Connection:")]
+print(lines[0], ",".join(conn), body.replace("\n", ""), "ok" if lo <= t < hi else "t=%.2f" % t, sep="|")' "$1" "$2" "$3" "$4" "${5:-0}" >"$TMP/pt.$1" 2>&1
+}
+stallcurl() {   # A가 10~13초에 닫히고 curl 종료 코드가 18이다
+    local a b rc
+    a=$(date +%s.%N)
+    curl -s --max-time $((20 + H)) -o /dev/null $U/api/stall; rc=$?
+    b=$(date +%s.%N)
+    echo "$rc $(awk -v a="$a" -v b="$b" -v h=$H 'BEGIN { t = b - a; print (t >= 10 && t < 13 + h) ? "ok" : sprintf("t=%.2f", t) }')" >"$TMP/pt.stall"
+}
+TP=
+ptimer hang /api/hang 10 $((13 + H)) & TP="$TP $!"
+ptimer noaccept /noaccept/x 3 $((6 + H)) 1 & TP="$TP $!"
+ptimer nolenopen /api/nolenopen 10 $((13 + H)) & TP="$TP $!"
+ptimer slow /api/slow 9 $((12 + H)) & TP="$TP $!"
+ptimer drip /api/drip 15 $((19 + H)) & TP="$TP $!"
+ptimer driphead /api/driphead 15 $((19 + H)) & TP="$TP $!"
+stallcurl & TP="$TP $!"
+wait $TP    # 인자 없는 wait는 서버까지 기다린다
+check "timer hang" "HTTP/1.1 504 Gateway Timeout|Connection: close|<h1>504 Gateway Timeout</h1>|ok" "$(<"$TMP/pt.hang")"
+check "timer noaccept" "HTTP/1.1 504 Gateway Timeout|Connection: close|<h1>504 Gateway Timeout</h1>|ok" "$(<"$TMP/pt.noaccept")"
+check "timer nolenopen" "HTTP/1.1 200 OK|Connection: close|nolenopen-body|ok" "$(<"$TMP/pt.nolenopen")"
+check "timer slow 9s is 200" "HTTP/1.1 200 OK|Connection: close|slow-body|ok" "$(<"$TMP/pt.slow")"
+check "timer drip 15s received" "HTTP/1.1 200 OK|Connection: close|abc|ok" "$(<"$TMP/pt.drip")"
+check "timer driphead 15s received" "HTTP/1.1 200 OK|Connection: close|abc|ok" "$(<"$TMP/pt.driphead")"
+check "timer stall curl 18" "18 ok" "$(<"$TMP/pt.stall")"
 
 # 시작 뒤에도 서버가 산다
 check "server alive: static" 200 "$(code /index.html)"

@@ -8,6 +8,8 @@
 #include "event_loop.h"
 
 #define PROXY_BUF_SIZE 16384
+#define CONNECT_TIMEOUT_SEC 3
+#define RESPONSE_TIMEOUT_SEC 10
 
 struct conn;
 struct http_req;
@@ -34,6 +36,7 @@ struct upstream {
 int proxy_start(struct conn *c, const struct http_req *req, struct route *r);
 int proxy_event(struct upstream *u, uint32_t events);
 int proxy_resume(struct conn *c);   // A의 버퍼를 비웠으니 B를 다시 읽는다
+int proxy_timeout(struct conn *c, time_t now);   // sweep이 PROXYING에 부른다. 0 / -1
 void proxy_close(struct conn *c);   // B만 닫는다. B가 없으면 아무것도 안 한다
 
 #endif

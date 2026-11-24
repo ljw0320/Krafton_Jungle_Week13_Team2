@@ -124,6 +124,13 @@ def handle(c, port):
         elif name == "stall":
             send(resp(200, "OK", [("Content-Length", 1000)], b"x" * 10))
             time.sleep(60)
+        elif name == "driphead":  # 응답 헤더를 5초마다 나눠 보낸다. 총 15초
+            for part in (b"HTTP/1.1 200 OK\r\n", b"Content-Length: 3\r\n", b"\r\nabc"):
+                time.sleep(5)
+                send(part)
+        elif name == "nolenopen":  # 길이 없이 본문만 보내고 닫지 않는다
+            send(resp(200, "OK", [], b"nolenopen-body\n"))
+            time.sleep(60)
         elif name == "slow":
             time.sleep(9)
             send(ok(b"slow-body\n"))

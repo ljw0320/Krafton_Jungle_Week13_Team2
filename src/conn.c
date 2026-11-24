@@ -208,7 +208,10 @@ void conn_sweep_idle(time_t now) {
     struct conn *next;
     for (struct conn *c = head; c; c = next) {
         next = c->next;  // conn_close가 c를 해제하므로 먼저 저장
-        if (c->state == CONN_PROXYING) continue;
+        if (c->state == CONN_PROXYING) {  // 요청 10초와 유휴 10초는 보지 않는다
+            proxy_timeout(c, now);
+            continue;
+        }
         // 송신 버퍼가 1/3쯤 비기 전에는 EPOLLOUT이 오지 않아, 느리게 읽는 중인지는 줄어든 양으로 안다
         int q;
         if (c->state == CONN_WRITING && ioctl(c->w.fd, SIOCOUTQ, &q) == 0) {

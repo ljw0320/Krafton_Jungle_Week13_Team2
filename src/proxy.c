@@ -182,6 +182,14 @@ int proxy_event(struct upstream *u, uint32_t events) {
     return u->state == UP_SENDING ? up_send(u) : up_recv(u);
 }
 
+// B를 끈 동안(A가 WRITING)은 sweep이 부르지 않는다. 늦은 쪽이 클라이언트라 A의 유휴 검사가 맡는다
+int proxy_timeout(struct conn *c, time_t now) {
+    struct upstream *u = &c->up;
+    int connecting = u->state == UP_CONNECTING;
+    if (now - u->since <= (connecting ? CONNECT_TIMEOUT_SEC : RESPONSE_TIMEOUT_SEC)) return 0;
+    return proxy_fail(c, 504, connecting ? "connect timeout" : "response timeout");
+}
+
 int proxy_resume(struct conn *c) {
     struct upstream *u = &c->up;
     c->state = CONN_PROXYING;
