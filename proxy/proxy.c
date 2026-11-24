@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include "proxy.h"
+#include "../log/diagnostics.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -282,7 +283,7 @@ static void log_failure(const struct proxy_route *route, const char *phase, int 
         (unsigned)ntohs(route->address.sin_port), path, strlen(path) > 256,
         elapsed, failure.reason);
     if (size > 0 && (size_t)size < sizeof(line))
-        while (write(STDERR_FILENO, line, (size_t)size) < 0 && errno == EINTR) {}
+        diagnostic_write(line, (size_t)size);
 }
 
 int serve_proxy(int client, const struct proxy_route *route, struct request *request,

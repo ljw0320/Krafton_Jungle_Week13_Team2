@@ -1,7 +1,7 @@
 CC = cc
 CFLAGS = -std=c11 -Wall -Wextra -Wpedantic -Werror -O2
-HTTP_SOURCES = http/http.c http/http_parse.c http/http_io.c http/http_response.c http/http_static.c http/http_cgi.c proxy/routes.c proxy/headers.c proxy/proxy.c
-HTTP_HEADERS = http/http.h http/http_internal.h proxy/routes.h proxy/headers.h proxy/proxy.h
+HTTP_SOURCES = http/http.c http/http_parse.c http/http_io.c http/http_response.c http/http_static.c http/http_cgi.c proxy/routes.c proxy/headers.c proxy/proxy.c log/diagnostics.c
+HTTP_HEADERS = http/http.h http/http_internal.h proxy/routes.h proxy/headers.h proxy/proxy.h log/diagnostics.h
 SERVER_SOURCES = server/server.c
 SERVER_HEADERS = server/server.h
 
@@ -32,9 +32,9 @@ build/test-proxy-headers: tests/test_proxy_headers.c proxy/headers.c proxy/heade
 	mkdir -p build
 	$(CC) $(CFLAGS) tests/test_proxy_headers.c proxy/headers.c -o $@ $(LDFLAGS)
 
-build/test-proxy-io: tests/test_proxy_io.c proxy/proxy.c proxy/headers.c $(HTTP_HEADERS) http/http_response.c http/http_io.c
+build/test-proxy-io: tests/test_proxy_io.c proxy/proxy.c proxy/headers.c $(HTTP_HEADERS) http/http_response.c http/http_io.c log/diagnostics.c
 	mkdir -p build
-	$(CC) $(CFLAGS) tests/test_proxy_io.c proxy/headers.c http/http_response.c http/http_io.c -o $@ $(LDFLAGS) -Wl,--wrap=poll -Wl,--wrap=__poll_chk -Wl,--wrap=connect
+	$(CC) $(CFLAGS) tests/test_proxy_io.c proxy/headers.c http/http_response.c http/http_io.c log/diagnostics.c -o $@ $(LDFLAGS) -Wl,--wrap=poll -Wl,--wrap=__poll_chk -Wl,--wrap=connect
 
 test: all build/test-processes build/test-http build/test-cgi-io build/test-proxy-headers build/test-proxy-io
 	./build/test-processes

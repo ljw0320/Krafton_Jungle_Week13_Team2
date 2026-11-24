@@ -16,6 +16,7 @@
 #include "server.h"
 #include "../http/http.h"
 #include "../proxy/proxy.h"
+#include "../log/diagnostics.h"
 
 static volatile sig_atomic_t stopping;
 
@@ -101,7 +102,7 @@ static void handle_signal(int signo)
 static int check_call(int result, const char *operation)
 {
     if (result == -1)
-        perror(operation);
+        diagnostic_error(operation, errno);
     return result;
 }
 
@@ -115,7 +116,7 @@ static int reap_children(struct child_processes *children)
         if (pid == -1) {
             if (errno == EINTR)
                 continue;
-            perror("waitpid reap");
+            diagnostic_error("waitpid reap", errno);
             return -1;
         }
         for (int i = 0; i < children->active; ++i) {
@@ -139,7 +140,10 @@ static int set_signal_handler(int signo, void (*handler)(int))
     sigemptyset(&action.sa_mask);
     if (sigaction(signo, &action, NULL) == 0)
         return 0;
-    fprintf(stderr, "sigaction signal=%d: %s\n", signo, strerror(errno));
+    int error = errno;
+    char operation[64];
+    snprintf(operation, sizeof(operation), "sigaction signal=%d", signo);
+    diagnostic_error(operation, error);
     return -1;
 }
 
@@ -166,7 +170,7 @@ static int set_socket_blocking(int fd, bool blocking)
     int flags = fcntl(fd, F_GETFL);
     if (flags == -1 || fcntl(fd, F_SETFL,
             blocking ? flags & ~O_NONBLOCK : flags | O_NONBLOCK) == -1) {
-        perror("fcntl socket mode");
+        diagnostic_error("fcntl socket mode", errno);
         return -1;
     }
     return 0;
@@ -177,7 +181,7 @@ static int open_listener(int port)
 {
     int listener = socket(AF_INET, SOCK_STREAM, 0);
     if (listener == -1) {
-        perror("socket");
+        diagnostic_error("socket", errno);
         return -1;
     }
     int reuse = 1;
@@ -188,7 +192,7 @@ static int open_listener(int port)
     if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) == -1 ||
         bind(listener, (struct sockaddr *)&address, sizeof(address)) == -1 ||
         listen(listener, 128) == -1) {
-        perror("listener setup");
+        diagnostic_error("listener setup", errno);
         close(listener);
         return -1;
     }
@@ -239,13 +243,13 @@ static int defer_accept(const char *operation, int error, struct timespec *until
                      error == ENOBUFS || error == EAGAIN;
     if (!temporary || !*reported) {
         errno = error;
-        perror(operation);
+        diagnostic_error(operation, error);
         *reported = true;
     }
     if (!temporary)
         return -1;
     if (clock_gettime(CLOCK_MONOTONIC, until) < 0) {
-        perror("clock_gettime accept retry");
+        diagnostic_error("clock_gettime accept retry", errno);
         return -1;
     }
     until->tv_nsec += 100000000;
@@ -270,7 +274,7 @@ static int run_parent(int listener, int root_fd, struct child_processes *childre
         if (pausing) {
             struct timespec now;
             if (clock_gettime(CLOCK_MONOTONIC, &now) < 0) {
-                perror("clock_gettime accept retry");
+                diagnostic_error("clock_gettime accept retry", errno);
                 return EXIT_FAILURE;
             }
             delay.tv_sec = retry_until.tv_sec - now.tv_sec;
@@ -289,7 +293,7 @@ static int run_parent(int listener, int root_fd, struct child_processes *childre
         if (count < 0) {
             if (errno == EINTR)
                 continue;
-            perror("ppoll");
+            diagnostic_error("ppoll", errno);
             return EXIT_FAILURE;
         }
         if (!count || stopping)
@@ -381,7 +385,7 @@ static int signal_children(const struct child_processes *children, int signo)
     int result = 0;
     for (int i = 0; i < children->active; ++i) {
         if (kill(children->pids[i], signo) == -1 && errno != ESRCH) {
-            perror("kill child");
+            diagnostic_error("kill child", errno);
             result = -1;
         }
     }
@@ -407,7 +411,7 @@ static int shutdown_children(struct child_processes *children, int grace_seconds
             continue;
         if (errno == ECHILD)
             return result;
-        perror("waitpid shutdown");
+        diagnostic_error("waitpid shutdown", errno);
         return EXIT_FAILURE;
     }
 }
@@ -417,7 +421,7 @@ int server_run(int port, const char *root, int limit, int idle, int grace, int b
 {
     int root_fd = open(root, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
     if (root_fd == -1) {
-        perror("open static root");
+        diagnostic_error("open static root", errno);
         return EXIT_FAILURE;
     }
     sigset_t wait_mask;
@@ -439,7 +443,7 @@ int server_run(int port, const char *root, int limit, int idle, int grace, int b
         .backend_limit = backend_limit,
     };
     if (!children.pids || !children.channels || !children.pollfds) {
-        perror("calloc");
+        diagnostic_error("calloc", errno);
         free(children.pids);
         free(children.channels);
         free(children.pollfds);

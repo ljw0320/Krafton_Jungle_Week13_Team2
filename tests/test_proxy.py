@@ -96,14 +96,15 @@ class ProxyTests(ServerTestCase):
                                f'/api/admin 127.0.0.1 {self.other.port}\n')
         self.proc = None
 
-    def launch(self, *options, fd_limit=None, max_children=16, idle_seconds=2):
+    def launch(self, *options, fd_limit=None, max_children=16, idle_seconds=2,
+               stderr=subprocess.PIPE):
         def restrict_fds():
             import resource
             resource.setrlimit(resource.RLIMIT_NOFILE, (fd_limit, fd_limit))
         self.proc = subprocess.Popen(
             [str(BINARY), str(self.port), str(self.root), str(max_children), str(idle_seconds), '1',
              '--routes', str(self.config), *options], cwd=ROOT,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            stdout=subprocess.PIPE, stderr=stderr, text=True,
             preexec_fn=restrict_fds if fd_limit is not None else None)
         self.addCleanup(self.shutdown)
         self.assertTrue(self.proc.stdout.readline().startswith('READY'),
@@ -113,10 +114,11 @@ class ProxyTests(ServerTestCase):
         if self.proc and not self.proc.stdout.closed:
             self.proc.terminate()
             _, self.logs = self.proc.communicate(timeout=5)
+            self.logs = self.logs or ''
             self.assertEqual(self.proc.returncode, 0, self.logs)
 
-    def exchange(self, path='/api/users?q=1', method='GET', body=None, headers=None):
-        conn = http.client.HTTPConnection('127.0.0.1', self.port, timeout=15)
+    def exchange(self, path='/api/users?q=1', method='GET', body=None, headers=None, timeout=15):
+        conn = http.client.HTTPConnection('127.0.0.1', self.port, timeout=timeout)
         try:
             conn.request(method, path, body, headers or {'Host': 'external.example:8080'})
             result = conn.getresponse()
@@ -130,6 +132,127 @@ class ProxyTests(ServerTestCase):
             result = http.client.HTTPResponse(peer)
             result.begin()
             return result.status, result.getheaders(), result.read()
+
+    def assert_full_log_sink_does_not_block(self, writer, reader):
+        import fcntl
+        original_flags = fcntl.fcntl(writer, fcntl.F_GETFL)
+        self.backend.reply = b'HTTP/1.1 200 OK\r\nBad Header\r\n\r\n'
+        self.launch('--backend-limit', '1', fd_limit=32, max_children=64,
+                    idle_seconds=30, stderr=writer)
+        def drain_log():
+            os.set_blocking(reader, False)
+            try:
+                while os.read(reader, 65536):
+                    pass
+            except BlockingIOError:
+                pass
+        # Unblock a broken implementation before shutdown during test cleanup.
+        self.addCleanup(drain_log)
+        initial_fds = len(os.listdir(f'/proc/{self.proc.pid}/fd'))
+        for _ in range(8):
+            try:
+                self.assertEqual(self.exchange(timeout=1)[0], 502)
+            except TimeoutError:
+                self.fail('a full log sink blocked the error response')
+        wait_for(lambda: not children(self.proc.pid))
+        self.assertEqual(fcntl.fcntl(writer, fcntl.F_GETFL), original_flags)
+
+        # A parent resource warning must also remain non-blocking.
+        self.backend.reply = b'HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok'
+        keeper = http.client.HTTPConnection('127.0.0.1', self.port, timeout=2)
+        self.addCleanup(keeper.close)
+        keeper.request('GET', '/api')
+        self.assertEqual(keeper.getresponse().read(), b'ok')
+        holders = []
+        try:
+            for _ in range(36):
+                holders.append(connect(self.port))
+                time.sleep(.01)
+            time.sleep(.15)
+            keeper.request('GET', '/api')
+            self.assertEqual(keeper.getresponse().read(), b'ok')
+        finally:
+            for peer in holders:
+                peer.close()
+            keeper.close()
+        self.assertEqual(self.exchange('/', timeout=2)[2], b'local')
+        wait_for(lambda: not children(self.proc.pid) and
+                 len(os.listdir(f'/proc/{self.proc.pid}/fd')) == initial_fds)
+        self.assertIsNone(self.proc.poll())
+        self.assertEqual(fcntl.fcntl(writer, fcntl.F_GETFL), original_flags)
+
+        drain_log()
+        self.backend.reply = b'HTTP/1.1 200 OK\r\nBad Header\r\n\r\n'
+        self.assertEqual(self.exchange(timeout=1)[0], 502)
+        line = os.read(reader, 4096).decode()
+        self.assertEqual(len(line.splitlines()), 1)
+        self.assertIn('reason=invalid_response_header', line)
+
+    def test_full_log_pipe_drops_records_and_recovers(self):
+        import fcntl
+        reader, writer = os.pipe()
+        self.addCleanup(os.close, reader)
+        self.addCleanup(os.close, writer)
+        capacity = fcntl.fcntl(writer, fcntl.F_SETPIPE_SZ, 4096)
+        self.assertEqual(os.write(writer, b'x' * capacity), capacity)
+        self.assert_full_log_sink_does_not_block(writer, reader)
+
+    def test_full_log_socket_drops_records_and_recovers(self):
+        writer, reader = socket.socketpair()
+        self.addCleanup(writer.close)
+        self.addCleanup(reader.close)
+        writer.setblocking(False)
+        try:
+            while True:
+                writer.send(b'x' * 4096)
+        except BlockingIOError:
+            pass
+        writer.setblocking(True)
+        self.assert_full_log_sink_does_not_block(writer.fileno(), reader.fileno())
+
+    def test_full_log_terminal_drops_records_and_recovers(self):
+        import pty
+        import tty
+        reader, writer = pty.openpty()
+        self.addCleanup(os.close, reader)
+        self.addCleanup(os.close, writer)
+        tty.setraw(writer)
+        os.set_blocking(writer, False)
+        try:
+            while True:
+                os.write(writer, b'x' * 4096)
+        except BlockingIOError:
+            pass
+        os.set_blocking(writer, True)
+        self.assert_full_log_sink_does_not_block(writer, reader)
+
+    def test_file_log_preserves_existing_content_and_flags(self):
+        import fcntl
+        path = self.work / 'server.log'
+        with path.open('wb') as output:
+            output.write(b'existing\n')
+            output.flush()
+            flags = fcntl.fcntl(output, fcntl.F_GETFL)
+            self.launch(stderr=output)
+            self.backend.reply = b'HTTP/1.1 200 OK\r\nBad Header\r\n\r\n'
+            self.assertEqual(self.exchange(timeout=1)[0], 502)
+            self.shutdown()
+            self.assertEqual(fcntl.fcntl(output, fcntl.F_GETFL), flags)
+        content = path.read_text()
+        self.assertTrue(content.startswith('existing\nproxy '))
+        self.assertEqual(len(content.splitlines()), 2)
+        self.assertIn('reason=invalid_response_header', content)
+
+    def test_closed_log_reader_does_not_stop_requests(self):
+        reader, writer = os.pipe()
+        os.close(reader)
+        self.addCleanup(os.close, writer)
+        self.launch(stderr=writer)
+        self.backend.reply = b'HTTP/1.1 200 OK\r\nBad Header\r\n\r\n'
+        self.assertEqual(self.exchange(timeout=1)[0], 502)
+        self.assertEqual(self.exchange('/')[2], b'local')
+        wait_for(lambda: not children(self.proc.pid))
+        self.assertIsNone(self.proc.poll())
 
     def test_parent_survives_fd_pressure_and_recovers_without_slot_or_fd_leaks(self):
         self.launch('--backend-limit', '1', fd_limit=32, max_children=64, idle_seconds=30)
@@ -158,10 +281,13 @@ class ProxyTests(ServerTestCase):
             finally:
                 for peer in holders:
                     peer.close()
-            wait_for(lambda: children(self.proc.pid) == original_workers)
-            self.assertEqual(len(os.listdir(f'/proc/{self.proc.pid}/fd')), original_fds)
+            # This accepted request sits after all closed holders in the backlog.
+            self.assertEqual(self.exchange('/')[2], b'local')
+            wait_for(lambda: children(self.proc.pid) == original_workers and
+                     len(os.listdir(f'/proc/{self.proc.pid}/fd')) == original_fds)
             self.assertEqual(self.exchange()[2], b'ok')
-            wait_for(lambda: children(self.proc.pid) == original_workers)
+            wait_for(lambda: children(self.proc.pid) == original_workers and
+                     len(os.listdir(f'/proc/{self.proc.pid}/fd')) == original_fds)
         keeper.close()
         wait_for(lambda: not children(self.proc.pid))
         self.shutdown()
