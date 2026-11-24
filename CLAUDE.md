@@ -1,12 +1,13 @@
 # Krafton_Jungle_Week13_Team2
 
-크래프톤 정글 13주차 웹 서버 과제다. C와 POSIX 소켓 API로 HTTP 웹 서버를 만든다. 이번 범위는 TCP 소켓 서버와 `epoll` 기반 동시 요청 처리, HTTP 파싱과 정적 파일 서빙이다.
+크래프톤 정글 13주차 웹 서버 과제다. C와 POSIX 소켓 API로 HTTP 웹 서버를 만든다. 이번 범위는 TCP 소켓 서버와 `epoll` 기반 동시 요청 처리, HTTP 파싱과 정적 파일 서빙, Reverse Proxy다.
 
 ## 문서
 - 개요: `docs/overview.md`
 - 요구사항: `docs/requirements.md`. 기능을 구현하기 전에 관련 절을 읽는다.
 - 설계: `docs/architecture-tcp.md`. 구현 전에 해당 단계의 관련 절을 읽는다.
 - 설계(HTTP): `docs/architecture-http.md`
+- 설계(Proxy): `docs/architecture-proxy.md`. 다른 설계 문서와 다르면 프록시 단계에서는 이 문서를 따른다.
 - 계획: `docs/superpowers/plans/`
 - 배운 점: `docs/lessons.md`. 작업 전에 읽는다.
 
@@ -22,21 +23,22 @@
 모든 명령은 WSL(Ubuntu 24.04)의 레포 루트에서 실행한다. Windows 쪽 Claude는 `wsl.exe -e bash -lc 'cd /mnt/d/kraftonjungle/kraftonjungle_week13/Krafton_Jungle_Week13_Team2 && <명령>'`로 감싼다.
 - 빌드: `make` (경고 0개여야 한다), `make asan` (`-fsanitize=address,undefined`), `make clean`
 - 테스트: `make test` (파서 단위 테스트 `tests/test_http.c`와 기능 테스트 `tests/http_test.sh`를 둘 다 실행한다). ASan: `make clean && make test CFLAGS='-std=gnu11 -Wall -Wextra -g -fsanitize=address,undefined'`
-- 실행: `./server <port> <root>` (예: `./server 8080 /tmp/www`)
+- 실행: `./server <port> <root>` (예: `./server 8080 /tmp/www`). 프록시 2단계부터 뒤에 `[<prefix>=<ip>:<port> ...]` (예: `./server 8080 /tmp/www /api/=127.0.0.1:8001`)
 - 그 밖의 검사: `make asan` 빌드로 같은 시나리오를 돌려 오류 0개, `valgrind --leak-check=full ./server 8080 /tmp/www`에서 `definitely lost: 0`
 
 ## 제약
 - C 언어, 표준 C 라이브러리와 POSIX API만 쓴다. `libevent`, `libuv`, `nginx`, `Apache`, `mongoose` 같은 HTTP / 이벤트 루프 라이브러리는 금지다.
 - 빌드는 `Makefile`, 컴파일러는 `gcc -std=gnu11 -Wall -Wextra -g`다 (`accept4` 때문에 `gnu11`).
 - Linux 전용(WSL2)이다. `#ifdef` 이식성 분기를 두지 않는다.
-- Proxy, CGI, 시그널 셧다운은 이번 범위가 아니다.
+- Forward Proxy, CGI, 캐싱, 죽은 백엔드 건너뛰기, 시그널 셧다운은 이번 범위가 아니다.
 
 ## 설계 결정
 - `epoll` LT, 단일 스레드 이벤트 루프다. `epoll` fd는 `event_loop.c`의 `static` 변수이고 다른 파일은 `loop_watch` / `loop_unwatch`로만 다룬다.
 - 연결 핸들러는 살아 있으면 0, `conn_close`로 닫았으면 -1을 반환한다. -1을 받은 쪽은 `c`를 다시 건드리지 않는다.
-- `conn_close` 순서: `loop_unwatch` → `close` → `free(wbuf)` → `close(file_fd)`(-1이면 생략) → 리스트 제거 → `free(c)`.
+- `conn_close` 순서: `loop_unwatch` → `close` → `free(wbuf)` → `close(file_fd)`(-1이면 생략) → 리스트 제거 → `free(c)`. 프록시 단계부터 맨 앞에 `proxy_close`, `close` 다음에 `loop_accept_resume`이 들어간다.
 - WRITING 동안 `EPOLLIN`을 감시하지 않는다. 응답을 다 보낸 뒤 rbuf에 남은 바이트가 있으면 바로 다시 처리한다.
-- HTTP는 `http_init`, `http_parse`, `http_handle` 세 함수로만 붙는다.
+- HTTP는 `http_init`, `http_parse`, `http_handle` 세 함수로만 붙는다. 프록시 단계에서 `http_keep_alive`, `http_proxy_request`, `http_proxy_response`를 더한다.
+- 프록시: 백엔드 연결은 `struct conn` 안의 `struct upstream`이고 A → B 방향으로만 닫는다. `loop_unwatch`가 지금 배치에 남은 그 대상의 이벤트를 지운다. 백엔드를 기다리는 동안 A는 `EPOLLERR`만 감시한다.
 - `SIGPIPE`는 무시하고 `EPIPE`로 처리한다.
 
 ## 작업 방식

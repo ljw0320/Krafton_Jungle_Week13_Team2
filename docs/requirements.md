@@ -6,7 +6,7 @@ C 언어와 POSIX 소켓 API만으로 HTTP 웹 서버를 처음부터 만들고,
 - 개발 환경: Windows는 WSL2(Ubuntu), Docker, 클라우드 중 하나에서 개발해야 한다.
 - 이력서·포트폴리오에 넣을 수 있는 완성도
 
-이번에 구현할 범위는 [overview.md](overview.md), 설계는 [architecture-tcp.md](architecture-tcp.md)에 있다.
+이번에 구현할 범위는 [overview.md](overview.md), 설계는 [architecture-tcp.md](architecture-tcp.md), [architecture-http.md](architecture-http.md), [architecture-proxy.md](architecture-proxy.md)에 있다.
 
 ---
 # 필수 구현 항목
@@ -45,9 +45,11 @@ C 언어와 POSIX 소켓 API만으로 HTTP 웹 서버를 처음부터 만들고,
 2. **Proxy 종류**
 	- 품질 요구사항의 "백엔드 응답 없음 / 타임아웃" 엣지 케이스는 Reverse Proxy를 전제로 한다.
 	- Reverse Proxy는 라우팅 + Round-Robin + 타임아웃까지 설계 요소가 많아 보여줄 거리가 많다.
+	- **결정됨**: Reverse Proxy만. Round-Robin은 마지막 단계. 이유는 [architecture-proxy.md](architecture-proxy.md)의 결정 사항
 3. **동적 처리 방식**: CGI(`fork` + `exec` + 파이프 + 환경 변수) vs 백엔드 전달
+	- **결정됨**: 백엔드 전달(Reverse Proxy). CGI는 하지 않는다
 4. **설정 방식**: CLI 인자만 vs 설정 파일 (라우팅 규칙이 여러 줄이면 설정 파일이 편함)
-	- **일부 결정됨**: 지금은 CLI 인자 `./server <port> <root>`. 라우팅 규칙이 생기면 설정 파일을 검토한다
+	- **결정됨**: CLI 인자 `./server <port> <root> [<prefix>=<ip>:<port> ...]`. 설정 파일은 쓰지 않는다
 5. **이식성**: 팀원 개발 환경(WSL / macOS)에 따라 `#ifdef __linux__` 분기 여부
 	- **결정됨**: Linux 전용(WSL2). 분기를 두지 않는다
 6. **`Transfer-Encoding: chunked` 요청**: 지원할지, 411 / 501로 거절할지
