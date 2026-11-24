@@ -1,4 +1,4 @@
-범위: 웹 서버 과제 중 ① TCP 소켓 서버, ② 동시 요청 처리를 구현한다. 시그널 셧다운은 이번 범위에서 빠진다. Reverse Proxy는 [architecture-proxy.md](architecture-proxy.md)에 있고, 프록시 단계를 구현하면 이 문서의 `struct conn`, 상태 전이, `loop_watch` / `loop_unwatch`, `conn_close` 순서가 그 문서대로 바뀐다(아래에 **프록시**로 표시). HTTP 파싱과 정적 파일은 세 함수(`http_init`, `http_parse`, `http_handle`)로 붙고, 자세한 것은 [architecture-http.md](architecture-http.md)에 있다. 이 문서의 5단계 stub은 HTTP 3단계에서 교체되었다.
+범위: 웹 서버 과제 중 ① TCP 소켓 서버, ② 동시 요청 처리를 구현한다. 시그널 셧다운은 이번 범위에서 빠진다. Reverse Proxy는 [architecture-proxy.md](architecture-proxy.md)에 있고, 이 문서의 `struct conn`, 상태 전이, `loop_watch` / `loop_unwatch`, `conn_close` 순서는 프록시 단계에서 그 문서대로 바뀌었다(2026-11-24). HTTP 파싱과 정적 파일은 세 함수(`http_init`, `http_parse`, `http_handle`)로 붙고, 자세한 것은 [architecture-http.md](architecture-http.md)에 있다. 이 문서의 5단계 stub은 HTTP 3단계에서 교체되었다.
 
 개요: [overview.md](overview.md), 요구사항: [requirements.md](requirements.md)
 
@@ -26,7 +26,7 @@
 | 사용법 메시지 | stderr에 `usage: ./server <port> <root> [<prefix>=<ip>:<port> ...]` |
 | 인자 검사 | `argc < 3`, `strtol` 뒤에 남은 문자가 있음(`8080abc`), 1~65535 밖이면 사용법 + `exit(1)`. 루트 검사는 `http_init`, 규칙 검사는 `route_add`가 한다 |
 | 1단계 `main` 출력 | stdout에 `port=<번호>` |
-| 로그 | 모두 stderr. `accept fd=N`, `fd=N recv K bytes`, `fd=N send K bytes`, `fd=N EPOLLOUT on` / `off`, `close fd=N conn_count=M`, `accept paused`, `accept resumed`, `fd=N idle timeout`, `fd=N request timeout`. **프록시**의 로그는 [architecture-proxy.md](architecture-proxy.md) "출력 형식" |
+| 로그 | 모두 stderr. `accept fd=N`, `fd=N recv K bytes`, `fd=N send K bytes`, `fd=N EPOLLOUT on` / `off`, `close fd=N conn_count=M`, `accept paused`, `accept resumed`, `fd=N idle timeout`, `fd=N request timeout`. 프록시의 로그는 [architecture-proxy.md](architecture-proxy.md) "출력 형식" |
 | `/big` 본문, stub 응답 헤더 | (HTTP 3단계에서 제거됨. 응답 형식은 [architecture-http.md](architecture-http.md) "출력 형식") |
 
 ---
@@ -43,6 +43,7 @@ src/
   conn.c / .h         # struct conn, 연결 리스트, 읽기/쓰기 처리, conn_close, 유휴 검사
   http.c / .h         # HTTP 파싱, 응답 생성, 정적 파일 (architecture-http.md)
   route.c / .h        # 라우팅 규칙 (architecture-proxy.md)
+  proxy.c / .h        # 백엔드 연결 (architecture-proxy.md)
 ```
 
 | 파일 | 공개 함수 | 책임 |
@@ -54,7 +55,7 @@ src/
 | `http.c` | `http_init`, `http_parse`, `http_handle` ([architecture-http.md](architecture-http.md)) | 요청 파싱, 응답 생성, 경로 해석, MIME |
 
 - `listen_fd`는 `epoll`에 `data.ptr = NULL`로 등록한다. 이벤트 루프는 `ptr == NULL`이면 새 연결 이벤트, 아니면 `struct watch *`이고 `kind`로 클라이언트와 백엔드를 구분한다.
-- 프록시 1단계에서 `loop_watch`, `loop_unwatch`의 인자를 `struct watch *`로 바꾸고 accept 재개를 `loop_accept_resume`으로 나눴다. 이유: 백엔드 fd도 등록해야 하고, backpressure의 DEL은 fd를 비우지 않는다. **프록시**: 파일은 `proxy.c`가 늘어난다.
+- 프록시 1단계에서 `loop_watch`, `loop_unwatch`의 인자를 `struct watch *`로 바꾸고 accept 재개를 `loop_accept_resume`으로 나눴다. 이유: 백엔드 fd도 등록해야 하고, backpressure의 DEL은 fd를 비우지 않는다.
 - 상수는 각 헤더에 `#define`으로 둔다: `MAX_EVENTS 64`, `RBUF_SIZE 8192`, `IDLE_TIMEOUT_SEC 10`(개발 중 확인하기 쉽게 짧게 둔다).
 
 ---
@@ -66,22 +67,23 @@ HTTP는 `http_init`, `http_parse`, `http_handle` 세 함수로만 붙는다. 시
 # `struct conn`
 
 ```C
-enum conn_state { CONN_READING, CONN_WRITING };
+enum conn_state { CONN_READING, CONN_PROXYING, CONN_WRITING };
 
 struct conn {
     struct watch w;           // 첫 필드. fd와 지금 epoll에 등록된 이벤트 (events가 0이면 미등록)
     enum conn_state state;
     char   rbuf[RBUF_SIZE];   // 받았지만 아직 처리 안 한 바이트
     size_t rlen;
-    char  *wbuf;              // http_handle이 만든 응답, 다 보내면 free
+    char  *wbuf;              // A로 보낼 응답 또는 B로 보낼 요청, 다 보내면 free
     size_t wlen, woff;        // 응답 길이, 보낸 위치
     int    keep_alive;        // 응답 후 READING으로 돌아갈지
     time_t last_active;       // recv/send 성공 시각 (WRITING 중에는 architecture-http.md의 SIOCOUTQ 규칙도 갱신)
     struct conn *prev, *next; // 유휴 검사용 리스트
+    struct upstream up;       // 백엔드 연결 (architecture-proxy.md)
 };
 ```
 
-- `file_fd`, `file_off`, `file_len`, `req_start`, `outq`는 HTTP 단계에서 추가되었다([architecture-http.md](architecture-http.md) "`struct conn` 변경"). `fd`, `events`는 프록시 1단계에서 `struct watch w`로 옮겼다. **프록시**: `struct upstream up`(값)과 `CONN_PROXYING`이 추가된다.
+- `file_fd`, `file_off`, `file_len`, `req_start`, `outq`는 HTTP 단계에서 추가되었다([architecture-http.md](architecture-http.md) "`struct conn` 변경"). `fd`, `events`는 프록시 1단계에서 `struct watch w`로 옮겼다. `struct upstream up`(값)과 `CONN_PROXYING`은 프록시 4단계에서 더했다.
 
 ## 연결 상태 전이
 
@@ -104,12 +106,13 @@ accept4 ──▶ READING (EPOLLIN 감시)
   유휴 타임아웃, 닫는 응답(rbuf가 찼는데 요청 미완성이면 414/431)을 다 보냄, http_handle 실패, malloc 실패
 ```
 
-- **프록시**: READING과 WRITING 사이에 PROXYING(백엔드를 기다림, `EPOLLERR`만 감시)이 생긴다.
+- 백엔드로 가는 요청은 READING과 WRITING 사이에 PROXYING(백엔드를 기다림, `EPOLLERR`만 감시)을 거친다. 전이는 [architecture-proxy.md](architecture-proxy.md) "상태 전이"
 - WRITING 동안에는 `EPOLLIN`을 감시하지 않는다. 응답을 보내는 동안 새 요청을 받지 않는다. `EPOLLHUP`/`EPOLLERR`는 등록하지 않아도 항상 보고된다.
 - 다 보낸 뒤 rbuf를 다시 확인해야 하는 이유: 다음 요청이 이미 rbuf(사용자 공간)에 있으면 커널 수신 버퍼가 비어 있어서 `EPOLLIN`이 오지 않는다.
 
 ## `conn_close` 순서
 
+0. `proxy_close(c)`: 백엔드 연결이 있으면 먼저 닫는다 (프록시 4단계)
 1. `loop_unwatch(&c->w)`: `EPOLL_CTL_DEL` (`close` 전에 해야 한다). `events == 0`(등록 전에 `conn_new`의 `loop_watch`가 실패한 경우)이면 DEL을 건너뛴다. 어느 쪽이든 지금 배치에 남은 그 대상의 이벤트를 지운다.
 2. `close(c->w.fd)`
 3. `loop_accept_resume()`: accept가 멈춰 있으면 다시 켠다. 이를 위해 `listen_fd`를 `event_loop.c`의 `static int lfd`로 저장한다(2026-11-20 Task 8). 프록시 1단계에서 `loop_unwatch`에서 나눴다.
@@ -117,8 +120,6 @@ accept4 ──▶ READING (EPOLLIN 감시)
 5. `if (c->file_fd >= 0) close(c->file_fd)` (HTTP 단계에서 추가)
 6. 리스트에서 제거
 7. `free(c)` (마지막에 해야 한다)
-
-**프록시**: 맨 앞에 `proxy_close(c)`(백엔드 연결 정리)가 추가된다. `free(c)`는 그대로 마지막이다.
 
 ---
 # 구현 순서
@@ -249,7 +250,7 @@ TCP 단계 당시의 기록이다. 5~9단계의 `/big`, `http_request_len`, `./s
 
 - 유휴 타임아웃은 `last_active` 기준이라 Slowloris를 막지 못했다. HTTP 5단계의 `req_start`와 408로 해결되었다([architecture-http.md](architecture-http.md)).
 - 1초마다 전체 연결을 순회한다(O(연결 수)). 연결이 많아지면 `last_active` 순서 리스트로 바꾼다. 활동이 생긴 연결을 리스트 끝으로 옮기면 앞에서부터 검사하다가 멈출 수 있다.
-- 프록시를 붙이면 한 이벤트 배치 안에서 다른 연결이 해제될 수 있다. **프록시**: `loop_unwatch`가 배치에 남은 그 대상의 이벤트를 지우는 방법으로 정했다(2026-11-24).
+- 한 이벤트 배치 안에서 다른 연결(백엔드)이 해제될 수 있다. `loop_unwatch`가 배치에 남은 그 대상의 이벤트를 지워 해결했다(2026-11-24).
 - 셧다운이 없어서 valgrind는 `Ctrl+C` 종료 후 `definitely lost`만 확인할 수 있다. 시그널 셧다운을 만들면 남은 연결 전부를 `conn_close`하고 다시 확인한다.
 - accept 재개는 연결이 닫힐 때만 일어난다. 열린 연결이 0개인데 `ENFILE`(다른 프로세스가 시스템 전체 fd를 씀)로 멈추면 다시 켜지지 않는다. 필요해지면 1초 sweep에서 재개를 다시 시도한다(2026-11-20 최종 리뷰).
 - 이번 계획에서 뺀 것: Dockerfile, 부하 테스트 도구(`ab`/`wrk`), 설정 파일, 시그널 셧다운.

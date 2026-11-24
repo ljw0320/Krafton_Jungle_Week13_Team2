@@ -198,11 +198,11 @@ Task 2 (route, main, Makefile, 테스트) ─┴─ Task 3 (http.c, test_proxy.c
 - Consumes: Task 1의 `loop_*`, Task 2의 `route_*`, Task 3의 `http_*`
 - Produces: "함수"의 `proxy.h`, `conn_error`. `proxy_timeout`은 Task 6에서 만든다.
 
-- [ ] **Step 1: 실패 확인** — `make && bash tests/proxy_test.sh` 종료 코드가 0이 아니다. 실패한 케이스 이름을 보고한다(프록시 케이스만 실패해야 한다).
-- [ ] **Step 2: 구현** — "`conn_process`", "`conn_send`에 더하는 것", "상태 전이", "`proxy_start`", "응답 헤더를 받았을 때", "닫는 순서", "실패 처리"의 코드와 표 그대로. `since`는 기록하되 sweep은 `CONN_PROXYING`을 건너뛰기만 한다. 408은 `conn_error(c, 408)`. 점검 1의 `last_active`.
-- [ ] **Step 3: 확인** — 공통 확인(`make test`에 `proxy_test.sh`가 들어 있다).
-- [ ] **Step 4: verifier** — 상태 전이 표, 실패 표, 닫는 순서와 한 줄씩 대조. 고의 결함이 각각 잡힌다: `conn_new`의 `up.w.fd = -1` 제거(fd 0), `conn_send`의 `loop_unwatch(&up.w)` 제거(backpressure), N바이트에서 자르기 제거(`over`), `conn_close`의 `proxy_close` 제거(fd 수). `conn_on_writable`·`conn_error` 뒤에 `u`를 읽는 코드가 없는지 본다. 점검 1의 `last_active`는 코드로 확인한다(`EAGAIN`을 정해진 시점에 만들기 어려워 테스트가 없다).
-- [ ] **Step 5: 커밋, push** — `feat: 리버스 프록시 연결과 응답 중계`
+- [x] **Step 1: 실패 확인** — `make && bash tests/proxy_test.sh` 종료 코드가 0이 아니다. 실패한 케이스 이름을 보고한다(프록시 케이스만 실패해야 한다).
+- [x] **Step 2: 구현** — "`conn_process`", "`conn_send`에 더하는 것", "상태 전이", "`proxy_start`", "응답 헤더를 받았을 때", "닫는 순서", "실패 처리"의 코드와 표 그대로. `since`는 기록하되 sweep은 `CONN_PROXYING`을 건너뛰기만 한다. 408은 `conn_error(c, 408)`. 점검 1의 `last_active`.
+- [x] **Step 3: 확인** — 공통 확인(`make test`에 `proxy_test.sh`가 들어 있다).
+- [x] **Step 4: verifier** — 상태 전이 표, 실패 표, 닫는 순서와 한 줄씩 대조. 고의 결함이 각각 잡힌다: `conn_new`의 `up.w.fd = -1` 제거(fd 0), `conn_send`의 `loop_unwatch(&up.w)` 제거(backpressure), N바이트에서 자르기 제거(`over`), `conn_close`의 `proxy_close` 제거(fd 수). `conn_on_writable`·`conn_error` 뒤에 `u`를 읽는 코드가 없는지 본다. 점검 1의 `last_active`는 코드로 확인한다(`EAGAIN`을 정해진 시점에 만들기 어려워 테스트가 없다).
+- [x] **Step 5: 커밋, push** — `feat: 리버스 프록시 연결과 응답 중계`
 
 ### Task 6: 타이머와 504 (설계 5단계)
 
@@ -265,4 +265,5 @@ Task 2 (route, main, Makefile, 테스트) ─┴─ Task 3 (http.c, test_proxy.c
 
 ## Minor 모음
 
-- Task 1: `event_loop.c:12` 주석의 `loop_unwatch가 재개할`을 `loop_accept_resume`으로, `event_loop.h:8`의 쓰지 않는 `struct conn;` 삭제 (Task 5에서 `event_loop.*`를 고칠 때 같이 한다)
+- Task 1: `event_loop.c:12` 주석의 `loop_unwatch가 재개할`을 `loop_accept_resume`으로, `event_loop.h:8`의 쓰지 않는 `struct conn;` 삭제 (Task 5에서 고침)
+- Task 5: `up_send`의 부분 전송 검사를 빼도 기능 테스트가 잡지 못한다. 요청이 8.4KB 이하라 보통 한 번에 나간다(사본에서 `send`를 잘라 확인함). `start_fail`의 `free` 누락은 valgrind(Task 9)로만 잡힌다

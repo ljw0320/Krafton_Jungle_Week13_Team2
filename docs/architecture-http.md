@@ -1,4 +1,4 @@
-범위: 웹 서버 과제 중 ③ HTTP 요청 파싱, ④ HTTP 응답 생성, ⑤ 정적 파일 서빙을 구현한다. TCP 서버와 `epoll` 이벤트 루프는 [architecture-tcp.md](architecture-tcp.md)의 설계를 그대로 쓰고, `http.c` stub을 실제 구현으로 바꾼다. CGI, 시그널 셧다운은 이번 범위에서 빠진다. Reverse Proxy는 [architecture-proxy.md](architecture-proxy.md)에 있고, 프록시 단계를 구현하면 바뀌는 곳을 **프록시**로 표시했다.
+범위: 웹 서버 과제 중 ③ HTTP 요청 파싱, ④ HTTP 응답 생성, ⑤ 정적 파일 서빙을 구현한다. TCP 서버와 `epoll` 이벤트 루프는 [architecture-tcp.md](architecture-tcp.md)의 설계를 그대로 쓰고, `http.c` stub을 실제 구현으로 바꾼다. CGI, 시그널 셧다운은 이번 범위에서 빠진다. Reverse Proxy는 [architecture-proxy.md](architecture-proxy.md)에 있고, 프록시 단계에서 바뀐 곳을 아래에 반영했다(2026-11-24).
 
 개요: [overview.md](overview.md), 요구사항: [requirements.md](requirements.md)
 
@@ -11,7 +11,7 @@
 | 2 | 파싱 엄격도 | 엄격. 줄 끝은 `\r\n`만, SP 하나, 이름과 콜론 사이 공백·obs-fold는 400, CL은 숫자만 한 번 | 입력 하나에 결과 하나다. 관대한 파서는 프록시를 붙일 때 smuggling 경로가 된다 |
 | 3 | chunked 요청 | `Transfer-Encoding`이 있으면 값과 관계없이 501 + 닫기 | 이번 단계에 본문을 쓰는 곳이 없다. RFC 9112 6.1의 "이해하지 못하는 transfer coding은 501"과 맞는다 |
 | 4 | 한도 | 요청 전체(헤더 + 본문)를 `rbuf[8192]` 안에서 판단한다. 본문 버퍼를 따로 두지 않는다 | 본문은 경계만 계산하고 버린다. 한도가 하나라 경계값 테스트가 정확하다 |
-| 5 | 메서드 | RFC 9110 8개(GET HEAD POST PUT DELETE CONNECT OPTIONS TRACE)를 안다. 허용은 GET만, `Allow: GET` | 모르는 메서드(501)와 이 자원에 허용 안 함(405)을 구분한다. POST는 처리할 곳이 없어 405다. `CONNECT`도 대상이 `/`로 시작하면 405지만, 규격의 authority-form(`CONNECT host:443`)은 대상이 `/`로 시작하지 않아 400이다. **프록시**(4단계에서 연결): 백엔드 경로는 GET, POST를 전달하고 `Allow: GET, POST` |
+| 5 | 메서드 | RFC 9110 8개(GET HEAD POST PUT DELETE CONNECT OPTIONS TRACE)를 안다. 허용은 GET만, `Allow: GET` | 모르는 메서드(501)와 이 자원에 허용 안 함(405)을 구분한다. POST는 처리할 곳이 없어 405다. `CONNECT`도 대상이 `/`로 시작하면 405지만, 규격의 authority-form(`CONNECT host:443`)은 대상이 `/`로 시작하지 않아 400이다. 백엔드 경로는 GET, POST를 전달하고 `Allow: GET, POST` |
 | 6 | 검사 순서 | 메시지 단계(`http_parse`)를 모두 끝낸 뒤 의미 단계(`http_handle`). 411은 405보다 앞. 닫기는 상태 코드로만 정한다 | 413을 501/405보다 먼저 봐야 큰 본문이 다음 요청으로 해석되지 않는다. 411을 앞에 둬야 이번 단계에서 411이 나간다 |
 | 7 | 응답 헤더 | 모든 응답에 `Date`, `Content-Type`, `Content-Length`, `Connection`. 405에만 `Allow`. 오류 본문은 `<h1>코드 이유</h1>\n` | RFC 9110의 `Date` MUST를 지킨다. 헤더 집합이 항상 같아 테스트가 단순하다 |
 | 8 | 정적 루트 | `./server <port> <root>` 필수 인자. `http_init`이 시작할 때 `realpath`를 한 번 구해 `http.c`의 `static` 변수에 둔다 | 요구사항의 "루트를 CLI 인자로"와 같다. epoll fd를 `event_loop.c`의 `static`으로 둔 기존 구조와 같다 |
@@ -168,7 +168,7 @@ if (r <= 0) return r;
 - 순서는 `http_parse` → `http_handle` → `memmove` → `conn_send`다.
 - 기존 `http_request_len`, `/big` stub, `hello\n` 응답은 지운다.
 - 프록시 3단계에서 `http_keep_alive`, `http_proxy_request`, `http_proxy_response`([architecture-proxy.md](architecture-proxy.md) "함수")와 `http_req.backend`를 더했다. `http_parse`의 헤더 끝 찾기(`head_end`), 헤더 한 줄 파싱(`hdr_next`), CL 파싱(`parse_cl`)을 `static` 함수로 꺼내 응답 파서와 같이 쓴다(동작은 그대로). 501/411/405 판단은 `method_check`로 꺼내 백엔드 경로와 같이 쓴다.
-- **프록시**: `conn_process`는 `http_handle` 전에 라우팅한다. 408은 `conn_error`를 쓴다.
+- 프록시 4단계에서 `conn_process`는 `http_handle` 전에 라우팅한다([architecture-proxy.md](architecture-proxy.md) "함수"). 408은 `conn_error`를 쓴다.
 
 ---
 # `struct conn` 변경
@@ -224,7 +224,7 @@ sweep (1초마다)
   유휴 타임아웃, http_handle 실패(응답 버퍼 malloc 실패 등)
 ```
 
-- WRITING 동안 `EPOLLIN`을 끄는 규칙, 핸들러 반환 규칙(0 / -1), `SIGPIPE` 무시는 그대로다. `enum conn_state`도 늘지 않는다(**프록시**: `CONN_PROXYING`이 추가된다). 헤더 단계와 본문 단계는 오프셋으로 구분한다.
+- WRITING 동안 `EPOLLIN`을 끄는 규칙, 핸들러 반환 규칙(0 / -1), `SIGPIPE` 무시는 그대로다. `enum conn_state`도 늘지 않는다(프록시 4단계에서 `CONN_PROXYING`을 더했다). 헤더 단계와 본문 단계는 오프셋으로 구분한다.
 - 이벤트 하나에 `send`/`sendfile`을 한 번만 한다. 큰 파일 하나가 루프를 독차지하지 않는다.
 - 유휴 활동 정의 변경(Task 9, 사용자 승인): `last_active`는 `recv`/`send` 성공에 더해, WRITING 연결의 `SIOCOUTQ`(클라이언트가 아직 확인하지 않은 송신 바이트 수)가 지난 sweep보다 줄어들 때도 갱신한다. 이유: 송신 버퍼가 약 1/3 빌 때까지 `EPOLLOUT`이 오지 않아, 계속 읽는 느린 클라이언트(8MB를 50KB/s로)가 유휴 타이머에 잘렸다. 결과: 50KB/s는 완료, 10KB/s는 100초 동안 유지, 4KB/s는 수신 창 갱신이 10초보다 드물어 여전히 닫힌다. 완전히 멈춘 연결은 응답 직후 `SIOCOUTQ`가 한 번 줄 수 있어 10~13초에 닫힌다.
 - 변경(Task 9, 사용자 결정): `conn_new`에서 `TCP_NODELAY`를 켠다. 실패하면 느려질 뿐이라 `perror`만 하고 계속한다. 이유: 헤더와 본문이 따로 나가면 Nagle + 지연 ACK로 keep-alive의 두 번째 파일 응답부터 약 44ms 늦었다. 결과: 헤더와 본문 사이, 마지막 조각의 Nagle 대기가 없어진다. 헤더 `send`의 `MSG_MORE`만으로는 150KB 이상 파일에서 약 44ms가 드물게 남았다.
@@ -238,7 +238,7 @@ sweep (1초마다)
 5. 리스트에서 제거
 6. `free(c)`
 
-- 프록시 1단계에서 2 다음에 `loop_accept_resume()`이 들어갔다. **프록시**: 맨 앞에 `proxy_close(c)`가 추가된다.
+- 프록시 단계에서 맨 앞에 `proxy_close(c)`, 2 다음에 `loop_accept_resume()`이 들어갔다.
 - TCP 설계의 순서를 바꾸지 않고 한 줄을 더한다. `file_fd`는 epoll에 등록하지 않으므로 `loop_unwatch`보다 앞일 필요가 없다.
 
 ---
@@ -267,7 +267,7 @@ sweep (1초마다)
 | 어디서든 | handle | 응답 버퍼 `malloc` 실패, 응답 헤더 `snprintf` 잘림 | 응답 없이 닫음 |
 | 어디서든 | sweep | 요청이 `REQ_TIMEOUT_SEC` 안에 완성되지 않음 | 408 |
 
-- **프록시**: 7과 8 사이에서 라우팅한다. 백엔드 경로는 8~13 대신 [architecture-proxy.md](architecture-proxy.md) "요청 재작성"의 검사를 한다.
+- 7과 8 사이에서 라우팅한다. 백엔드 경로는 8~13 대신 [architecture-proxy.md](architecture-proxy.md) "요청 재작성"의 검사를 한다.
 - 원칙은 개념 노트와 같다: 메시지를 믿을 수 있는지 먼저(1~7), 의미는 나중(8~13).
 - 노트의 순서와 다른 점
 	- 413이 501/405보다 앞이다. `FOO /` + `CL: 1000000`에 501 + 유지로 답하면 읽지 않은 본문이 다음 요청이 된다.

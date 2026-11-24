@@ -269,7 +269,7 @@ if (r && st == 0) return 0;                              // PROXYING. 다음 요
 READING ── 정적, 오류 (conn_respond) ──────────────▶ WRITING
 READING ── 규칙에 맞음, proxy_start가 0 ───────────▶ PROXYING
 PROXYING ── B에서 응답을 받음 (last_active = now) ─▶ WRITING
-PROXYING ── 응답을 시작하기 전의 실패 (conn_error) ▶ WRITING
+PROXYING ── 응답 전의 실패 (last_active = now, conn_error) ▶ WRITING
 PROXYING ── 본문 중 recv(B)가 0이나 오류, 시간 초과 ▶ conn_close
 WRITING ── 다 보냄, B가 열려 있음 (proxy_resume) ──▶ PROXYING
 WRITING ── 다 보냄, B가 없음, keep_alive ──────────▶ READING → rbuf에 남은 요청을 처리
@@ -541,6 +541,7 @@ A에 EPOLLOUT → send → 비면 proxy_resume: A는 EPOLLERR, B는 EPOLLIN, sin
 static int proxy_fail(struct conn *c, int status, const char *why) {
     if (c->up.head_done) { /* 로그 */ conn_close(c); return -1; }
     /* 로그 */
+    c->last_active = time(NULL);       // B를 기다린 시간 때문에 다음 sweep이 응답을 보내기 전에 닫지 않게
     return conn_error(c, status);      // proxy_close(c) → free(wbuf), wbuf = NULL → conn_respond → conn_send
 }
 ```
@@ -695,7 +696,7 @@ static int proxy_fail(struct conn *c, int status, const char *why) {
 - `Via`를 붙이지 않고, `Date`가 없는 응답에 넣지 않고, `1xx`를 버린다. RFC 9110의 MUST와 다르다.
 - HEAD를 전달하지 않는다(405).
 - B를 재사용하지 않아 요청마다 TCP 연결을 새로 맺는다. 프록시 요청은 fd를 2개 쓴다. accept가 fd를 다 쓰면 프록시 요청은 500이다.
-- 파이프라이닝한 다음 요청이 커널 수신 버퍼에 남은 채 502나 504 뒤에 닫으면 RST가 나가 클라이언트가 응답을 못 볼 수 있다(lingering close 없음).
+- 파이프라이닝한 다음 요청이 커널 수신 버퍼에 남은 채 A를 닫으면 RST가 나가 클라이언트가 응답을 못 볼 수 있다(lingering close 없음). 502, 504뿐 아니라 chunked와 길이 없는 응답이 정상으로 끝난 뒤에도 생긴다. 이때는 응답 본문의 끝이 사라질 수 있다.
 - `Connection` 값에 적힌 이름을 헤더마다 다시 훑는다(O(헤더 수²)). 줄 수를 100으로 막아 요청 하나의 시간을 제한한다(결정 20).
 
 ## 넣지 않은 것 (제안)
