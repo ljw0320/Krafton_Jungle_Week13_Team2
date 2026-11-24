@@ -7,6 +7,7 @@ PORT=8080
 TMP=$(mktemp -d)
 ROOT=$TMP/www
 LOG=$(mktemp)
+LOG2=$(mktemp)
 pass=0
 fail=0
 # 느린 서버(valgrind)에서 시간 제한이 헛되이 실패하지 않게 넓힌다
@@ -15,7 +16,7 @@ W=10; MT=5; XT=3; LIM=1
 
 cleanup() {
     kill $(jobs -p) 2>/dev/null   # 서버, 백엔드, 백그라운드 클라이언트
-    rm -rf "$TMP" "$LOG"
+    rm -rf "$TMP" "$LOG" "$LOG2"
 }
 trap cleanup EXIT
 trap 'exit 130' INT TERM
@@ -71,7 +72,7 @@ waitport() {   # 포트 pid: 안 열리면 바로 실패로 끝낸다
     exit 1
 }
 
-for p in $PORT 8001 8003; do   # 남은 프로세스가 있으면 엉뚱한 서버를 시험하게 된다
+for p in $PORT 8001 8002 8003 8081 8009; do   # 남은 프로세스가 있으면 엉뚱한 서버를 시험하게 된다
     if (exec 3<>/dev/tcp/127.0.0.1/$p) 2>/dev/null; then
         echo "FAIL start: 포트 $p가 이미 열려 있음" >&2; exit 1
     fi
@@ -81,11 +82,14 @@ printf '<h1>home</h1>\n' >"$ROOT/index.html"
 
 python3 -B tests/backend.py 8001 </dev/null &
 BP=$!
+python3 -B tests/backend.py 8002 </dev/null &   # 자원 회수 케이스에서 kill -9로 죽인다
+BP2=$!
 python3 -B tests/backend.py 8003 noaccept </dev/null &
 $SERVER_WRAP ./server $PORT "$ROOT" /api/=127.0.0.1:8001 /dead/=127.0.0.1:8009 \
-    /noaccept/=127.0.0.1:8003 </dev/null 2>"$LOG" &
+    /noaccept/=127.0.0.1:8003 /b2/=127.0.0.1:8002 </dev/null 2>"$LOG" &
 SP=$!
 waitport 8001 $BP
+waitport 8002 $BP2
 waitport $PORT $SP
 
 U=http://127.0.0.1:$PORT
@@ -129,6 +133,10 @@ check "501 unknown method" "HTTP/1.1 501 Not Implemented" "$(status "$(raw "BREW
 out=$(raw "GET /dead/x HTTP/1.1$RQ")
 check "502 backend down" "HTTP/1.1 502 Bad Gateway|Connection: close|<h1>502 Bad Gateway</h1>" \
     "$(status "$out")|$(hdr "$out" Connection)|$(rbody "$out")"
+# 한 배치에 A의 RST와 B의 이벤트가 같이 온다(8009는 스크립트가 열어서 /dead/ 케이스 뒤에 둔다)
+out=$(python3 -B tests/proxy_cases.py batch $SP AB BA)
+check "RST and backend event in one batch" "AB alive,BA alive" "$(tr '
+' , <<<"$out" | sed 's/,$//')"
 for n in bad lf dupcl tecl bighead 101 close rst; do
     check "502 $n" 502 "$(code /api/$n)"
 done
@@ -316,15 +324,170 @@ check "timer drip 15s received" "HTTP/1.1 200 OK|Connection: close|abc|ok" "$(<"
 check "timer driphead 15s received" "HTTP/1.1 200 OK|Connection: close|abc|ok" "$(<"$TMP/pt.driphead")"
 check "timer stall curl 18" "18 ok" "$(<"$TMP/pt.stall")"
 
+# --- 자원 회수 (fd 수와 conn_count가 처음 값으로 돌아온다) ---
+fdn() { ls /proc/$SP/fd 2>/dev/null | wc -l; }   # valgrind면 자기 fd가 있으니 처음 값과 비교한다
+cnt() { local n; n=$(grep -o 'conn_count=[0-9]*' "$LOG" | tail -1 | cut -d= -f2); echo "${n:-0}"; }
+waitlog() {   # 패턴 개수 상한초: 로그에 패턴이 개수 이상 나올 때까지
+    local i
+    for i in $(seq $(($3 * 10))); do
+        [ "$(grep -c "$1" "$LOG")" -ge "$2" ] && return 0
+        sleep 0.1
+    done
+    return 1
+}
+reclaim() {   # 이름 상한초
+    local i
+    for i in $(seq $(($2 * 10))); do
+        [ "$(fdn)" == "$FD0" ] && [ "$(cnt)" == "$CN0" ] && break
+        sleep 0.1
+    done
+    check "$1: fd and conn_count back" "$FD0 $CN0" "$(fdn) $(cnt)"
+}
+# 앞의 케이스가 남긴 연결이 다 닫힌 뒤의 값이 처음 값이다
+for _ in $(seq $(((13 + H) * 10))); do [ "$(cnt)" == 0 ] && break; sleep 0.1; done
+a=$(fdn)
+for _ in $(seq 50); do sleep 0.2; b=$(fdn); [ "$a" == "$b" ] && break; a=$b; done
+FD0=$(fdn); CN0=$(cnt)
+check "baseline conn_count" 0 "$CN0"
+# 요청을 보내고 쉰 뒤 클라이언트가 닫는다. 모드 rst는 RST, fin은 FIN
+closer() {   # 모드 경로 쉬는시간
+    python3 -c '
+import socket, struct, sys, time
+s = socket.create_connection(("127.0.0.1", 8080))
+s.sendall(("GET %s HTTP/1.1\r\nHost: x\r\n\r\n" % sys.argv[2]).encode())
+time.sleep(float(sys.argv[3]))
+if sys.argv[1] == "rst": s.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+s.close()' "$@"
+}
+# 1. 기다리는 중 RST
+closer rst /api/hang 0.5
+reclaim "RST while waiting" $LIM
+
+# 2, 3. 13초 안에 회수되는 것들과 멈춘 느린 클라이언트를 동시에 돌린다. 모두 닫혀야 처음 값이다
+slowclient() {   # A가 10~14초에 닫힌다. 클라이언트는 닫힘을 볼 수 없어(송신 버퍼가 안 빠진다) 서버 로그의 idle timeout 줄로 잰다
+    python3 -c '
+import os, socket, sys, time
+log, hi = sys.argv[1], float(sys.argv[2])
+s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
+s.settimeout(30); s.connect(("127.0.0.1", 8080))
+s.sendall(b"GET /api/big HTTP/1.1\r\nHost: x\r\n\r\n")
+s.recv(1000)   # 조금 받고 읽지 않는다
+size0 = os.path.getsize(log); t0 = time.time()
+while time.time() - t0 < hi + 10:
+    with open(log, "rb") as f:
+        f.seek(size0)
+        if b"idle timeout" in f.read(): break
+    time.sleep(0.1)
+t = time.time() - t0
+print("ok" if 10 <= t < hi else "t=%.2f" % t)' "$LOG" $((14 + H)) >"$TMP/pt.slowclient" 2>&1
+}
+slowclient & SC=$!
+T0=$(date +%s.%N)
+curl -s --max-time 0.1 -o /dev/null $U/api/stall; c1=$?    # 중계 중 끊기. 본문 10바이트 뒤 백엔드가 멈춘다
+curl -s --limit-rate 1M --max-time 0.3 -o /dev/null $U/api/big; c2=$?   # 8MB를 느리게 받다가 끊긴다
+check "curl cut while relaying: exit 28" "28 28" "$c1 $c2"
+closer fin /api/hang 0.3                            # 기다리는 중 FIN
+curl -s --max-time $((20 + H)) -o /dev/null -w '%{http_code}' $U/b2/hang >"$TMP/pt.b2hang" & B2=$!
+{ curl -s --max-time $((20 + H)) -o /dev/null $U/b2/stall; echo $? >"$TMP/pt.b2stall"; } & B2="$B2 $!"
+waitlog 'connect 127.0.0.1:8002' 2 $W
+sleep 0.5   # 요청이 hang에 닿고 stall이 헤더를 받을 시간
+check "held: fds above baseline" yes "$([ "$(fdn)" -gt "$FD0" ] && echo yes || echo no)"
+kill -9 $BP2 2>/dev/null; wait $BP2 2>/dev/null
+TK=$(date +%s.%N)
+wait $B2
+TE=$(date +%s.%N)
+check "kill -9 to 502 and curl 18 within 3s" ok "$(awk -v a=$TK -v b=$TE -v h=$H 'BEGIN { t = b - a; print (t < 3 + h) ? "ok" : sprintf("t=%.2f", t) }')"
+check "backend killed while waiting: 502" 502 "$(<"$TMP/pt.b2hang")"
+check "backend killed while relaying: curl 18" 18 "$(<"$TMP/pt.b2stall")"
+# 끊은 것들은 13초 안에 닫힌다. 멈춘 느린 클라이언트(A, B 2개)는 10~14초에 닫히므로 아직 열려 있거나 이미 닫힌 두 경우를 본다
+for _ in $(seq $(((15 + H) * 10))); do
+    f=$(fdn); n=$(cnt)
+    { [ "$f" == "$FD0" ] && [ "$n" == "$CN0" ]; } || { [ "$f" == "$((FD0 + 2))" ] && [ "$n" == "$((CN0 + 1))" ]; } && break
+    sleep 0.1
+done
+TF=$(date +%s.%N)
+check "cut ones reclaimed within 13s" ok "$(awk -v a=$T0 -v b=$TF -v h=$H 'BEGIN { t = b - a; print (t < 13 + h) ? "ok" : sprintf("t=%.2f", t) }')"
+wait $SC
+check "stuck slow client closes at 10-14s" ok "$(<"$TMP/pt.slowclient")"
+reclaim "curl cut, FIN waiting, backend kill, stuck client" $((14 + H))
+
+# 4. 동시 요청 200개
+out=$(seq 200 | xargs -P 100 -I{} curl -s -o /dev/null --max-time $((MT * 3)) -w '%{http_code}\n' $U/api/cl | sort | uniq -c | tr -s ' ' | sed 's/^ //')
+check "200 concurrent requests" "200 200" "$out"
+reclaim "200 concurrent" $LIM
+
+# 5. RST 클라이언트와 정상 요청을 섞은 300건(한 배치 안의 해제)
+out=$(python3 -c '
+import random, socket, struct, time
+from concurrent.futures import ThreadPoolExecutor
+rnd = random.Random(1)
+jobs = [(i % 3 == 0, rnd.choice(["/api/cl", "/api/size/50000", "/api/hang"]), rnd.random() * 0.03) for i in range(300)]
+def one(j):
+    rst, path, d = j
+    try:
+        s = socket.create_connection(("127.0.0.1", 8080)); s.settimeout(30)
+        if rst:
+            s.sendall(("GET %s HTTP/1.1\r\nHost: x\r\n\r\n" % path).encode())
+            time.sleep(d)
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+            s.close()
+            return None
+        s.sendall(("GET %s HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" % path.replace("hang", "cl")).encode())
+        out = b""
+        while True:
+            c = s.recv(65536)
+            if not c: break
+            out += c
+        s.close()
+        return out.startswith(b"HTTP/1.1 200 ")
+    except OSError:
+        return False
+with ThreadPoolExecutor(100) as ex: r = list(ex.map(one, jobs))
+n = [x for x in r if x is not None]
+print(len(n), sum(n))')
+check "300 mixed: all normal requests 200" "200 200" "$out"
+check "alive after RST mix" 200 "$(code /api/cl)"
+reclaim "300 mixed" $LIM
+
+# 6. fd 한도가 낮은 서버: 프록시 요청은 fd를 2개 쓴다
+UL=8; NR=60
+[ -n "$SERVER_WRAP" ] && { UL=80; NR=150; }
+startlow() {   # ulimit: 상속한 fd를 닫아 환경과 상관없이 빈 fd 수를 정한다(0,1,2 + listen + epoll 뒤 남은 만큼)
+    ( for f in /proc/self/fd/*; do n=${f##*/}; [ "$n" -gt 2 ] && eval "exec $n>&-"; done   # 2>/dev/null로 감싸면 닫는 fd가 저장해 둔 stderr라서 서버의 stderr가 /dev/null이 된다
+      ulimit -n $1; exec $SERVER_WRAP ./server 8081 "$ROOT" /api/=127.0.0.1:8001 ) </dev/null 2>>"$LOG2" &
+    SP2=$!
+    waitport 8081 $SP2
+    for _ in $(seq 30); do [ "$(ls /proc/$SP2/fd | wc -l)" -le 5 ] && break; sleep 0.1; done   # waitport의 연결이 닫힐 때까지
+}
+stoplow() { kill $SP2; wait $SP2 2>/dev/null; }
+startlow $UL
+out=$(seq $NR | xargs -P $NR -I{} curl -s -o /dev/null --max-time $((MT * 3)) -w '%{http_code} %{exitcode}\n' http://127.0.0.1:8081/api/split | sort | uniq -c | tr -s ' ' | sed 's/^ //' | tr '\n' ,)
+# valgrind의 accept4 래퍼는 fd가 모자라면 이미 대기열에서 뺀 연결을 닫아 RST가 된다(curl 56). 멈춤(28)이 아니니 그때만 허용한다
+okre="^[0-9]+ (200 0|500 0)$|^$"; [ -n "$SERVER_WRAP" ] && okre="^[0-9]+ (200 0|500 0|000 56)$|^$"
+bad=$(tr ',' '\n' <<<"$out" | grep -vE "$okre" | tr '\n' ' ')
+check "ulimit: every request ends 200 or 500 (got $out)" "" "$bad"
+check "ulimit: 500 or accept paused logged" yes "$(grep -qE 'accept paused|proxy error 500' "$LOG2" && echo yes || echo no)"
+check "ulimit: curl 200 afterwards" 200 "$(curl -s -o /dev/null --max-time $((MT * 3)) -w '%{http_code}' http://127.0.0.1:8081/api/cl)"
+stoplow
+# 7. 멈춘 accept가 풀린다. valgrind는 자기 fd 때문에 빈 fd를 3개로 맞출 수 없어 건너뛴다
+if [ -z "$SERVER_WRAP" ]; then
+    startlow 8   # 빈 fd 3개
+    check "accept resumes when only B closes (proxy_close)" "resume ok" "$(python3 -B tests/proxy_cases.py resume)"
+    stoplow
+    startlow 8
+    check "accept resumes when a client closes (conn_close)" "idle ok" "$(python3 -B tests/proxy_cases.py idle)"
+    stoplow
+fi
+
 # 시작 뒤에도 서버가 산다
 check "server alive: static" 200 "$(code /index.html)"
 check "server alive: proxy" 200 "$(code /api/cl)"
 
 kill $SP
 wait $SP 2>/dev/null
-if grep -qE 'AddressSanitizer|runtime error' "$LOG"; then
+if grep -qE 'AddressSanitizer|runtime error' "$LOG" "$LOG2"; then
     fail=$((fail + 1)); echo "FAIL sanitizer: 기대 오류 없음, 실제 서버 로그에 있음" >&2
-    grep -E 'AddressSanitizer|runtime error' "$LOG" >&2
+    grep -E 'AddressSanitizer|runtime error' "$LOG" "$LOG2" >&2
 fi
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
