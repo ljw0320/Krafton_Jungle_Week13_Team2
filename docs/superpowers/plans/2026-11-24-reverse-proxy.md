@@ -260,7 +260,7 @@ Task 2 (route, main, Makefile, 테스트) ─┴─ Task 3 (http.c, test_proxy.c
 - [x] **Step 2** — Minor별 처리와 검증 범위를 아래에 기록했다.
 - [x] **Step 3** — 격리된 WSL의 `/tmp` 사본에서 일반 사용자로 공통 확인과 Valgrind를 다시 실행했다. 네 명령 모두 종료 코드 0. 빌드 경고 0건, 일반과 ASan·UBSan 각각 2,607건 통과, Valgrind 117건 통과 및 로그 2개 모두 누수와 메모리 오류 0건이었다.
 - [x] **Step 4: 커밋** — `fix: 프록시 최종 리뷰 정리`로 계획과 설계를 정리하고 개요의 Reverse Proxy를 완료로 표시했다.
-- [ ] **Step 4: push** — `origin/shw`로 전송하기 전에 원격 저장소와 푸시 승인을 확인한다. PR은 사용자에게 묻는다.
+- [x] **Step 4: push** — 2026-11-25에 `556b2b1`을 `origin/shw`에 푸시하고 원격 반영을 확인했다. PR은 사용자에게 묻는다.
 
 ---
 

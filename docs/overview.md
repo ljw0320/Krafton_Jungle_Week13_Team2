@@ -26,3 +26,9 @@
 | HTTP 파싱, 정적 파일, 오류 응답 | 완료 | [architecture-http.md](architecture-http.md) |
 | Reverse Proxy | 완료 (2026-11-25) | [architecture-proxy.md](architecture-proxy.md) |
 | 시그널 셧다운 | 미정 | (미정) |
+
+## 로컬 데모
+
+- WSL에서 서버 1개와 `tests/backend.py` 2개(8001, 8002)로 데모할 수 있다. HTML·CSS·JS를 정적 파일 루트에 두고 같은 서버의 상대 경로로 프록시를 호출한다.
+- `/index.html`은 정적 파일, `/api/echo`는 백엔드에 전달된 요청, `/rr/port`는 라운드 로빈으로 선택한 백엔드 포트를 보여준다.
+- 2026-11-25 WSL 임시 사본에서 정적 파일 200, 백엔드 요청 전달, 포트 `8001 → 8002 → 8001 → 8002`를 확인했다. 데모용 화면과 공개 배포 구성은 별도 작업이다.
