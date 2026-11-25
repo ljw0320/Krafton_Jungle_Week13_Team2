@@ -1,0 +1,22 @@
+--- src/server.h
++++ src/server.h
+@@ -11,7 +11,7 @@
+ 
+ enum {
+     WORKERS = 4,
+-    MAX_CONNECTIONS = 16,
++    MAX_CONNECTIONS = 12000,
+     QUEUE_CAPACITY = 4,
+     CONTEXT_CAPACITY = 8,
+     CONTEXT_WAIT_TIMEOUT_MS = 2000,
+--- src/server.h
++++ src/server.h
+@@ -24,7 +24,7 @@
+     SEND_TIMEOUT_MS = 3000,
+     DRAIN_TIMEOUT_MS = 2000,
+     DRAIN_BUFFER_SIZE = 4096,
+-    KEEP_ALIVE_TIMEOUT_MS = 5000,
++    KEEP_ALIVE_TIMEOUT_MS = 600000,
+     KEEP_ALIVE_MAX_REQUESTS = 100,
+     CGI_CAPACITY = 4,
+     FILE_CAPACITY = 4,

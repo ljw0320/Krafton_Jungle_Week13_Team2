@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Team 2 Web Server</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/cgi-test.js" defer></script>
+<script src="/keep-alive-test.js" defer></script>
+<main>
+  <img src="/jungle.svg" alt="정글의 나무" width="120" height="120">
+  <h1>Team 2 Web Server</h1>
+  <p>C와 POSIX 소켓으로 HTML, CSS, 이미지를 제공하고 있습니다.</p>
+  <form action="/echo" method="post">
+    <label>돌려받을 메시지 <input name="message" value="hello"></label>
+    <button>POST /echo</button>
+  </form>
+  <p>POST 응답은 전송한 원본 바이트를 담은 application/octet-stream입니다.</p>
+
+  <section aria-labelledby="cgi-title">
+    <h2 id="cgi-title">동적 요청 · CGI 테스트</h2>
+    <p>두 정수를 보내면 서버가 덧셈 프로그램을 실행하고 JSON 응답을 생성합니다.</p>
+    <form id="cgi-form" class="test-controls">
+      <div class="cgi-field">
+        <label for="cgi-method">요청 방식</label>
+        <select id="cgi-method">
+          <option value="GET">GET · 쿼리 전달</option>
+          <option value="POST">POST · 폼 본문 전달</option>
+        </select>
+      </div>
+      <div class="cgi-field">
+        <label for="cgi-a">정수 a</label>
+        <input id="cgi-a" name="a" type="text" inputmode="numeric" value="12"
+               pattern="[+\-]?[0-9]+" required>
+      </div>
+      <div class="cgi-field">
+        <label for="cgi-b">정수 b</label>
+        <input id="cgi-b" name="b" type="text" inputmode="numeric" value="30"
+               pattern="[+\-]?[0-9]+" required>
+      </div>
+      <button id="cgi-run" type="submit">덧셈 요청 보내기</button>
+    </form>
+    <div class="test-controls cgi-error-controls">
+      <button id="cgi-invalid" type="button">잘못된 입력 테스트 · 400</button>
+      <button id="cgi-missing" type="button">없는 프로그램 테스트 · 404</button>
+    </div>
+    <p id="cgi-summary" role="status" aria-live="polite">요청 방식을 선택하고 테스트를 시작해 주세요.</p>
+    <dl class="cgi-details">
+      <dt>요청</dt><dd id="cgi-request">아직 보내지 않았습니다.</dd>
+      <dt>예상 응답</dt><dd id="cgi-expected">HTTP 200 · a와 b의 합계</dd>
+      <dt>실제 응답</dt><dd id="cgi-response">-</dd>
+    </dl>
+    <pre id="cgi-body" aria-label="CGI 응답 본문">응답 본문이 여기에 표시됩니다.</pre>
+    <p class="test-note">CGI를 사용하려면 WSL에서 <code>make</code> 후
+      <code>./webserver 19006 ./www ./cgi-bin</code>으로 서버를 실행하세요.
+      정상 덧셈 요청도 404라면 CGI 실행 인자와 프로그램 파일을 확인하세요.</p>
+  </section>
+
+  <section aria-labelledby="keep-alive-title">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">HTTP 응답 확인 · TCP 연결 정책</p>
+        <h2 id="keep-alive-title">keep-alive 테스트</h2>
+      </div>
+      <button id="keep-alive-http-run" type="button">GET·POST·CGI 응답 확인</button>
+    </div>
+    <p>이 페이지에서 일반 HTTP 응답을 확인합니다. TCP 연결 재사용과 종료 조건은 아래의 별도 실행기로 검사합니다.</p>
+    <div class="policy-grid" aria-label="검증할 연결 정책">
+      <div><span>연결 유지</span><strong>HTTP/1.1</strong><small>HTTP/1.0 · close 요청은 종료</small></div>
+      <div><span>유휴 제한</span><strong>5초</strong><small>다음 요청 없이 대기한 시간</small></div>
+      <div><span>요청 상한</span><strong>100개 / 연결</strong><small>100번째 응답 후 종료</small></div>
+      <div><span>연결 슬롯</span><strong>16개</strong><small>17번째 연결은 거절</small></div>
+    </div>
+    <h3>웹페이지에서 확인: GET·POST·CGI 응답</h3>
+    <p id="keep-alive-http-summary" role="status" aria-live="polite">응답 확인 버튼을 누르면 네 요청을 순서대로 보내 상태·타입·본문을 검사합니다.</p>
+    <div class="table-scroll">
+      <table>
+        <caption>브라우저 HTTP 요청 결과 · TCP 연결 재사용 여부는 별도 검사</caption>
+        <thead><tr><th scope="col">요청</th><th scope="col">HTTP</th><th scope="col">Content-Type</th>
+          <th scope="col">응답 크기</th><th scope="col">소요 시간</th><th scope="col">결과</th></tr></thead>
+        <tbody id="keep-alive-http-results"></tbody>
+      </table>
+    </div>
+    <p class="test-note">브라우저가 연결을 관리하므로 HTTP 응답 검사가 통과해도 같은 TCP 연결을 재사용했다고 판정하지 않습니다.</p>
+    <h3>TCP 연결 정책: 별도 실행기</h3>
+    <p>WSL의 프로젝트 폴더에서 아래 명령을 실행하세요. 실행기는 빌드된 서버를 임시 포트와 테스트 데이터로 실행하고
+      TCP 소켓으로 직접 검사한 뒤 정리합니다. CGI 실행 인자는 실행기가 준비합니다.</p>
+    <div class="test-controls runner-controls">
+      <button id="keep-alive-copy-all" type="button">전체 검사 명령 복사</button>
+      <label for="keep-alive-report">JSON 보고서 불러오기</label>
+      <input id="keep-alive-report" type="file" accept="application/json,.json">
+    </div>
+    <pre id="keep-alive-command">make
+python3 src/tests/run_keep_alive_checks.py --case all --output keep-alive-report.json</pre>
+    <p id="keep-alive-summary" role="status" aria-live="polite">TCP 검사는 별도 실행기에서 수행합니다. 결과 보고서를 불러오면 항목별 결과를 표시합니다.</p>
+    <p id="keep-alive-target" class="test-note">보고서 미선택 · 파일은 브라우저에서만 읽으며 서버로 전송하지 않습니다.</p>
+    <div class="table-scroll">
+      <table class="keep-alive-table">
+        <caption>별도 TCP 검사 결과 · 페이지에서 직접 실행하지 않음</caption>
+        <thead><tr><th scope="col">검사 항목</th><th scope="col">예상 동작</th>
+          <th scope="col">실행기 결과</th><th scope="col">소요 시간</th><th scope="col">상태</th><th scope="col">명령</th></tr></thead>
+        <tbody id="keep-alive-results"></tbody>
+      </table>
+    </div>
+    <details class="diagnostic-details">
+      <summary>보고서 측정값 보기</summary>
+      <pre id="keep-alive-evidence">별도 실행기의 JSON 보고서를 불러오면 측정값과 실행 정보를 표시합니다.</pre>
+    </details>
+    <p class="test-note">유휴 종료는 응답 수신 후 EOF까지 측정하며, 스케줄링 오차를 고려해 4.5~7초를 통과 범위로 사용합니다.
+      보고서는 해당 실행 시점의 결과입니다. HTTP 응답 확인의 CGI 항목에는 <code>./webserver 19006 ./www ./cgi-bin</code>으로 실행한 서버가 필요합니다.</p>
+  </section>
+
+  <section aria-labelledby="test-title">
+    <h2 id="test-title">동시 HTTP 요청 테스트</h2>
+    <p>같은 서버에 여러 요청을 한꺼번에 보내고, 응답 본문까지 받은 결과를 확인합니다.</p>
+
+    <div class="test-controls">
+      <label for="test-method">테스트 종류</label>
+      <select id="test-method">
+        <option value="GET">GET · 응답 크기 테스트</option>
+        <option value="POST">POST · 요청 크기 테스트</option>
+      </select>
+
+      <label for="request-count">요청 수</label>
+      <select id="request-count">
+        <option value="4">4개</option>
+        <option value="8">8개</option>
+        <option value="12">12개</option>
+        <option value="36">36개</option>
+      </select>
+
+      <label for="request-size">요청 본문 크기 (POST)</label>
+      <select id="request-size" disabled>
+        <option value="4">4KiB</option>
+        <option value="16">16KiB</option>
+        <option value="64">64KiB</option>
+        <option value="128">128KiB</option>
+        <option value="512">512KiB</option>
+        <option value="1024">1MiB (1,024KiB)</option>
+        <option value="102400">100MiB (104,857,600 B)</option>
+      </select>
+
+      <label for="body-size">응답 본문 크기 (GET)</label>
+      <select id="body-size">
+        <option value="4">4KiB</option>
+        <option value="16">16KiB</option>
+        <option value="64">64KiB</option>
+        <option value="128">128KiB</option>
+      </select>
+      <button id="run-test" type="button">동시 요청 보내기</button>
+    </div>
+
+    <p id="test-expected"></p>
+    <p id="test-summary" role="status" aria-live="polite">테스트를 시작해 주세요.</p>
+
+    <div class="table-scroll">
+      <table>
+        <caption>요청별 응답 결과</caption>
+        <thead>
+          <tr>
+            <th scope="col">번호</th>
+            <th scope="col">HTTP</th>
+            <th scope="col">요청 본문 (설정)</th>
+            <th scope="col">응답 본문 (수신)</th>
+            <th scope="col">소요 시간</th>
+            <th scope="col">결과</th>
+          </tr>
+        </thead>
+        <tbody id="test-results"></tbody>
+      </table>
+    </div>
+
+    <p class="test-note">선택한 크기의 정적 파일을 GET으로 받습니다.
+      128KiB도 정상 응답 대상이며, POST 요청 본문의 64KiB 제한과는 별개입니다.</p>
+    <p class="test-note">POST는 선택한 크기의 데이터를 /echo로 보냅니다.
+      64KiB 이하는 같은 크기의 응답, 128KiB·512KiB·1MiB·100MiB는 413 차단이 예상됩니다.
+      POST 응답 크기는 요청 크기에 따라 정해지므로 별도로 선택하지 않습니다.</p>
+    <p class="test-note">요청 본문 (설정)은 브라우저에 전달한 본문 크기입니다.
+      HTTP 헤더는 포함하지 않으며, 서버가 전부 받았다는 의미는 아닙니다.
+      64KiB 초과는 즉시 413으로 거절하며, 응답 송신 후 남은 데이터를 최대 2초 동안 읽어 버리고 연결을 닫습니다.</p>
+    <p class="test-note">100MiB는 요청 하나당 104,857,600바이트입니다.
+      남은 업로드를 2초 안에 정리하지 못하면 연결 / 수신 실패나 시간 초과로 표시될 수 있습니다.</p>
+    <p class="test-note">요청마다 다른 쿼리와 캐시 비활성화 옵션을 사용합니다.
+      브라우저가 연결을 나눠 보내거나 대기시킬 수 있으므로,
+      요청 수가 서버의 실제 동시 연결 수나 작업자 동시 실행 수를 의미하지는 않습니다.</p>
+    <p class="test-note">개발자 도구의 Network에서 GET은 <code>concurrency=</code>, POST는 <code>echo</code>로 필터링해
+      요청 시간대를 확인하고, 서버 터미널의 accept·close 로그도 함께 살펴보세요.
+      요청별 시간에는 브라우저 대기와 본문 수신 시간이 포함됩니다.</p>
+  </section>
+</main>
+
+<script>
+  const runButton = document.getElementById("run-test");
+  const requestCount = document.getElementById("request-count");
+  const testMethod = document.getElementById("test-method");
+  const requestSize = document.getElementById("request-size");
+  const bodySize = document.getElementById("body-size");
+  const expected = document.getElementById("test-expected");
+  const summary = document.getElementById("test-summary");
+  const results = document.getElementById("test-results");
+
+  // 선택값과 예상 결과만 계산합니다. 큰 POST 본문은 테스트 시작 시에만 만듭니다.
+  function getTestConfig() {
+    const method = testMethod.value;
+    const requestBytes = method === "POST" ? Number(requestSize.value) * 1024 : 0;
+    const rejected = requestBytes > 65536;
+    const responseBytes = method === "POST" ? requestBytes : Number(bodySize.value) * 1024;
+
+    return {
+      method, requestBytes, expectedStatus: rejected ? 413 : 200,
+      expectedBytes: rejected ? new TextEncoder().encode("413 Content Too Large\n").length : responseBytes,
+      path: method === "POST" ? "/echo" : `/test-data/body-${bodySize.value}kib.bin`,
+      options: method === "POST" ? {
+        method,
+        headers: { "Content-Type": "application/octet-stream" }
+      } : { method }
+    };
+  }
+
+  // 1MiB 조각으로 Blob을 한 번 만들고, 동시 요청들이 같은 불변 본문을 공유합니다.
+  function createPayload(size) {
+    const chunk = new Uint8Array(Math.min(size, 1024 * 1024)).fill(65);
+    const parts = [];
+
+    for (let offset = 0; offset < size; offset += chunk.length)
+      parts.push(chunk.subarray(0, Math.min(chunk.length, size - offset)));
+
+    return new Blob(parts, { type: "application/octet-stream" });
+  }
+
+  function updateExpected() {
+    setControlsDisabled(false);
+
+    const config = getTestConfig();
+    expected.textContent = `요청별 예상: ${config.method} · 요청 본문 ${config.requestBytes} B → ` +
+      `HTTP ${config.expectedStatus} · 응답 본문 ${config.expectedBytes} B`;
+  }
+
+  function setControlsDisabled(disabled) {
+    runButton.disabled = disabled || location.protocol === "file:";
+    requestCount.disabled = disabled;
+    testMethod.disabled = disabled;
+    requestSize.disabled = disabled || testMethod.value !== "POST";
+    bodySize.disabled = disabled || testMethod.value !== "GET";
+  }
+
+  // 요청별 행을 먼저 만들어 응답이 끝나는 순서와 관계없이 번호를 유지합니다.
+  function createRows(count, config) {
+    results.replaceChildren();
+
+    return Array.from({ length: count }, (_, index) => {
+      const row = results.insertRow();
+
+      for (const value of [index + 1, "-", `${config.requestBytes} B`, "-", "-", "대기 중"])
+        row.insertCell().textContent = value;
+
+      return row;
+    });
+  }
+
+  // 정상 POST는 에코 내용까지 검사하고 한도 초과는 예상된 차단인지 검사합니다.
+  function responseResult(response, body, config, started) {
+    const bytes = new Uint8Array(body);
+    const echoed = config.method !== "POST" || config.expectedStatus !== 200 ||
+      bytes.every(value => value === 65);
+    const ok = response.status === config.expectedStatus &&
+      bytes.length === config.expectedBytes && echoed;
+
+    return { status: response.status, bytes: bytes.length, ok,
+      elapsed: performance.now() - started,
+      message: ok ? (response.status === 413 ? "검증 통과 · 413 차단" : "검증 통과") : "예상 응답 불일치" };
+  }
+
+  // Content-Length는 브라우저가 본문 바이트 수에 맞게 설정합니다.
+  async function fetchResult(url, config) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const started = performance.now();
+
+    try {
+      const response = await fetch(url, { ...config.options, cache: "no-store", signal: controller.signal });
+      const body = await response.arrayBuffer();
+
+      return responseResult(response, body, config, started);
+    } catch (error) {
+      return { status: "-", bytes: 0, ok: false, elapsed: performance.now() - started,
+        message: error.name === "AbortError" ? "8초 시간 초과" : "연결 / 수신 실패" };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  function showResult(row, result, config) {
+    const values = [result.status, `${config.requestBytes} B`, `${result.bytes} B`,
+      `${result.elapsed.toFixed(1)} ms`, result.message];
+
+    values.forEach((value, index) => { row.cells[index + 1].textContent = value; });
+    row.className = result.ok ? "request-success" : "request-failure";
+  }
+
+  async function runRequest(row, index, config, runId, completed) {
+    row.cells[5].textContent = "요청 중";
+
+    const url = config.method === "GET" ? `${config.path}?concurrency=${runId}-${index + 1}` : config.path;
+    const result = await fetchResult(url, config);
+
+    showResult(row, result, config);
+    completed();
+    return result;
+  }
+
+  // 모든 fetch를 시작한 후 결과를 모으며, 실행 중 선택값은 고정합니다.
+  async function runConcurrentTest() {
+    setControlsDisabled(true);
+
+    const count = Number(requestCount.value);
+    const config = getTestConfig();
+    const rows = createRows(count, config);
+    const runId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const started = performance.now();
+    let completed = 0;
+
+    summary.textContent = `${config.method} ${count}개 요청 진행 중…`;
+
+    try {
+      if (config.method === "POST")
+        config.options.body = createPayload(config.requestBytes);
+
+      const requests = rows.map((row, index) => runRequest(row, index, config, runId, () => {
+        summary.textContent = `${++completed} / ${count}개 완료`;
+      }));
+      const responses = await Promise.all(requests);
+      const success = responses.filter(result => result.ok).length;
+
+      summary.textContent = `검증 통과 ${success} / 실패 ${count - success} · 전체 ${(performance.now() - started).toFixed(1)} ms`;
+    } finally {
+      setControlsDisabled(false);
+    }
+  }
+
+  runButton.addEventListener("click", runConcurrentTest);
+  testMethod.addEventListener("change", updateExpected);
+  requestSize.addEventListener("change", updateExpected);
+  bodySize.addEventListener("change", updateExpected);
+  updateExpected();
+
+  if (location.protocol === "file:") {
+    runButton.disabled = true;
+    summary.textContent = "파일을 직접 열지 말고 실행 중인 서버 주소(http://127.0.0.1:19006/)로 접속해 주세요.";
+  }
+</script>
+</html>

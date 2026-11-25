@@ -1,0 +1,14 @@
+{
+  "nuri": {
+    "commit": "22c7824f9eac5c4b7063d31a1053d9113a0d03a9",
+    "root": "/mnt/c/Users/Antonio/Desktop/krafton_jungle/week13/c10k-experiment/sources/nuri"
+  },
+  "ljw": {
+    "commit": "48882182c18a9632110204b0572876423cee6365",
+    "root": "/mnt/c/Users/Antonio/Desktop/krafton_jungle/week13/c10k-experiment/sources/ljw"
+  },
+  "shw": {
+    "commit": "ec94aedbfd380f1eb4e90b3641e1e18d9f380922",
+    "root": "/mnt/c/Users/Antonio/Desktop/krafton_jungle/week13/c10k-experiment/sources/shw"
+  }
+}

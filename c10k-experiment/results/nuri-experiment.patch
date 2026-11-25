@@ -1,0 +1,11 @@
+--- main.c
++++ main.c
+@@ -45,7 +45,7 @@
+ 
+     int port = argc > 1 ? parse_positive_integer(argv[1], 65535) : 8080; /* 서버 포트 */
+     const char *root = argc > 2 ? argv[2] : "public";
+-    int limit = argc > 3 ? parse_positive_integer(argv[3], 4096) : 64; /* 최대 자식 수 */
++    int limit = argc > 3 ? parse_positive_integer(argv[3], 12000) : 64; /* 최대 자식 수 */
+     int idle = argc > 4 ? parse_positive_integer(argv[4], 86400) : 5; /* 다음 요청 대기 제한 시간 */
+     int grace = argc > 5 ? parse_positive_integer(argv[5], 3600) : 5; /* 종료 시 자식에게 주는 유예 시간 */
+     if (port < 0 || limit < 0 || idle < 0 || grace < 0)

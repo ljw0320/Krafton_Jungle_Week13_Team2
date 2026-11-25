@@ -1,0 +1,11 @@
+--- src/conn.h
++++ src/conn.h
+@@ -10,7 +10,7 @@
+ #include "proxy.h"
+ 
+ #define RBUF_SIZE 8192
+-#define IDLE_TIMEOUT_SEC 10
++#define IDLE_TIMEOUT_SEC 600
+ #define REQ_TIMEOUT_SEC 10
+ 
+ enum conn_state { CONN_READING, CONN_PROXYING, CONN_WRITING };

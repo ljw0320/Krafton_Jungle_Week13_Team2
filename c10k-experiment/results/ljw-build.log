@@ -1,0 +1,4 @@
+cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L -D_FILE_OFFSET_BITS=64 -std=gnu11 -Wall -Wextra -O2 src/cgi.c src/cgi_response.c src/cgi_spawn.c src/connection.c src/context_pool.c src/files.c src/http.c src/main.c src/platform.c src/resources.c src/server.c src/thread_pool.c src/timers.c -o webserver -pthread
+mkdir -p cgi-bin
+cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L -D_FILE_OFFSET_BITS=64 -std=gnu11 -Wall -Wextra -O2 src/cgi-bin/adder.c -o cgi-bin/adder
+cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L -D_FILE_OFFSET_BITS=64 -std=gnu11 -Wall -Wextra -O2 -Isrc proxy/main.c proxy/headers.c src/http.c -o reverse_proxy

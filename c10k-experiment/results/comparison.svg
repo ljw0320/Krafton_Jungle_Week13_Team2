@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+<title id="title">대기 연결 증가에 따른 서버 메모리와 CPU 비용</title>
+<desc id="desc">실제 유지한 연결 수를 가로축으로 사용한다. 프로세스형은 3000개까지 새 요청 성공을 확인했고 9382개 유지 상태에서 새 요청이 실패했다. 그 사이 구간은 측정하지 않았다. 실패 상태의 메모리는 별도 X 표시하며 CPU는 같은 작업을 수행하지 못했으므로 비교에서 제외한다.</desc>
+<rect width="1600" height="900" fill="#fafbfd"/>
+<style>text{font-family:"Malgun Gothic","Noto Sans CJK KR",sans-serif;fill:#172b42;font-size:24px} .muted{fill:#52657b} .heading{font-size:42px;font-weight:700} .panel{font-size:30px;font-weight:700} .value{font-size:24px;font-weight:700}</style>
+<text x="64" y="66" class="heading">C10K: 대기 연결의 비용과 새 요청 수용</text>
+<text x="64" y="108" class="muted">동일 WSL · 정상 요청 10회/초 · 조건별 3회 중앙값</text>
+<rect x="48" y="140" width="728" height="552" rx="18" fill="white" stroke="#e0e6ee"/>
+<rect x="824" y="140" width="728" height="552" rx="18" fill="white" stroke="#e0e6ee"/>
+<text x="78" y="182" class="panel">연결을 보관하는 메모리</text>
+<text x="116" y="213" class="muted">메모리 · MiB</text>
+<path d="M116,612.0h448" stroke="#e3e9f0" stroke-width="1.5"/>
+<text x="102" y="620.0" class="muted" text-anchor="end">0</text>
+<path d="M116,482.0h448" stroke="#e3e9f0" stroke-width="1.5"/>
+<text x="102" y="490.0" class="muted" text-anchor="end">400</text>
+<path d="M116,352.0h448" stroke="#e3e9f0" stroke-width="1.5"/>
+<text x="102" y="360.0" class="muted" text-anchor="end">800</text>
+<path d="M116,222.0h448" stroke="#e3e9f0" stroke-width="1.5"/>
+<text x="102" y="230.0" class="muted" text-anchor="end">1200</text>
+<path d="M116.0,612v7" stroke="#91a0b2"/>
+<text x="116.0" y="646" class="muted" text-anchor="middle" style="font-size:20px">0</text>
+<path d="M160.8,612v7" stroke="#91a0b2"/>
+<text x="160.8" y="646" class="muted" text-anchor="middle" style="font-size:20px">1,000</text>
+<path d="M250.4,612v7" stroke="#91a0b2"/>
+<text x="250.4" y="646" class="muted" text-anchor="middle" style="font-size:20px">3,000</text>
+<path d="M564.0,612v7" stroke="#91a0b2"/>
+<text x="564.0" y="646" class="muted" text-anchor="middle" style="font-size:20px">10,000</text>
+<text x="340.0" y="678" class="muted" text-anchor="middle">유지한 대기 연결 수</text>
+<polyline points="116.00,611.87 120.48,609.17 138.40,598.40 160.80,584.36 250.40,520.44" fill="none" stroke="#c34b39" stroke-width="4"/>
+<circle cx="116.0" cy="611.866064453125" r="5.5" fill="white" stroke="#c34b39" stroke-width="3"/>
+<circle cx="120.48" cy="609.1686279296875" r="5.5" fill="white" stroke="#c34b39" stroke-width="3"/>
+<circle cx="138.4" cy="598.3998291015625" r="5.5" fill="white" stroke="#c34b39" stroke-width="3"/>
+<circle cx="160.8" cy="584.3569091796875" r="5.5" fill="white" stroke="#c34b39" stroke-width="3"/>
+<circle cx="250.4" cy="520.44140625" r="5.5" fill="white" stroke="#c34b39" stroke-width="3"/>
+<path d="M256.4,520.44140625L264.4,520.44140625" stroke="#c34b39" stroke-width="1.5"/>
+<text x="268.4" y="528.44140625" class="value" style="fill:#c34b39">프로세스 281.7</text>
+<text x="268.4" y="555.44140625" style="font-size:20px;fill:#c34b39">3,000개: 새 요청 성공</text>
+<polyline points="116.00,610.61 120.48,610.59 138.40,610.59 160.80,610.59 250.40,610.59 564.00,610.59" fill="none" stroke="#2468c4" stroke-width="4"/>
+<circle cx="116.0" cy="610.606689453125" r="5.5" fill="white" stroke="#2468c4" stroke-width="3"/>
+<circle cx="120.48" cy="610.591455078125" r="5.5" fill="white" stroke="#2468c4" stroke-width="3"/>
+<circle cx="138.4" cy="610.592724609375" r="5.5" fill="white" stroke="#2468c4" stroke-width="3"/>
+<circle cx="160.8" cy="610.591455078125" r="5.5" fill="white" stroke="#2468c4" stroke-width="3"/>
+<circle cx="250.4" cy="610.592724609375" r="5.5" fill="white" stroke="#2468c4" stroke-width="3"/>
+<circle cx="564.0" cy="610.591455078125" r="5.5" fill="white" stroke="#2468c4" stroke-width="3"/>
+<path d="M570.0,610.591455078125L578.0,628.591455078125" stroke="#2468c4" stroke-width="1.5"/>
+<text x="582.0" y="636.591455078125" class="value" style="fill:#2468c4">스레드 풀 4.3</text>
+<polyline points="116.00,611.92 120.48,611.66 138.40,610.62 160.80,609.32 250.40,604.12 564.00,585.94" fill="none" stroke="#15806e" stroke-width="4" stroke-dasharray="10 7"/>
+<circle cx="116.0" cy="611.921923828125" r="5.5" fill="white" stroke="#15806e" stroke-width="3"/>
+<circle cx="120.48" cy="611.661669921875" r="5.5" fill="white" stroke="#15806e" stroke-width="3"/>
+<circle cx="138.4" cy="610.621923828125" r="5.5" fill="white" stroke="#15806e" stroke-width="3"/>
+<circle cx="160.8" cy="609.321923828125" r="5.5" fill="white" stroke="#15806e" stroke-width="3"/>
+<circle cx="250.4" cy="604.124462890625" r="5.5" fill="white" stroke="#15806e" stroke-width="3"/>
+<circle cx="564.0" cy="585.935888671875" r="5.5" fill="white" stroke="#15806e" stroke-width="3"/>
+<path d="M570.0,585.935888671875L578.0,573.935888671875" stroke="#15806e" stroke-width="1.5"/>
+<text x="582.0" y="581.935888671875" class="value" style="fill:#15806e">epoll 80.2</text>
+<path d="M528.3136,240.79885253906252l16,16m-16,0l16,-16" stroke="#c34b39" stroke-width="4"/>
+<text x="554.3136" y="256.7988525390625" class="value" style="fill:#c34b39">1,117.5</text>
+<text x="732" y="307" class="value" style="fill:#c34b39" text-anchor="end">9,382개 유지 · 새 요청 실패</text>
+<text x="860" y="182" class="panel">연결을 관리하는 CPU</text>
+<text x="898" y="213" class="muted">CPU · %</text>
+<path d="M898,612.0h448" stroke="#e3e9f0" stroke-width="1.5"/>
+<text x="884" y="620.0" class="muted" text-anchor="end">0</text>
+<path d="M898,514.5h448" stroke="#e3e9f0" stroke-width="1.5"/>
+<text x="884" y="522.5" class="muted" text-anchor="end">10</text>
+<path d="M898,417.0h448" stroke="#e3e9f0" stroke-width="1.5"/>
+<text x="884" y="425.0" class="muted" text-anchor="end">20</text>
+<path d="M898,319.5h448" stroke="#e3e9f0" stroke-width="1.5"/>
+<text x="884" y="327.5" class="muted" text-anchor="end">30</text>
+<path d="M898,222.0h448" stroke="#e3e9f0" stroke-width="1.5"/>
+<text x="884" y="230.0" class="muted" text-anchor="end">40</text>
+<path d="M898.0,612v7" stroke="#91a0b2"/>
+<text x="898.0" y="646" class="muted" text-anchor="middle" style="font-size:20px">0</text>
+<path d="M942.8,612v7" stroke="#91a0b2"/>
+<text x="942.8" y="646" class="muted" text-anchor="middle" style="font-size:20px">1,000</text>
+<path d="M1032.4,612v7" stroke="#91a0b2"/>
+<text x="1032.4" y="646" class="muted" text-anchor="middle" style="font-size:20px">3,000</text>
+<path d="M1346.0,612v7" stroke="#91a0b2"/>
+<text x="1346.0" y="646" class="muted" text-anchor="middle" style="font-size:20px">10,000</text>
+<text x="1122.0" y="678" class="muted" text-anchor="middle">유지한 대기 연결 수</text>
+<polyline points="898.00,583.98 902.48,587.63 920.40,577.88 942.80,575.44 1032.40,565.70" fill="none" stroke="#c34b39" stroke-width="4"/>
+<circle cx="898.0" cy="583.9751025051055" r="5.5" fill="white" stroke="#c34b39" stroke-width="3"/>
+<circle cx="902.48" cy="587.6288703973704" r="5.5" fill="white" stroke="#c34b39" stroke-width="3"/>
+<circle cx="920.4" cy="577.879032484183" r="5.5" fill="white" stroke="#c34b39" stroke-width="3"/>
+<circle cx="942.8" cy="575.4439256942255" r="5.5" fill="white" stroke="#c34b39" stroke-width="3"/>
+<circle cx="1032.4" cy="565.6963138719269" r="5.5" fill="white" stroke="#c34b39" stroke-width="3"/>
+<path d="M1038.4,565.6963138719269L1046.4,519.6963138719269" stroke="#c34b39" stroke-width="1.5"/>
+<text x="1050.4" y="527.6963138719269" class="value" style="fill:#c34b39">프로세스 4.7</text>
+<text x="1050.4" y="554.6963138719269" style="font-size:20px;fill:#c34b39">3,000개: 새 요청 성공</text>
+<polyline points="898.00,586.41 902.48,582.75 920.40,562.04 942.80,538.88 1032.40,467.00 1346.00,303.67" fill="none" stroke="#2468c4" stroke-width="4"/>
+<circle cx="898.0" cy="586.4115669437394" r="5.5" fill="white" stroke="#2468c4" stroke-width="3"/>
+<circle cx="902.48" cy="582.7547539317294" r="5.5" fill="white" stroke="#2468c4" stroke-width="3"/>
+<circle cx="920.4" cy="562.0368127950916" r="5.5" fill="white" stroke="#2468c4" stroke-width="3"/>
+<circle cx="942.8" cy="538.8849785827528" r="5.5" fill="white" stroke="#2468c4" stroke-width="3"/>
+<circle cx="1032.4" cy="466.9959683986383" r="5.5" fill="white" stroke="#2468c4" stroke-width="3"/>
+<circle cx="1346.0" cy="303.67394070868426" r="5.5" fill="white" stroke="#2468c4" stroke-width="3"/>
+<path d="M1352.0,303.67394070868426L1360.0,303.67394070868426" stroke="#2468c4" stroke-width="1.5"/>
+<text x="1364.0" y="311.67394070868426" class="value" style="fill:#2468c4">스레드 풀 31.6</text>
+<polyline points="898.00,588.85 902.48,587.63 920.40,586.41 942.80,590.07 1032.40,588.85 1346.00,587.63" fill="none" stroke="#15806e" stroke-width="4" stroke-dasharray="10 7"/>
+<circle cx="898.0" cy="588.8473843760494" r="5.5" fill="white" stroke="#15806e" stroke-width="3"/>
+<circle cx="902.48" cy="587.6316139637723" r="5.5" fill="white" stroke="#15806e" stroke-width="3"/>
+<circle cx="920.4" cy="586.4092439585147" r="5.5" fill="white" stroke="#15806e" stroke-width="3"/>
+<circle cx="942.8" cy="590.0652829480331" r="5.5" fill="white" stroke="#15806e" stroke-width="3"/>
+<circle cx="1032.4" cy="588.8485630101144" r="5.5" fill="white" stroke="#15806e" stroke-width="3"/>
+<circle cx="1346.0" cy="587.6316335475776" r="5.5" fill="white" stroke="#15806e" stroke-width="3"/>
+<path d="M1352.0,587.6316335475776L1360.0,601.6316335475776" stroke="#15806e" stroke-width="1.5"/>
+<text x="1364.0" y="609.6316335475776" class="value" style="fill:#15806e">epoll 2.5</text>
+<text x="1514" y="412" class="value" style="fill:#c34b39" text-anchor="end">9,382개: 새 요청 실패</text>
+<text x="1514" y="442" class="muted" text-anchor="end">실패 상태의 CPU는 비교 제외</text>
+<rect x="48" y="718" width="1504" height="130" rx="16" fill="#edf2f8"/>
+<text x="76" y="758" class="value">3,000개는 마지막 성공 측정 지점입니다. 수용 한계가 아닙니다.</text>
+<text x="76" y="798" class="muted">프로세스형은 9,382개 연결을 유지한 상태에서 새 요청이 실패했습니다. 중간 구간은 미측정입니다.</text>
+<text x="64" y="882" class="muted">대기 중심 부하의 결과입니다 · 무거운 연산·블로킹 작업·격리 효과는 미측정 · CPU 100% = 코어 1개</text>
+</svg>

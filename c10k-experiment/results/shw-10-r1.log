@@ -1,0 +1,207 @@
+accept fd=5
+fd=5 recv 70 bytes
+fd=5 send 142 bytes
+fd=5 EPOLLOUT on
+fd=5 send 1024 bytes
+fd=5 EPOLLOUT off
+close fd=5 conn_count=0
+accept fd=5
+accept fd=6
+accept fd=7
+accept fd=8
+accept fd=9
+accept fd=10
+accept fd=11
+accept fd=12
+accept fd=13
+accept fd=14
+fd=5 recv 70 bytes
+fd=5 send 142 bytes
+fd=5 EPOLLOUT on
+fd=6 recv 70 bytes
+fd=6 send 142 bytes
+fd=6 EPOLLOUT on
+fd=7 recv 70 bytes
+fd=7 send 142 bytes
+fd=7 EPOLLOUT on
+fd=8 recv 70 bytes
+fd=8 send 142 bytes
+fd=8 EPOLLOUT on
+fd=9 recv 70 bytes
+fd=9 send 142 bytes
+fd=9 EPOLLOUT on
+fd=10 recv 70 bytes
+fd=10 send 142 bytes
+fd=10 EPOLLOUT on
+fd=11 recv 70 bytes
+fd=11 send 142 bytes
+fd=11 EPOLLOUT on
+fd=12 recv 70 bytes
+fd=12 send 142 bytes
+fd=12 EPOLLOUT on
+fd=13 recv 70 bytes
+fd=13 send 142 bytes
+fd=13 EPOLLOUT on
+fd=14 recv 70 bytes
+fd=14 send 142 bytes
+fd=14 EPOLLOUT on
+fd=5 send 1024 bytes
+fd=5 EPOLLOUT off
+fd=6 send 1024 bytes
+fd=6 EPOLLOUT off
+fd=7 send 1024 bytes
+fd=7 EPOLLOUT off
+fd=8 send 1024 bytes
+fd=8 EPOLLOUT off
+fd=9 send 1024 bytes
+fd=9 EPOLLOUT off
+fd=10 send 1024 bytes
+fd=10 EPOLLOUT off
+fd=11 send 1024 bytes
+fd=11 EPOLLOUT off
+fd=12 send 1024 bytes
+fd=12 EPOLLOUT off
+fd=13 send 1024 bytes
+fd=13 EPOLLOUT off
+fd=14 send 1024 bytes
+fd=14 EPOLLOUT off
+accept fd=15
+fd=15 recv 70 bytes
+fd=15 send 142 bytes
+fd=15 EPOLLOUT on
+fd=15 send 1024 bytes
+fd=15 EPOLLOUT off
+close fd=15 conn_count=10
+accept fd=15
+fd=15 recv 70 bytes
+fd=15 send 142 bytes
+fd=15 EPOLLOUT on
+fd=15 send 1024 bytes
+fd=15 EPOLLOUT off
+close fd=15 conn_count=10
+accept fd=15
+fd=15 recv 70 bytes
+fd=15 send 142 bytes
+fd=15 EPOLLOUT on
+fd=15 send 1024 bytes
+fd=15 EPOLLOUT off
+close fd=15 conn_count=10
+accept fd=15
+fd=15 recv 70 bytes
+fd=15 send 142 bytes
+fd=15 EPOLLOUT on
+fd=15 send 1024 bytes
+fd=15 EPOLLOUT off
+close fd=15 conn_count=10
+accept fd=15
+fd=15 recv 70 bytes
+fd=15 send 142 bytes
+fd=15 EPOLLOUT on
+fd=15 send 1024 bytes
+fd=15 EPOLLOUT off
+close fd=15 conn_count=10
+accept fd=15
+fd=15 recv 70 bytes
+fd=15 send 142 bytes
+fd=15 EPOLLOUT on
+fd=15 send 1024 bytes
+fd=15 EPOLLOUT off
+close fd=15 conn_count=10
+accept fd=15
+fd=15 recv 70 bytes
+fd=15 send 142 bytes
+fd=15 EPOLLOUT on
+fd=15 send 1024 bytes
+fd=15 EPOLLOUT off
+close fd=15 conn_count=10
+accept fd=15
+fd=15 recv 70 bytes
+fd=15 send 142 bytes
+fd=15 EPOLLOUT on
+fd=15 send 1024 bytes
+fd=15 EPOLLOUT off
+close fd=15 conn_count=10
+accept fd=15
+fd=15 recv 70 bytes
+fd=15 send 142 bytes
+fd=15 EPOLLOUT on
+fd=15 send 1024 bytes
+fd=15 EPOLLOUT off
+close fd=15 conn_count=10
+accept fd=15
+fd=15 recv 70 bytes
+fd=15 send 142 bytes
+fd=15 EPOLLOUT on
+fd=15 send 1024 bytes
+fd=15 EPOLLOUT off
+close fd=15 conn_count=10
+accept fd=15
+fd=15 recv 70 bytes
+fd=15 send 142 bytes
+fd=15 EPOLLOUT on
+fd=15 send 1024 bytes
+fd=15 EPOLLOUT off
+close fd=15 conn_count=10
+accept fd=15
+fd=15 recv 70 bytes
+fd=15 send 142 bytes
+fd=15 EPOLLOUT on
+fd=15 send 1024 bytes
+fd=15 EPOLLOUT off
+close fd=15 conn_count=10
+accept fd=15
+fd=15 recv 70 bytes
+fd=15 send 142 bytes
+fd=15 EPOLLOUT on
+fd=15 send 1024 bytes
+fd=15 EPOLLOUT off
+close fd=15 conn_count=10
+accept fd=15
+fd=15 recv 70 bytes
+fd=15 send 142 bytes
+fd=15 EPOLLOUT on
+fd=15 send 1024 bytes
+fd=15 EPOLLOUT off
+close fd=15 conn_count=10
+accept fd=15
+fd=15 recv 70 bytes
+fd=15 send 142 bytes
+fd=15 EPOLLOUT on
+fd=15 send 1024 bytes
+fd=15 EPOLLOUT off
+close fd=15 conn_count=10
+accept fd=15
+fd=15 recv 70 bytes
+fd=15 send 142 bytes
+fd=15 EPOLLOUT on
+fd=15 send 1024 bytes
+fd=15 EPOLLOUT off
+close fd=15 conn_count=10
+accept fd=15
+fd=15 recv 70 bytes
+fd=15 send 142 bytes
+fd=15 EPOLLOUT on
+fd=15 send 1024 bytes
+fd=15 EPOLLOUT off
+close fd=15 conn_count=10
+accept fd=15
+fd=15 recv 70 bytes
+fd=15 send 142 bytes
+fd=15 EPOLLOUT on
+fd=15 send 1024 bytes
+fd=15 EPOLLOUT off
+close fd=15 conn_count=10
+accept fd=15
+fd=15 recv 70 bytes
+fd=15 send 142 bytes
+fd=15 EPOLLOUT on
+fd=15 send 1024 bytes
+fd=15 EPOLLOUT off
+close fd=15 conn_count=10
+accept fd=15
+fd=15 recv 70 bytes
+fd=15 send 142 bytes
+fd=15 EPOLLOUT on
+fd=15 send 1024 bytes
+fd=15 EPOLLOUT off
+close fd=15 conn_count=10

@@ -1,0 +1,200 @@
+[
+  {
+    "branch": "ljw",
+    "target": 0,
+    "pss_mib": 4.287109375,
+    "held": 0,
+    "cpu_percent": 2.6244546724369786,
+    "p95_ms": 16.018600000052174,
+    "success": 240,
+    "total": 240,
+    "maintained": true
+  },
+  {
+    "branch": "ljw",
+    "target": 100,
+    "pss_mib": 4.333984375,
+    "held": 100,
+    "cpu_percent": 2.9995124172585275,
+    "p95_ms": 16.169300000001385,
+    "success": 240,
+    "total": 240,
+    "maintained": true
+  },
+  {
+    "branch": "ljw",
+    "target": 500,
+    "pss_mib": 4.330078125,
+    "held": 500,
+    "cpu_percent": 5.124429456913682,
+    "p95_ms": 17.523999999980333,
+    "success": 240,
+    "total": 240,
+    "maintained": true
+  },
+  {
+    "branch": "ljw",
+    "target": 1000,
+    "pss_mib": 4.333984375,
+    "held": 1000,
+    "cpu_percent": 7.498976555615099,
+    "p95_ms": 19.25229500000114,
+    "success": 240,
+    "total": 240,
+    "maintained": true
+  },
+  {
+    "branch": "ljw",
+    "target": 3000,
+    "pss_mib": 4.330078125,
+    "held": 3000,
+    "cpu_percent": 14.87220836937043,
+    "p95_ms": 24.61898299998211,
+    "success": 240,
+    "total": 240,
+    "maintained": true
+  },
+  {
+    "branch": "ljw",
+    "target": 10000,
+    "pss_mib": 4.333984375,
+    "held": 10000,
+    "cpu_percent": 31.623185568340073,
+    "p95_ms": 36.36692999998559,
+    "success": 240,
+    "total": 240,
+    "maintained": true
+  },
+  {
+    "branch": "nuri",
+    "target": 0,
+    "pss_mib": 0.412109375,
+    "held": 0,
+    "cpu_percent": 2.8743484610148267,
+    "p95_ms": 12.119200999961777,
+    "success": 240,
+    "total": 240,
+    "maintained": true
+  },
+  {
+    "branch": "nuri",
+    "target": 100,
+    "pss_mib": 8.7119140625,
+    "held": 100,
+    "cpu_percent": 2.4996030361671386,
+    "p95_ms": 12.478999999984808,
+    "success": 240,
+    "total": 240,
+    "maintained": true
+  },
+  {
+    "branch": "nuri",
+    "target": 500,
+    "pss_mib": 41.8466796875,
+    "held": 500,
+    "cpu_percent": 3.4995864118786666,
+    "p95_ms": 12.430398999981662,
+    "success": 240,
+    "total": 240,
+    "maintained": true
+  },
+  {
+    "branch": "nuri",
+    "target": 1000,
+    "pss_mib": 85.0556640625,
+    "held": 1000,
+    "cpu_percent": 3.7493409544384084,
+    "p95_ms": 12.318999999990865,
+    "success": 240,
+    "total": 240,
+    "maintained": true
+  },
+  {
+    "branch": "nuri",
+    "target": 3000,
+    "pss_mib": 281.71875,
+    "held": 3000,
+    "cpu_percent": 4.7490960131356985,
+    "p95_ms": 12.655597000048147,
+    "success": 240,
+    "total": 240,
+    "maintained": true
+  },
+  {
+    "branch": "nuri",
+    "target": 10000,
+    "pss_mib": 1117.5419921875,
+    "held": 9382,
+    "cpu_percent": 5.233335266117674,
+    "p95_ms": null,
+    "success": 0,
+    "total": 240,
+    "maintained": false
+  },
+  {
+    "branch": "shw",
+    "target": 0,
+    "pss_mib": 0.240234375,
+    "held": 0,
+    "cpu_percent": 2.3746272434821147,
+    "p95_ms": 33.07080000001861,
+    "success": 240,
+    "total": 240,
+    "maintained": true
+  },
+  {
+    "branch": "shw",
+    "target": 100,
+    "pss_mib": 1.041015625,
+    "held": 100,
+    "cpu_percent": 2.4993216447413027,
+    "p95_ms": 34.50589700003093,
+    "success": 240,
+    "total": 240,
+    "maintained": true
+  },
+  {
+    "branch": "shw",
+    "target": 500,
+    "pss_mib": 4.240234375,
+    "held": 500,
+    "cpu_percent": 2.6246929273318287,
+    "p95_ms": 35.028100000033646,
+    "success": 240,
+    "total": 240,
+    "maintained": true
+  },
+  {
+    "branch": "shw",
+    "target": 1000,
+    "pss_mib": 8.240234375,
+    "held": 1000,
+    "cpu_percent": 2.2497145694325,
+    "p95_ms": 32.30940399998872,
+    "success": 240,
+    "total": 240,
+    "maintained": true
+  },
+  {
+    "branch": "shw",
+    "target": 3000,
+    "pss_mib": 24.232421875,
+    "held": 3000,
+    "cpu_percent": 2.3745063579369896,
+    "p95_ms": 31.41219999997702,
+    "success": 240,
+    "total": 240,
+    "maintained": true
+  },
+  {
+    "branch": "shw",
+    "target": 10000,
+    "pss_mib": 80.197265625,
+    "held": 10000,
+    "cpu_percent": 2.4993196361458847,
+    "p95_ms": 31.824599000060516,
+    "success": 240,
+    "total": 240,
+    "maintained": true
+  }
+]

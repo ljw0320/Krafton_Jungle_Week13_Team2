@@ -1,0 +1,4 @@
+mkdir -p build
+cc -std=gnu11 -Wall -Wextra -O2 main.c server/server.c http/http.c http/http_parse.c http/http_io.c http/http_response.c http/http_static.c http/http_cgi.c proxy/routes.c proxy/headers.c proxy/proxy.c log/diagnostics.c -o build/web-server 
+mkdir -p build
+cc -std=gnu11 -Wall -Wextra -O2 cgi/adder.c -o build/adder 
