@@ -73,7 +73,7 @@ struct connection {
     bool cgi_reserved;
     bool file_reserved;
     struct connection *free_next;
-    struct connection *timer_next;
+    size_t timer_position; /* 1-based heap position; zero means absent. */
     int64_t expires;
     bool pending, control_queued;
     struct connection *pending_prev, *pending_next;
@@ -124,7 +124,8 @@ struct server {
     int capacity;
     struct context_pool contexts;
     struct connection *free_clients;
-    struct connection *timers;
+    struct connection **timer_heap;
+    size_t timer_count;
     struct connection *control_head, *control_tail;
     struct connection *pending_head, *pending_tail;
     bool slots_initialized;

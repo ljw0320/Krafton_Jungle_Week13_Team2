@@ -70,6 +70,7 @@ static void server_cleanup(struct server *server, int listener)
     check_thread(pthread_cond_destroy(&server->ready));
     check_thread(pthread_mutex_destroy(&server->mutex));
 
+    free(server->timer_heap);
     free(server->clients);
     puts("[server] stopped");
 }

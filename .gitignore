@@ -31,3 +31,5 @@ core.*
 
 # Local repeat runs and temporary reports
 /artifacts/
+
+/test_timer_heap

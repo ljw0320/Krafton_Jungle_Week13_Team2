@@ -35,14 +35,14 @@ int main(void)
     a->state = b->state = WAITING;
     a->progress = now_ms(); b->progress = a->progress - 100;
     timer_update(&server, a); timer_update(&server, b);
-    CHECK(server.timers == b && b->timer_next == a);
+    CHECK(server.timer_count == 2 && server.timer_heap[0] == b && a->timer_position == 2);
     b->progress += 200; timer_update(&server, b);
-    CHECK(server.timers == a && a->timer_next == b);
-    timer_cancel(&server, a); CHECK(server.timers == b);
+    CHECK(server.timer_count == 2 && server.timer_heap[0] == a && b->timer_position == 2);
+    timer_cancel(&server, a); CHECK(server.timer_count == 1 && server.timer_heap[0] == b);
     a->progress = b->progress = now_ms() - RECV_TIMEOUT_MS - 1;
     timer_update(&server, a); timer_update(&server, b);
     timer_expire(&server);
-    CHECK(a->state == FREE && b->state == FREE && server.timers == NULL);
+    CHECK(a->state == FREE && b->state == FREE && server.timer_count == 0);
     CHECK(server.free_clients == b);
     for (int i = 2; i < MAX_CONNECTIONS; i++) connection_close(&server.clients[i]);
     CHECK(server.contexts.wait_count == 0);
@@ -56,6 +56,6 @@ int main(void)
     CHECK(atomic_load(&server.active_cgi) == 0);
     puts("scheduler: slots, saturation, retry, duplicate, timer order/update/cancel/expiry passed");
     context_pool_destroy(&server.contexts);
-    free(server.clients);
+    free(server.timer_heap); free(server.clients);
     return 0;
 }

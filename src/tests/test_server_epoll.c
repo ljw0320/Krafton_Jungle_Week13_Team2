@@ -44,7 +44,7 @@ static void test_pending_fifo(void)
     }
     CHECK(!server.pending_head && !server.pending_tail);
     CHECK(!server.control_head && !server.control_tail);
-    context_pool_destroy(&server.contexts); free(server.clients);
+    context_pool_destroy(&server.contexts); free(server.timer_heap); free(server.clients);
     CHECK(pthread_cond_destroy(&server.ready) == 0);
 }
 
@@ -73,7 +73,7 @@ static void test_buffer_resume_fifo(void)
     resume_contexts(&server);
     CHECK(second->state == FREE && server.contexts.wait_count == 0);
     for (int i = 0; i < 10; i++) { connection_close(&server.clients[i]); close(peers[i]); }
-    context_pool_destroy(&server.contexts); free(server.clients);
+    context_pool_destroy(&server.contexts); free(server.timer_heap); free(server.clients);
     CHECK(pthread_cond_destroy(&server.ready) == 0);
 }
 
@@ -157,7 +157,7 @@ int main(void)
     connection_close(c); close(pair[1]);
     close(server.epoll_fd);
     context_pool_destroy(&server.contexts);
-    free(server.clients);
+    free(server.timer_heap); free(server.clients);
     CHECK(pthread_mutex_destroy(&server.mutex) == 0);
     CHECK(pthread_cond_destroy(&server.ready) == 0);
     puts("server epoll: ONESHOT, rearm, duplicate/stale events, slot reuse, CGI switch/EOF, errors passed");

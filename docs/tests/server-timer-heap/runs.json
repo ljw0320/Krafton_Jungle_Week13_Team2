@@ -1,0 +1,284 @@
+[
+  {
+    "run": 1,
+    "version": "before",
+    "exit_code": 1,
+    "status": "failed",
+    "completed_requests": 10000,
+    "wall_seconds": 14.43817,
+    "cpu_seconds": {
+      "loader": 16.202935,
+      "backend": 9.53,
+      "proxy": 5.2
+    },
+    "prepare_cpu_seconds": 1.411118,
+    "prepare_units": 29244,
+    "loop_calls": 24824,
+    "timer_cpu_seconds": {
+      "main": {
+        "timer_cancel": 1.407722,
+        "timer_update": 0.807904,
+        "timer_expire": 0.023294
+      },
+      "workers": {
+        "timer_cancel": 1.526655,
+        "timer_update": 1.691518,
+        "timer_expire": 0.0
+      }
+    },
+    "timer_units": {
+      "main": {
+        "timer_cancel": 70381421,
+        "timer_update": 23513043
+      },
+      "workers": {
+        "timer_cancel": 46731397,
+        "timer_update": 23510553
+      }
+    },
+    "first_snapshot": {
+      "frontend": 2678,
+      "backend": 2018
+    },
+    "final_observation": {
+      "frontend": 2585,
+      "backend": 1971
+    },
+    "report": "01-before.json"
+  },
+  {
+    "run": 2,
+    "version": "after",
+    "exit_code": 1,
+    "status": "failed",
+    "completed_requests": 10000,
+    "wall_seconds": 13.025132,
+    "cpu_seconds": {
+      "loader": 15.211613,
+      "backend": 5.46,
+      "proxy": 4.73
+    },
+    "prepare_cpu_seconds": 0.845725,
+    "prepare_units": 29205,
+    "loop_calls": 30201,
+    "timer_cpu_seconds": {
+      "main": {
+        "timer_cancel": 0.063143,
+        "timer_update": 0.013547,
+        "timer_expire": 0.031752
+      },
+      "workers": {
+        "timer_cancel": 0.003633,
+        "timer_update": 0.023392,
+        "timer_expire": 0.0
+      }
+    },
+    "timer_units": {
+      "main": {
+        "timer_cancel": 188887,
+        "timer_update": 9999
+      },
+      "workers": {
+        "timer_cancel": 0,
+        "timer_update": 9999
+      }
+    },
+    "first_snapshot": {
+      "frontend": 4283,
+      "backend": 3493
+    },
+    "final_observation": {
+      "frontend": 4130,
+      "backend": 3228
+    },
+    "report": "02-after.json"
+  },
+  {
+    "run": 3,
+    "version": "after",
+    "exit_code": 1,
+    "status": "failed",
+    "completed_requests": 10000,
+    "wall_seconds": 13.62046,
+    "cpu_seconds": {
+      "loader": 16.14993,
+      "backend": 5.26,
+      "proxy": 4.86
+    },
+    "prepare_cpu_seconds": 0.784076,
+    "prepare_units": 29149,
+    "loop_calls": 31010,
+    "timer_cpu_seconds": {
+      "main": {
+        "timer_cancel": 0.036668,
+        "timer_update": 0.015384,
+        "timer_expire": 0.036766
+      },
+      "workers": {
+        "timer_cancel": 0.003732,
+        "timer_update": 0.027292,
+        "timer_expire": 0.0
+      }
+    },
+    "timer_units": {
+      "main": {
+        "timer_cancel": 184807,
+        "timer_update": 9999
+      },
+      "workers": {
+        "timer_cancel": 0,
+        "timer_update": 9999
+      }
+    },
+    "first_snapshot": {
+      "frontend": 4135,
+      "backend": 3406
+    },
+    "final_observation": {
+      "frontend": 3959,
+      "backend": 3262
+    },
+    "report": "03-after.json"
+  },
+  {
+    "run": 4,
+    "version": "before",
+    "exit_code": 1,
+    "status": "failed",
+    "completed_requests": 10000,
+    "wall_seconds": 13.545403,
+    "cpu_seconds": {
+      "loader": 14.994816,
+      "backend": 9.68,
+      "proxy": 4.18
+    },
+    "prepare_cpu_seconds": 1.49322,
+    "prepare_units": 30002,
+    "loop_calls": 25909,
+    "timer_cpu_seconds": {
+      "main": {
+        "timer_cancel": 1.446716,
+        "timer_update": 0.781547,
+        "timer_expire": 0.025107
+      },
+      "workers": {
+        "timer_cancel": 1.697555,
+        "timer_update": 1.872852,
+        "timer_expire": 0.0
+      }
+    },
+    "timer_units": {
+      "main": {
+        "timer_cancel": 74709539,
+        "timer_update": 24907727
+      },
+      "workers": {
+        "timer_cancel": 49803423,
+        "timer_update": 24904993
+      }
+    },
+    "first_snapshot": {
+      "frontend": 3176,
+      "backend": 2489
+    },
+    "final_observation": {
+      "frontend": 3009,
+      "backend": 2400
+    },
+    "report": "04-before.json"
+  },
+  {
+    "run": 5,
+    "version": "before",
+    "exit_code": 1,
+    "status": "failed",
+    "completed_requests": 10000,
+    "wall_seconds": 9.35726,
+    "cpu_seconds": {
+      "loader": 11.067812,
+      "backend": 6.84,
+      "proxy": 2.62
+    },
+    "prepare_cpu_seconds": 0.845073,
+    "prepare_units": 26777,
+    "loop_calls": 22443,
+    "timer_cpu_seconds": {
+      "main": {
+        "timer_cancel": 1.151209,
+        "timer_update": 0.646356,
+        "timer_expire": 0.018096
+      },
+      "workers": {
+        "timer_cancel": 1.245328,
+        "timer_update": 1.427948,
+        "timer_expire": 0.0
+      }
+    },
+    "timer_units": {
+      "main": {
+        "timer_cancel": 97372345,
+        "timer_update": 33343514
+      },
+      "workers": {
+        "timer_cancel": 61496085,
+        "timer_update": 33343375
+      }
+    },
+    "first_snapshot": {
+      "frontend": 5045,
+      "backend": 4139
+    },
+    "final_observation": {
+      "frontend": 4913,
+      "backend": 3976
+    },
+    "report": "05-before.json"
+  },
+  {
+    "run": 6,
+    "version": "after",
+    "exit_code": 1,
+    "status": "failed",
+    "completed_requests": 10000,
+    "wall_seconds": 8.840007,
+    "cpu_seconds": {
+      "loader": 11.220406,
+      "backend": 3.63,
+      "proxy": 2.62
+    },
+    "prepare_cpu_seconds": 0.473176,
+    "prepare_units": 28104,
+    "loop_calls": 29955,
+    "timer_cpu_seconds": {
+      "main": {
+        "timer_cancel": 0.031136,
+        "timer_update": 0.009939,
+        "timer_expire": 0.025051
+      },
+      "workers": {
+        "timer_cancel": 0.003262,
+        "timer_update": 0.019453,
+        "timer_expire": 0.0
+      }
+    },
+    "timer_units": {
+      "main": {
+        "timer_cancel": 190086,
+        "timer_update": 9999
+      },
+      "workers": {
+        "timer_cancel": 0,
+        "timer_update": 9999
+      }
+    },
+    "first_snapshot": {
+      "frontend": 5582,
+      "backend": 4345
+    },
+    "final_observation": {
+      "frontend": 5265,
+      "backend": 4017
+    },
+    "report": "06-after.json"
+  }
+]

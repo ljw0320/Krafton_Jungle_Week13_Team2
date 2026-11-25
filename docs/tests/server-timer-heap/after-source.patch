@@ -1,0 +1,256 @@
+diff --git a/Makefile b/Makefile
+index a7d1961..78c2823 100644
+--- a/Makefile
++++ b/Makefile
+@@ -54,7 +54,7 @@ check_keep_alive: all
+ 	python3 src/tests/run_keep_alive_checks.py --output keep-alive-report.json
+ 
+ clean:
+-	rm -f test_server_epoll test_proxy_reactor webserver reverse_proxy test_proxy_headers test_proxy_state test_http test_drain test_context test_context_pool cgi-bin/adder
++	rm -f test_timer_heap test_server_epoll test_proxy_reactor webserver reverse_proxy test_proxy_headers test_proxy_state test_http test_drain test_context test_context_pool cgi-bin/adder
+ 
+ PROXY_SOURCES = proxy/main.c proxy/headers.c src/http.c
+ reverse_proxy: $(PROXY_SOURCES) proxy/proxy.h proxy/reactor.h proxy/profile.h src/http.h common/runtime.h
+@@ -81,3 +81,6 @@ test_proxy_reactor: proxy/tests/test_reactor.c proxy/proxy.h proxy/reactor.h com
+ # Real epoll sockets and the existing scheduler/worker implementation.
+ test_server_epoll: src/tests/test_server_epoll.c src/server.c $(CONNECTION_SOURCES) src/thread_pool.c src/timers.c $(HEADERS)
+ 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc src/tests/test_server_epoll.c $(CONNECTION_SOURCES) src/thread_pool.c src/timers.c -o $@ $(LDLIBS)
++
++test_timer_heap: src/tests/test_timer_heap.c src/server.c $(CONNECTION_SOURCES) src/thread_pool.c src/timers.c $(HEADERS)
++	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc src/tests/test_timer_heap.c $(CONNECTION_SOURCES) src/thread_pool.c src/timers.c -o $@ $(LDLIBS)
+diff --git a/src/main.c b/src/main.c
+index f07adaa..20603d6 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -70,6 +70,7 @@ static void server_cleanup(struct server *server, int listener)
+     check_thread(pthread_cond_destroy(&server->ready));
+     check_thread(pthread_mutex_destroy(&server->mutex));
+ 
++    free(server->timer_heap);
+     free(server->clients);
+     puts("[server] stopped");
+ }
+diff --git a/src/server.h b/src/server.h
+index 9136004..5ab64f1 100644
+--- a/src/server.h
++++ b/src/server.h
+@@ -73,7 +73,7 @@ struct connection {
+     bool cgi_reserved;
+     bool file_reserved;
+     struct connection *free_next;
+-    struct connection *timer_next;
++    size_t timer_position; /* 1-based heap position; zero means absent. */
+     int64_t expires;
+     bool pending, control_queued;
+     struct connection *pending_prev, *pending_next;
+@@ -124,7 +124,8 @@ struct server {
+     int capacity;
+     struct context_pool contexts;
+     struct connection *free_clients;
+-    struct connection *timers;
++    struct connection **timer_heap;
++    size_t timer_count;
+     struct connection *control_head, *control_tail;
+     struct connection *pending_head, *pending_tail;
+     bool slots_initialized;
+diff --git a/src/tests/context_fixture.h b/src/tests/context_fixture.h
+index b325571..65b5b93 100644
+--- a/src/tests/context_fixture.h
++++ b/src/tests/context_fixture.h
+@@ -24,6 +24,7 @@ static inline void fixture_finish(void)
+ {
+     expect_count("owners after cleanup", used_contexts(&fixture_server.contexts), 0);
+     context_pool_destroy(&fixture_server.contexts);
++    free(fixture_server.timer_heap);
+     free(fixture_server.clients);
+ }
+ 
+diff --git a/src/tests/test_scheduler.c b/src/tests/test_scheduler.c
+index fa5bfb9..f1e06fb 100644
+--- a/src/tests/test_scheduler.c
++++ b/src/tests/test_scheduler.c
+@@ -35,14 +35,14 @@ int main(void)
+     a->state = b->state = WAITING;
+     a->progress = now_ms(); b->progress = a->progress - 100;
+     timer_update(&server, a); timer_update(&server, b);
+-    CHECK(server.timers == b && b->timer_next == a);
++    CHECK(server.timer_count == 2 && server.timer_heap[0] == b && a->timer_position == 2);
+     b->progress += 200; timer_update(&server, b);
+-    CHECK(server.timers == a && a->timer_next == b);
+-    timer_cancel(&server, a); CHECK(server.timers == b);
++    CHECK(server.timer_count == 2 && server.timer_heap[0] == a && b->timer_position == 2);
++    timer_cancel(&server, a); CHECK(server.timer_count == 1 && server.timer_heap[0] == b);
+     a->progress = b->progress = now_ms() - RECV_TIMEOUT_MS - 1;
+     timer_update(&server, a); timer_update(&server, b);
+     timer_expire(&server);
+-    CHECK(a->state == FREE && b->state == FREE && server.timers == NULL);
++    CHECK(a->state == FREE && b->state == FREE && server.timer_count == 0);
+     CHECK(server.free_clients == b);
+     for (int i = 2; i < MAX_CONNECTIONS; i++) connection_close(&server.clients[i]);
+     CHECK(server.contexts.wait_count == 0);
+@@ -56,6 +56,6 @@ int main(void)
+     CHECK(atomic_load(&server.active_cgi) == 0);
+     puts("scheduler: slots, saturation, retry, duplicate, timer order/update/cancel/expiry passed");
+     context_pool_destroy(&server.contexts);
+-    free(server.clients);
++    free(server.timer_heap); free(server.clients);
+     return 0;
+ }
+diff --git a/src/tests/test_server_epoll.c b/src/tests/test_server_epoll.c
+index adae363..192794a 100644
+--- a/src/tests/test_server_epoll.c
++++ b/src/tests/test_server_epoll.c
+@@ -44,7 +44,7 @@ static void test_pending_fifo(void)
+     }
+     CHECK(!server.pending_head && !server.pending_tail);
+     CHECK(!server.control_head && !server.control_tail);
+-    context_pool_destroy(&server.contexts); free(server.clients);
++    context_pool_destroy(&server.contexts); free(server.timer_heap); free(server.clients);
+     CHECK(pthread_cond_destroy(&server.ready) == 0);
+ }
+ 
+@@ -73,7 +73,7 @@ static void test_buffer_resume_fifo(void)
+     resume_contexts(&server);
+     CHECK(second->state == FREE && server.contexts.wait_count == 0);
+     for (int i = 0; i < 10; i++) { connection_close(&server.clients[i]); close(peers[i]); }
+-    context_pool_destroy(&server.contexts); free(server.clients);
++    context_pool_destroy(&server.contexts); free(server.timer_heap); free(server.clients);
+     CHECK(pthread_cond_destroy(&server.ready) == 0);
+ }
+ 
+@@ -157,7 +157,7 @@ int main(void)
+     connection_close(c); close(pair[1]);
+     close(server.epoll_fd);
+     context_pool_destroy(&server.contexts);
+-    free(server.clients);
++    free(server.timer_heap); free(server.clients);
+     CHECK(pthread_mutex_destroy(&server.mutex) == 0);
+     CHECK(pthread_cond_destroy(&server.ready) == 0);
+     puts("server epoll: ONESHOT, rearm, duplicate/stale events, slot reuse, CGI switch/EOF, errors passed");
+diff --git a/src/timers.c b/src/timers.c
+index e981d32..97bbcd1 100644
+--- a/src/timers.c
++++ b/src/timers.c
+@@ -31,6 +31,8 @@ void slots_init(struct server *server)
+ {
+     server->capacity = runtime_limit("JUNGLE_CONNECTIONS", MAX_CONNECTIONS, 65536);
+     server->clients = runtime_alloc((size_t)server->capacity, sizeof(*server->clients));
++    server->timer_heap = runtime_alloc((size_t)server->capacity, sizeof(*server->timer_heap));
++    server->timer_count = 0;
+     server->free_clients = NULL;
+     for (int i = server->capacity - 1; i >= 0; i--) {
+         server->clients[i].server = server;
+@@ -40,31 +42,84 @@ void slots_init(struct server *server)
+     server->slots_initialized = true;
+ }
+ 
++/* Callers hold server->mutex. Heap positions are 1-based to survive memset(0).
++ * Comparisons are counted for profiling; equal deadlines need no stable order. */
++static bool timer_less(struct server *server, size_t a, size_t b, uint64_t *visits)
++{
++    (*visits)++;
++    return server->timer_heap[a]->expires < server->timer_heap[b]->expires;
++}
++
++static void timer_swap(struct server *server, size_t a, size_t b)
++{
++    struct connection *client = server->timer_heap[a];
++    server->timer_heap[a] = server->timer_heap[b];
++    server->timer_heap[b] = client;
++    server->timer_heap[a]->timer_position = a + 1;
++    server->timer_heap[b]->timer_position = b + 1;
++}
++
++static void timer_fix(struct server *server, size_t at, uint64_t *visits)
++{
++    if (at && timer_less(server, at, (at - 1) / 2, visits)) {
++        do {
++            size_t parent = (at - 1) / 2;
++            if (!timer_less(server, at, parent, visits)) break;
++            timer_swap(server, at, parent);
++            at = parent;
++        } while (at);
++    } else {
++        while (at * 2 + 1 < server->timer_count) {
++            size_t child = at * 2 + 1;
++            if (child + 1 < server->timer_count && timer_less(server, child + 1, child, visits)) child++;
++            if (!timer_less(server, child, at, visits)) break;
++            timer_swap(server, at, child);
++            at = child;
++        }
++    }
++}
++
+ void timer_cancel(struct server *server, struct connection *client)
+ {
+     struct server_stamp stamp = server_profile_begin();
+     uint64_t visits = 0;
+-    struct connection **at = &server->timers;
+-    while (*at && *at != client) { at = &(*at)->timer_next; visits++; }
+-    if (*at) *at = client->timer_next;
+-    client->timer_next = NULL;
++    if (client->timer_position) {
++        size_t at = client->timer_position - 1;
++        size_t last = --server->timer_count;
++        client->timer_position = 0;
++        if (at != last) {
++            server->timer_heap[at] = server->timer_heap[last];
++            server->timer_heap[at]->timer_position = at + 1;
++        }
++        server->timer_heap[last] = NULL;
++        if (at != last) timer_fix(server, at, &visits);
++    }
+     server_profile_end(SP_TIMER_CANCEL, stamp, visits);
+ }
+ 
+ void timer_update(struct server *server, struct connection *client)
+ {
+     struct server_stamp stamp = server_profile_begin();
+-    timer_cancel(server, client);
+-    if (client->state != WAITING) { server_profile_end(SP_TIMER_UPDATE, stamp, 0); return; }
++    if (client->state != WAITING) {
++        timer_cancel(server, client);
++        server_profile_end(SP_TIMER_UPDATE, stamp, 0);
++        return;
++    }
+     client->expires = connection_deadline(client);
+     if (client->phase == CGI_OUTPUT)
+         client->expires = client->cgi.next_check < client->cgi.deadline ?
+                           client->cgi.next_check : client->cgi.deadline;
+-    struct connection **at = &server->timers;
++    if (!client->timer_position) {
++        /* Only server-owned slots can register, at most one timer per slot. */
++        if (server->timer_count >= (size_t)server->capacity) {
++            fprintf(stderr, "timer heap capacity invariant failed\n");
++            abort();
++        }
++        server->timer_heap[server->timer_count++] = client;
++        client->timer_position = server->timer_count;
++    }
+     uint64_t visits = 0;
+-    while (*at && (*at)->expires <= client->expires) { at = &(*at)->timer_next; visits++; }
+-    client->timer_next = *at;
+-    *at = client;
++    timer_fix(server, client->timer_position - 1, &visits);
+     server_profile_end(SP_TIMER_UPDATE, stamp, visits);
+ }
+ 
+@@ -73,9 +128,9 @@ int timer_expire(struct server *server)
+     struct server_stamp stamp = server_profile_begin();
+     uint64_t expired = 0;
+     int64_t now = now_ms();
+-    while (server->timers && server->timers->expires <= now) {
++    while (server->timer_count && server->timer_heap[0]->expires <= now) {
+         expired++;
+-        struct connection *client = server->timers;
++        struct connection *client = server->timer_heap[0];
+         timer_cancel(server, client);
+         if (client->phase == CGI_OUTPUT) enqueue_turn(server, client);
+         else {
+@@ -84,5 +139,5 @@ int timer_expire(struct server *server)
+         }
+     }
+     server_profile_end(SP_TIMER_EXPIRE, stamp, expired);
+-    return server->timers ? (int)(server->timers->expires - now) : -1;
++    return server->timer_count ? (int)(server->timer_heap[0]->expires - now) : -1;
+ }

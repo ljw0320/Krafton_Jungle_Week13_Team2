@@ -6,6 +6,7 @@ import io
 import json
 from pathlib import Path
 import platform
+import shutil
 import statistics
 import subprocess
 import sys
@@ -30,7 +31,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--output-dir', type=Path,
                         help='Result directory (default: artifacts/server-queues-<timestamp>)')
+    parser.add_argument('--before', default=COMMITS['before'], help='Baseline commit')
+    after = parser.add_mutually_exclusive_group()
+    after.add_argument('--after', default=None, help='Candidate commit')
+    after.add_argument('--after-worktree', action='store_true', help='Overlay current source on HEAD for candidate')
     args = parser.parse_args()
+    commits = {'before': args.before, 'after': 'HEAD' if args.after_worktree else (args.after or COMMITS['after'])}
     OUTPUT = (args.output_dir or
               ROOT / 'artifacts' / ('server-queues-' + datetime.now().strftime('%Y%m%d-%H%M%S-%f'))).resolve()
     OUTPUT.mkdir(parents=True, exist_ok=True)
@@ -38,7 +44,7 @@ def main():
         raise RuntimeError('Existing measurement results must be preserved; choose a new --output-dir')
     started = time.monotonic()
     metadata = dict(commits={k: call(['git', 'rev-parse', v]).decode().strip()
-                             for k, v in COMMITS.items()}, order=ORDER,
+                             for k, v in commits.items()}, order=ORDER,
         compiler=call(['cc', '--version']).decode().splitlines()[0],
         kernel=platform.release(), python=sys.version, warmup=False,
         condition='10000 empty POST, concurrency4, contexts8, capacity11000, both profiles on; one round; no loader changes',
@@ -53,6 +59,20 @@ def main():
                             'src', 'common', 'proxy', 'Makefile', 'tests/check_capacity.py'])
             with zipfile.ZipFile(io.BytesIO(archive)) as zipped:
                 zipped.extractall(str(target))
+            if name == 'after' and args.after_worktree:
+                # Snapshot source only, never copy active checkout binaries into a build.
+                for section in ('src', 'common', 'proxy'):
+                    for source in (ROOT / section).rglob('*'):
+                        if source.is_file() and source.suffix in ('.c', '.h'):
+                            destination = target / source.relative_to(ROOT)
+                            destination.parent.mkdir(parents=True, exist_ok=True)
+                            shutil.copyfile(str(source), str(destination))
+                shutil.copyfile(str(ROOT / 'Makefile'), str(target / 'Makefile'))
+                metadata['after_source'] = 'uncommitted working tree over HEAD'
+                (OUTPUT / 'after-source.patch').write_bytes(call(['git', 'diff', 'HEAD', '--', 'src', 'common', 'proxy', 'Makefile']))
+            metadata.setdefault('source_sha256', {})[name] = {
+                str(f.relative_to(target)): digest(f) for f in sorted(target.rglob('*'))
+                if f.is_file() and (f.suffix in ('.c', '.h') or f.name == 'Makefile')}
             build = call(['make', 'webserver'], target)
             (OUTPUT / (name + '-build.log')).write_bytes(build)
             builds[name] = target
@@ -90,6 +110,12 @@ def main():
                 completed_requests=requests, wall_seconds=request['wall_seconds'],
                 cpu_seconds=request['cpu_seconds'], prepare_cpu_seconds=prep['cpu_seconds'],
                 prepare_units=prep['units'], loop_calls=main_metrics['epoll_wait']['calls'],
+                timer_cpu_seconds={role: {metric: result['server_profile'][role][metric]['cpu_seconds']
+                    for metric in ('timer_cancel', 'timer_update', 'timer_expire')}
+                    for role in ('main', 'workers')},
+                timer_units={role: {metric: result['server_profile'][role][metric]['units']
+                    for metric in ('timer_cancel', 'timer_update')}
+                    for role in ('main', 'workers')},
                 first_snapshot=result['timings'][1].get('observed_established'),
                 final_observation=result.get('observed_established'), report=output.name)
             runs.append(row)
