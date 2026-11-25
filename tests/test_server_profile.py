@@ -50,6 +50,17 @@ def run(enabled):
             for value in metrics.values():
                 assert all(v >= 0 for v in value.values())
         worker = profile['workers']
+        assert worker['nonterminal_turn']['calls'] >= 4
+        assert worker['nonterminal_pending_wall_only']['calls'] == worker['nonterminal_turn']['calls']
+        assert worker['nonterminal_queue_wall_only']['calls'] == worker['nonterminal_turn']['calls']
+        assert worker['nonterminal_turn']['calls'] <= worker['request_turn']['calls']
+        assert worker['request_turn']['max_wall_seconds'] > 0
+        assert worker['request_turn']['max_cpu_seconds'] > 0
+        assert worker['queue_residence_wall_only']['calls'] == worker['queue_take']['units']
+        pending = profile['main']['pending_residence_wall_only']
+        assert pending['calls'] >= 4
+        assert pending['max_wall_seconds'] > 0
+        assert pending['cpu_seconds'] == pending['max_cpu_seconds'] == 0
         assert worker['request_turn']['calls'] >= 4
         assert worker['queue_take']['units'] == worker['request_turn']['calls']
         assert worker['publish_result']['calls'] == worker['request_turn']['calls']

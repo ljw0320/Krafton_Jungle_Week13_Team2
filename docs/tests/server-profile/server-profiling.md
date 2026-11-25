@@ -89,3 +89,68 @@ JUNGLE_PROFILE=1 python3 proxy/tests/test_proxy.py
 확인했다. 스케줄러·타이머 검사와 기존 TCP 11개도 실행한다.
 
 후속 완료 큐 적용 후 prepare_scan은 prepare_changed로 바뀌며 units도 변경·선두 확인 수이다. 상세는 [완료 큐·배정 FIFO](../server-queues/server-queues.md)에 있다.
+
+
+## 후속: 작업 배정·큐 대기 지연 진단
+
+JUNGLE_PROFILE=1에서 기존 누적 계측에 max_wall_seconds와 max_cpu_seconds를
+추가했다. 최대값은 작업자별 최대값 중 최대이며, 평균 wall은 wall_seconds/calls다.
+스레드별 집계 후 종료 시 병합하므로 요청별 로그나 계측용 공용 잠금을 추가하지 않는다.
+기본 비활성·기존 스케줄링 정책을 유지한다.
+
+pending_residence_wall_only는 배정 FIFO 등록부터 작업 큐 이동 직전까지,
+queue_residence_wall_only는 작업 큐 등록부터 워커 인출까지 측정한다.
+이벤트가 커널에서 준비된 시점부터 메인이 감지하기 전까지의 대기는 포함하지 않는다.
+배정 취소·종료로 큐에 들어가지 못한 항목도 pending 완료 통계에는 포함하지 않는다.
+
+전체 집계에는 시험 종료의 대량 EOF 처리가 섞이므로 nonterminal_pending_wall_only,
+nonterminal_queue_wall_only, nonterminal_turn을 추가했다. 이들은 process_turn 반환 후
+종료 사유(reason)가 없는 작업만 집계한다. HTTP 요청 단위가 아닌 워커 작업 차례
+단위이며, EOF·오류로 끝난 차례는 제외한다. 종료 처리 중의 모든 비용을 완벽하게
+분리한 통계는 아니다. nonterminal_turn은 전체 request_turn 구간과 중첩되므로
+합산하지 않는다. 잠금·타이머 등 다른 중첩 구간도 합산하지 않는다.
+
+### 단회 결과
+
+공유 WSL, 빈 POST, 목표 10,000개, 동시 요청 4개, 버퍼 각각 8개,
+서버·프록시 내부 프로파일과 생성기 시각 계측을 활성화했다.
+
+| 구간 | 평균 wall | 최대 wall |
+| --- | --- | --- |
+| 계속 서비스한 작업의 배정 FIFO 대기 | 0.003039ms | 2.324ms |
+| 계속 서비스한 작업의 작업 큐 대기 | 0.086731ms | 5.096ms |
+| 계속 서비스한 작업의 워커 처리 | 0.070526ms | 5.577ms |
+| 워커 server mutex 획득 (종료 포함) | 0.010858ms | 4.248ms |
+| 생성기 유지 요청 예정→송신 | 105.374ms | 550.254ms |
+| 생성기 유지 요청 송신→응답 | 0.553351ms | 74.051ms |
+
+10,000개 연결 유지 시험은 통과했고 실행 시간은 32.743672초다.
+반면 종료·오류를 포함한 전체 pending 대기는 평균 5.343ms·최대 311.000ms였다.
+같은 실행에서 nonterminal pending 평균은 0.003039ms이므로 전체 pending 값을
+그대로 서비스 요청 배정 병목으로 해석할 수 없다.
+
+이번 통과 실행에서는 워커 작업 큐에 수백 ms 수준의 대기가 확인되지 않았다.
+생성기의 전송 전 대기가 상대적으로 크지만 그 근본 원인이 생성기 코드,
+동시 요청 상한, 다른 프로세스 처리, OS 스케줄링 중 무엇인지는 확정하지 못한다.
+서버 계측은 이벤트 감지 이후의 차례 단위이며 프록시 처리 시간과 커널 준비 대기는
+별도다. 최대값끼리는 같은 요청·시점이 아니므로 합산하거나 인과관계로 연결하지 않는다.
+과거 실패 실행은 이 계측이 없었으므로 이번 결과로 실패 원인을 소급 확정하지 않는다.
+계측 오버헤드가 있어 과거 프로파일 비활성 실행과 성능 개선율로 비교하지 않는다.
+
+### 검증·재현
+
+스케줄러·epoll 검사와 프로파일 비활성 무출력, 활성 JSON·작업자 집계,
+nonterminal 대기·처리 건수 일치 및 HTTP 응답 동일성 검사가 통과했다.
+
+```sh
+make all test_scheduler test_server_epoll
+./test_scheduler
+./test_server_epoll
+python3 tests/test_server_profile.py
+python3 tests/check_c10k.py --connections 10000 --profile --output artifacts/c10k-server-stages-10000.json
+```
+
+원본 JSON에는 바이너리 SHA256과 서버·프록시 내부 계측이 함께 들어 있다.
+이전 계측 형식의 baseline 및 종료 포함 계측 진단은 각각
+artifacts/c10k-server-stages-baseline-10000.json,
+artifacts/c10k-server-stages-inclusive-10000.json으로 구분했다.

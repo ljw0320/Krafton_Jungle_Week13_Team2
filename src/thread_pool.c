@@ -22,6 +22,7 @@ static struct connection *take_job(struct server *server)
         server->head = (server->head + 1) % QUEUE_CAPACITY;
         server->count--;
         client->state = RUNNING;
+        client->profile_taken_at = server_profile_wall();
         server_profile_residence(client->profile_queued_at);
     }
 
@@ -44,6 +45,12 @@ static void *worker_main(void *argument)
         struct server_stamp stamp = server_profile_begin();
         process_turn(server, client);
         server_profile_end(SP_REQUEST_TURN, stamp, 1);
+        /* Exclude turns ending in EOF/error, especially the bulk test teardown. */
+        if (!client->reason) {
+            server_profile_end(SP_ACTIVE_TURN, stamp, 1);
+            server_profile_active_waits(client->profile_pending_at,
+                client->profile_queued_at, client->profile_taken_at);
+        }
 
         check_thread(server_profile_lock(&server->mutex));
         stamp = server_profile_begin();
@@ -78,6 +85,7 @@ void dispatch_pending(struct server *server)
 {
     while (server->pending_head && server->count < QUEUE_CAPACITY) {
         struct connection *client = server->pending_head;
+        server_profile_pending(client->profile_pending_at);
         pending_remove(server, client);
         timer_cancel(server, client);
         client->profile_queued_at = server_profile_wall();
@@ -102,6 +110,7 @@ void enqueue_turn(struct server *server, struct connection *client)
         else server->pending_head = client;
         server->pending_tail = client;
         client->pending = true;
+        client->profile_pending_at = server_profile_wall();
     }
     size_t before = server->count;
     dispatch_pending(server);

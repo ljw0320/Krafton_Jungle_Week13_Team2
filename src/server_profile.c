@@ -5,7 +5,7 @@
 #include <string.h>
 #include <time.h>
 
-struct metric { uint64_t calls, wall, cpu, units; };
+struct metric { uint64_t calls, wall, cpu, units, max_wall, max_cpu; };
 static bool enabled; /* immutable after start, before pthread_create */
 static _Thread_local struct metric local[SP_COUNT];
 static _Thread_local int role;
@@ -37,8 +37,12 @@ void server_profile_end(enum server_stage stage, struct server_stamp stamp, uint
     if (!enabled) return;
     int error = errno;
     local[stage].calls++;
-    local[stage].cpu += (uint64_t)(profile_clock(CLOCK_THREAD_CPUTIME_ID)-stamp.cpu);
-    local[stage].wall += (uint64_t)(profile_clock(CLOCK_MONOTONIC)-stamp.wall);
+    uint64_t cpu = (uint64_t)(profile_clock(CLOCK_THREAD_CPUTIME_ID)-stamp.cpu);
+    uint64_t wall = (uint64_t)(profile_clock(CLOCK_MONOTONIC)-stamp.wall);
+    local[stage].cpu += cpu;
+    local[stage].wall += wall;
+    if (wall > local[stage].max_wall) local[stage].max_wall = wall;
+    if (cpu > local[stage].max_cpu) local[stage].max_cpu = cpu;
     local[stage].units += units;
     errno = error;
 }
@@ -50,13 +54,26 @@ int64_t server_profile_wall(void)
     errno = error;
     return now;
 }
-void server_profile_residence(int64_t queued)
+static void record_wait(enum server_stage stage, uint64_t wall)
+{
+    local[stage].calls++;
+    local[stage].wall += wall;
+    local[stage].units++;
+    if (wall > local[stage].max_wall) local[stage].max_wall = wall;
+}
+static void residence(enum server_stage stage, int64_t queued)
 {
     if (!enabled || !queued) return;
-    local[SP_QUEUE_RESIDENCE].calls++;
-    local[SP_QUEUE_RESIDENCE].wall += (uint64_t)(server_profile_wall()-queued);
-    local[SP_QUEUE_RESIDENCE].units++;
+    record_wait(stage, (uint64_t)(server_profile_wall()-queued));
 }
+void server_profile_active_waits(int64_t pending, int64_t queued, int64_t taken)
+{
+    if (!enabled || !pending || !queued || !taken) return;
+    record_wait(SP_ACTIVE_PENDING, (uint64_t)(queued-pending));
+    record_wait(SP_ACTIVE_QUEUE, (uint64_t)(taken-queued));
+}
+void server_profile_residence(int64_t queued) { residence(SP_QUEUE_RESIDENCE, queued); }
+void server_profile_pending(int64_t queued) { residence(SP_PENDING_RESIDENCE, queued); }
 int server_profile_lock(pthread_mutex_t *mutex)
 {
     struct server_stamp stamp = server_profile_begin();
@@ -74,6 +91,8 @@ void server_profile_flush(void)
         total[role][i].wall += local[i].wall;
         total[role][i].cpu += local[i].cpu;
         total[role][i].units += local[i].units;
+        if (local[i].max_wall > total[role][i].max_wall) total[role][i].max_wall = local[i].max_wall;
+        if (local[i].max_cpu > total[role][i].max_cpu) total[role][i].max_cpu = local[i].max_cpu;
     }
     memset(local, 0, sizeof(local));
     check_thread(pthread_mutex_unlock(&merge_mutex));
@@ -84,14 +103,14 @@ void server_profile_report(void)
     server_profile_flush(); /* called by main only after all workers joined */
     const char *names[] = {"prepare_changed", "epoll_wait", "ready_dispatch", "accept", "notification_drain",
         "timer_cancel", "timer_update", "timer_expire", "server_mutex_wait", "queue_take",
-        "queue_enqueue", "worker_idle_condwait", "request_turn", "publish_result", "notify_main", "queue_residence_wall_only"};
+        "queue_enqueue", "worker_idle_condwait", "request_turn", "publish_result", "notify_main", "queue_residence_wall_only", "pending_residence_wall_only", "nonterminal_pending_wall_only", "nonterminal_queue_wall_only", "nonterminal_turn"};
     fprintf(stderr, "[server_profile] {");
     for (int group = 0; group < 2; group++) {
         fprintf(stderr, "%s\"%s\":{", group ? "," : "", group ? "workers" : "main");
         for (int i = 0; i < SP_COUNT; i++) {
             struct metric *m = &total[group][i];
-            fprintf(stderr, "%s\"%s\":{\"calls\":%" PRIu64 ",\"wall_seconds\":%.6f,\"cpu_seconds\":%.6f,\"units\":%" PRIu64 "}",
-                i ? "," : "", names[i], m->calls, m->wall/1e9, m->cpu/1e9, m->units);
+            fprintf(stderr, "%s\"%s\":{\"calls\":%" PRIu64 ",\"wall_seconds\":%.6f,\"cpu_seconds\":%.6f,\"units\":%" PRIu64 ",\"max_wall_seconds\":%.9f,\"max_cpu_seconds\":%.9f}",
+                i ? "," : "", names[i], m->calls, m->wall/1e9, m->cpu/1e9, m->units, m->max_wall/1e9, m->max_cpu/1e9);
         }
         fprintf(stderr, "}");
     }
