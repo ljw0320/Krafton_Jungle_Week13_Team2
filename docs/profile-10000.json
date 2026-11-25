@@ -1,0 +1,51 @@
+{
+  "status": "failed",
+  "connections": 10000,
+  "configured_connections": 11000,
+  "contexts_each": 8,
+  "empty_body": true,
+  "completed_requests": 10000,
+  "elapsed_seconds": 31.925,
+  "error_type": "AssertionError",
+  "error": "{'frontend': 1474, 'backend': 1188}",
+  "observed_established": {
+    "frontend": 1417,
+    "backend": 1127
+  },
+  "backend_accepts_including_probe": 10000,
+  "backend_close_reasons": {
+    "peer_closed": 8943
+  },
+  "fd_soft_test": 65536,
+  "timings": [
+    {
+      "phase": "requests_round_0",
+      "wall_seconds": 31.37938,
+      "cpu_seconds": {
+        "loader": 9.496604,
+        "backend": 21.7,
+        "proxy": 30.88
+      }
+    },
+    {
+      "phase": "connection_snapshot_round_0",
+      "wall_seconds": 0.234301,
+      "cpu_seconds": {
+        "loader": 0.236037,
+        "backend": 0.1,
+        "proxy": 0.16
+      },
+      "parts": {
+        "fd_enumeration_seconds": 0.062953,
+        "tcp_table_read_seconds": 0.142033,
+        "tcp_parse_seconds": 0.02792
+      },
+      "observed_established": {
+        "frontend": 1474,
+        "backend": 1188
+      },
+      "oldest_request_age_seconds": 31.597222
+    }
+  ],
+  "scope": "bounded-concurrency connection retention test; failure does not isolate loader/server bottleneck"
+}

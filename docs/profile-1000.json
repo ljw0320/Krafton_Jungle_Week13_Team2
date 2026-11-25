@@ -1,0 +1,51 @@
+{
+  "status": "passed",
+  "connections": 1000,
+  "configured_connections": 1100,
+  "contexts_each": 8,
+  "empty_body": true,
+  "requests": 1000,
+  "elapsed_seconds": 1.186,
+  "fd_soft_before": 10240,
+  "fd_soft_test": 65536,
+  "backend_accepts_excluding_probe": 1000,
+  "fd_counts_during": {
+    "backend": 1006,
+    "proxy": 2004
+  },
+  "final_established": {
+    "frontend": 0,
+    "backend": 0
+  },
+  "timings": [
+    {
+      "phase": "requests_round_0",
+      "wall_seconds": 1.156384,
+      "cpu_seconds": {
+        "loader": 0.891046,
+        "backend": 0.51,
+        "proxy": 0.95
+      }
+    },
+    {
+      "phase": "connection_snapshot_round_0",
+      "wall_seconds": 0.026695,
+      "cpu_seconds": {
+        "loader": 0.026779,
+        "backend": 0.0,
+        "proxy": 0.0
+      },
+      "parts": {
+        "fd_enumeration_seconds": 0.015099,
+        "tcp_table_read_seconds": 0.006876,
+        "tcp_parse_seconds": 0.004154
+      },
+      "observed_established": {
+        "frontend": 1000,
+        "backend": 1000
+      },
+      "oldest_request_age_seconds": 1.17223
+    }
+  ],
+  "scope": "bounded-concurrency POST echo heartbeats; connection retention/reuse, not throughput"
+}
