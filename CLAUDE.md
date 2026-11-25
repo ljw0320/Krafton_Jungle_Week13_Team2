@@ -8,6 +8,7 @@
 - 설계: `docs/architecture-tcp.md`. 구현 전에 해당 단계의 관련 절을 읽는다.
 - 설계(HTTP): `docs/architecture-http.md`
 - 설계(Proxy): `docs/architecture-proxy.md`. 다른 설계 문서와 다르면 프록시 단계에서는 이 문서를 따른다.
+- 설계(채팅): `docs/architecture-chat.md`. 다른 설계 문서와 다르면 채팅 단계에서는 이 문서를 따른다. 구현은 Codex가 `AGENTS.md`를 따라 한다.
 - 계획: `docs/superpowers/plans/`
 - 배운 점: `docs/lessons.md`. 작업 전에 읽는다.
 
@@ -21,10 +22,12 @@
 
 ## 명령어
 모든 명령은 WSL(Ubuntu 24.04)의 레포 루트에서 실행한다. Windows 쪽 Claude는 `wsl.exe -e bash -lc 'cd /mnt/d/kraftonjungle/kraftonjungle_week13/Krafton_Jungle_Week13_Team2 && <명령>'`로 감싼다.
-- 빌드: `make` (경고 0개여야 한다), `make asan` (`-fsanitize=address,undefined`), `make clean`
-- 테스트: `make test` (단위 테스트 `tests/test_http.c`, `tests/test_proxy.c`와 기능 테스트 `tests/http_test.sh`, `tests/proxy_test.sh`를 모두 실행한다). ASan: `make clean && make test CFLAGS='-std=gnu11 -Wall -Wextra -g -fsanitize=address,undefined'`
+- `make`로 `server`와 `chatd`를 빌드한다(경고 0개). `make asan`은 AddressSanitizer와 UndefinedBehaviorSanitizer를 켜고, `make clean`은 빌드 결과를 지운다.
+- `make test`는 HTTP·프록시·WebSocket 단위 테스트와 기능 테스트, 소규모 채팅 부하를 실행한다. 전체 부하는 일반 빌드에서 `make load`로 별도 실행한다. 두 명령은 같은 포트를 쓰므로 한 번에 하나씩 실행한다.
+- ASan 전체 테스트는 `make clean && make test CFLAGS='-std=gnu11 -Wall -Wextra -g -fsanitize=address,undefined'`로 실행한다. 이후 `make clean && make`로 일반 빌드를 복원한다.
 - 실행: `./server <port> <root> [<prefix>=<ip>:<port> ...]` (예: `./server 8080 /tmp/www /api/=127.0.0.1:8001`)
-- 그 밖의 검사: `make asan` 빌드로 같은 시나리오를 돌려 오류 0개, `valgrind --leak-check=full ./server 8080 /tmp/www`에서 `definitely lost: 0`
+- 채팅은 `bash tools/run_chat.sh`로 실행하고, 별도 터미널에서 `python3 tests/chat_bot.py echo`로 대화 상대를 띄운다. 직접 실행할 때는 `./chatd 9001`과 `./server 8080 www /ws/=127.0.0.1:9001`을 각각 띄운다.
+- Valgrind는 일반 빌드 후 별도 터미널에서 `valgrind --leak-check=full ./chatd 9001`과 `valgrind --leak-check=full ./server 8080 www /ws/=127.0.0.1:9001`로 실행한다. 채팅 연결을 닫은 뒤 두 프로세스를 종료하고 각각의 누수 요약을 확인한다.
 
 ## 제약
 - C 언어, 표준 C 라이브러리와 POSIX API만 쓴다. `libevent`, `libuv`, `nginx`, `Apache`, `mongoose` 같은 HTTP / 이벤트 루프 라이브러리는 금지다.
@@ -40,13 +43,15 @@
 - HTTP는 `http_init`, `http_parse`, `http_handle`, `http_keep_alive`, `http_proxy_request`, `http_proxy_response`로만 붙는다.
 - 프록시: 백엔드 연결은 `struct conn` 안의 `struct upstream`이고 A → B 방향으로만 닫는다. `loop_unwatch`가 지금 배치에 남은 그 대상의 이벤트를 지운다. 백엔드를 기다리는 동안 A는 `EPOLLERR`만 감시한다.
 - `SIGPIPE`는 무시하고 `EPIPE`로 처리한다.
+- WebSocket 터널은 기존 버퍼로 양방향 바이트를 중계한다. 한 방향에 덜 보낸 바이트가 있으면 그 방향의 읽기를 멈춘다.
+- `chatd`는 127.0.0.1에서 독립된 epoll 루프를 돌린다. 상대 큐가 차면 보낸 사람의 읽기를 멈추고 배치 끝에서 닫힌 연결을 해제한다. `chat/ws.c`와 `chat/room.c`에는 소켓 처리를 두지 않는다.
 
 ## 작업 방식
 - 구현 전에 계획을 확인하고, 작은 단위로 구현한다.
 - 단위마다 위 명령을 실행하고, 종료 코드가 0인 것을 확인한 뒤 완료로 보고한다.
 - 요구사항에 없는 기능은 구현하지 않고 제안만 한다.
 - 설계와 다르게 구현해야 하면 멈추고 보고한다.
-- 자동화 범위: 단위가 검증을 통과하면 `shw` 브랜치에 커밋과 push까지 확인 없이 한다. PR과 이슈는 사용자에게 묻는다.
+- 자동화 범위: 단위가 검증을 통과하면 `shw` 브랜치에 커밋과 push까지 확인 없이 한다. PR과 이슈는 사용자에게 묻는다. 채팅 단계는 `shw` 대신 `feat/chat`에서 같은 범위로 하고, `shw`로 머지하는 일은 사용자에게 묻는다.
 - 요구사항 변경, 설계 변경, 새 의존성 추가는 사용자에게 묻는다.
 - 그 밖에 메인 세션이 정한 판단은 이유와 틀렸을 때의 비용을 적어 마지막에 보고한다.
 - 에이전트가 확인하지 않았다고 보고한 항목은 메인 세션이 직접 확인한다.
