@@ -1,0 +1,756 @@
+{
+  "conditions": {
+    "connections": 10000,
+    "contexts_each": 8,
+    "empty_body": true,
+    "server_and_proxy_profile": true,
+    "order": "4,8,4,8,4,8",
+    "same_binary_sha256": true,
+    "heartbeat_seconds": 2,
+    "allowed_max_gap_seconds": 3.5,
+    "hold_seconds": 6,
+    "total_timeout_seconds": 60
+  },
+  "summary": {
+    "4": {
+      "passed": 3,
+      "runs": 3,
+      "elapsed_seconds": {
+        "median": 27.566887,
+        "minimum": 21.089344,
+        "maximum": 28.724702
+      },
+      "ramp_seconds": {
+        "median": 20.397704,
+        "minimum": 14.4257,
+        "maximum": 22.009563
+      },
+      "requests": {
+        "median": 104846,
+        "minimum": 87536,
+        "maximum": 121335
+      },
+      "metrics": {
+        "schedule_to_send": {
+          "median_mean_ms": 71.88253123448611,
+          "maximum_ms": 618.2917280020774
+        },
+        "slot_full_wait": {
+          "median_mean_ms": 35.39232588000795,
+          "maximum_ms": 341.54599795510876
+        },
+        "slot_available_wait": {
+          "median_mean_ms": 36.346353152766014,
+          "maximum_ms": 300.10240204865113
+        },
+        "admission_to_send": {
+          "median_mean_ms": 0.14385220171214466,
+          "maximum_ms": 70.7596909996937
+        },
+        "send_to_response": {
+          "median_mean_ms": 0.5075896885640673,
+          "maximum_ms": 55.16691599768819
+        },
+        "nonterminal_pending_wall_only": {
+          "median_mean_ms": 0.0028755676433016033,
+          "maximum_ms": 5.522653
+        },
+        "nonterminal_queue_wall_only": {
+          "median_mean_ms": 0.07636026702929906,
+          "maximum_ms": 11.739618
+        },
+        "nonterminal_turn": {
+          "median_mean_ms": 0.06500434334693206,
+          "maximum_ms": 6.129816
+        },
+        "server_mutex_wait": {
+          "median_mean_ms": 0.009582732203463817,
+          "maximum_ms": 5.7336339999999995
+        }
+      }
+    },
+    "8": {
+      "passed": 3,
+      "runs": 3,
+      "elapsed_seconds": {
+        "median": 15.190341,
+        "minimum": 14.971605,
+        "maximum": 17.621956
+      },
+      "ramp_seconds": {
+        "median": 8.051033,
+        "minimum": 7.980774,
+        "maximum": 10.893453
+      },
+      "requests": {
+        "median": 63108,
+        "minimum": 62769,
+        "maximum": 74194
+      },
+      "metrics": {
+        "schedule_to_send": {
+          "median_mean_ms": 32.01465452676972,
+          "maximum_ms": 345.0779969971336
+        },
+        "slot_full_wait": {
+          "median_mean_ms": 7.978968982688252,
+          "maximum_ms": 122.29686801583739
+        },
+        "slot_available_wait": {
+          "median_mean_ms": 23.756978253063746,
+          "maximum_ms": 278.3861470015836
+        },
+        "admission_to_send": {
+          "median_mean_ms": 0.27870729101771685,
+          "maximum_ms": 35.423057997832075
+        },
+        "send_to_response": {
+          "median_mean_ms": 0.7857475142712241,
+          "maximum_ms": 37.59543599880999
+        },
+        "nonterminal_pending_wall_only": {
+          "median_mean_ms": 0.00888473609584349,
+          "maximum_ms": 7.140476
+        },
+        "nonterminal_queue_wall_only": {
+          "median_mean_ms": 0.10542535327948509,
+          "maximum_ms": 6.963978
+        },
+        "nonterminal_turn": {
+          "median_mean_ms": 0.06730943202954416,
+          "maximum_ms": 15.072006
+        },
+        "server_mutex_wait": {
+          "median_mean_ms": 0.016911108837970538,
+          "maximum_ms": 10.720956000000001
+        }
+      }
+    }
+  },
+  "runs": [
+    {
+      "round": 1,
+      "concurrency": 4,
+      "status": "passed",
+      "error": null,
+      "elapsed_seconds": 27.566887,
+      "ramp_seconds": 20.397704,
+      "hold_seconds": 7.14606,
+      "requests": 104846,
+      "initialized": 10000,
+      "min_responses": 4,
+      "max_heartbeat_gap_seconds": 2.634103,
+      "snapshots": [
+        {
+          "seconds_at_start": 20.397704,
+          "counts": {
+            "frontend": 10000,
+            "backend": 10000
+          }
+        },
+        {
+          "seconds_at_start": 23.382002,
+          "counts": {
+            "frontend": 10000,
+            "backend": 10000
+          }
+        },
+        {
+          "seconds_at_start": 26.053161,
+          "counts": {
+            "frontend": 10000,
+            "backend": 10000
+          }
+        },
+        {
+          "seconds_at_start": 26.761513,
+          "counts": {
+            "frontend": 10000,
+            "backend": 10000
+          }
+        }
+      ],
+      "tcp_opens": 10000,
+      "backend_accepts": 10000,
+      "final_established": {
+        "frontend": 0,
+        "backend": 0
+      },
+      "binary_sha256": {
+        "webserver": "7ceb6406670bbe8bc98fbe161ecb2a5dce5f3541bb40dad77191df67d307256a",
+        "reverse_proxy": "0f484e7b1515b908790aae7abc91fdb17d6c015dc5777975fcab363085fb43e6"
+      },
+      "metrics": {
+        "schedule_to_send": {
+          "count": 94846,
+          "mean_ms": 78.11711875256657,
+          "max_ms": 618.2917280020774
+        },
+        "slot_full_wait": {
+          "count": 94846,
+          "mean_ms": 36.69602823156278,
+          "max_ms": 341.54599795510876
+        },
+        "slot_available_wait": {
+          "count": 94846,
+          "mean_ms": 41.273666720812834,
+          "max_ms": 300.10240204865113
+        },
+        "admission_to_send": {
+          "count": 94846,
+          "mean_ms": 0.14742380019096024,
+          "max_ms": 70.7596909996937
+        },
+        "send_to_response": {
+          "count": 94846,
+          "mean_ms": 0.5310461939272578,
+          "max_ms": 50.818901996535715
+        },
+        "nonterminal_pending_wall_only": {
+          "count": 104846,
+          "mean_ms": 0.002907502432138565,
+          "max_ms": 5.522653,
+          "cpu_seconds": 0.0
+        },
+        "nonterminal_queue_wall_only": {
+          "count": 104846,
+          "mean_ms": 0.07822576922343245,
+          "max_ms": 11.739618,
+          "cpu_seconds": 0.0
+        },
+        "nonterminal_turn": {
+          "count": 104846,
+          "mean_ms": 0.06580602025828358,
+          "max_ms": 6.129816,
+          "cpu_seconds": 6.818648
+        },
+        "server_mutex_wait": {
+          "count": 219556,
+          "mean_ms": 0.01100613055439159,
+          "max_ms": 4.195416000000001,
+          "cpu_seconds": 0.320171
+        }
+      }
+    },
+    {
+      "round": 1,
+      "concurrency": 8,
+      "status": "passed",
+      "error": null,
+      "elapsed_seconds": 14.971605,
+      "ramp_seconds": 7.980774,
+      "hold_seconds": 6.967369,
+      "requests": 63108,
+      "initialized": 10000,
+      "min_responses": 4,
+      "max_heartbeat_gap_seconds": 2.151837,
+      "snapshots": [
+        {
+          "seconds_at_start": 7.980774,
+          "counts": {
+            "frontend": 10000,
+            "backend": 10000
+          }
+        },
+        {
+          "seconds_at_start": 10.752167,
+          "counts": {
+            "frontend": 10000,
+            "backend": 10000
+          }
+        },
+        {
+          "seconds_at_start": 13.441499,
+          "counts": {
+            "frontend": 10000,
+            "backend": 10000
+          }
+        },
+        {
+          "seconds_at_start": 14.131918,
+          "counts": {
+            "frontend": 10000,
+            "backend": 10000
+          }
+        }
+      ],
+      "tcp_opens": 10000,
+      "backend_accepts": 10000,
+      "final_established": {
+        "frontend": 0,
+        "backend": 0
+      },
+      "binary_sha256": {
+        "webserver": "7ceb6406670bbe8bc98fbe161ecb2a5dce5f3541bb40dad77191df67d307256a",
+        "reverse_proxy": "0f484e7b1515b908790aae7abc91fdb17d6c015dc5777975fcab363085fb43e6"
+      },
+      "metrics": {
+        "schedule_to_send": {
+          "count": 53108,
+          "mean_ms": 32.01465452676972,
+          "max_ms": 150.64304099723813
+        },
+        "slot_full_wait": {
+          "count": 53108,
+          "mean_ms": 7.978968982688252,
+          "max_ms": 59.727906995249214
+        },
+        "slot_available_wait": {
+          "count": 53108,
+          "mean_ms": 23.756978253063746,
+          "max_ms": 107.73270700519788
+        },
+        "admission_to_send": {
+          "count": 53108,
+          "mean_ms": 0.27870729101771685,
+          "max_ms": 35.0081050019071
+        },
+        "send_to_response": {
+          "count": 53108,
+          "mean_ms": 0.7811374840554024,
+          "max_ms": 36.72737600209075
+        },
+        "nonterminal_pending_wall_only": {
+          "count": 63108,
+          "mean_ms": 0.008353140647778411,
+          "max_ms": 1.518342,
+          "cpu_seconds": 0.0
+        },
+        "nonterminal_queue_wall_only": {
+          "count": 63108,
+          "mean_ms": 0.10096407745452242,
+          "max_ms": 5.533695,
+          "cpu_seconds": 0.0
+        },
+        "nonterminal_turn": {
+          "count": 63108,
+          "mean_ms": 0.06630477910882931,
+          "max_ms": 5.685822999999999,
+          "cpu_seconds": 4.12877
+        },
+        "server_mutex_wait": {
+          "count": 137672,
+          "mean_ms": 0.016641931547446105,
+          "max_ms": 4.7703880000000005,
+          "cpu_seconds": 0.290617
+        }
+      }
+    },
+    {
+      "round": 2,
+      "concurrency": 4,
+      "status": "passed",
+      "error": null,
+      "elapsed_seconds": 28.724702,
+      "ramp_seconds": 22.009563,
+      "hold_seconds": 6.695291,
+      "requests": 121335,
+      "initialized": 10000,
+      "min_responses": 4,
+      "max_heartbeat_gap_seconds": 2.396517,
+      "snapshots": [
+        {
+          "seconds_at_start": 22.009563,
+          "counts": {
+            "frontend": 10000,
+            "backend": 10000
+          }
+        },
+        {
+          "seconds_at_start": 24.68443,
+          "counts": {
+            "frontend": 10000,
+            "backend": 10000
+          }
+        },
+        {
+          "seconds_at_start": 27.311535,
+          "counts": {
+            "frontend": 10000,
+            "backend": 10000
+          }
+        },
+        {
+          "seconds_at_start": 28.009776,
+          "counts": {
+            "frontend": 10000,
+            "backend": 10000
+          }
+        }
+      ],
+      "tcp_opens": 10000,
+      "backend_accepts": 10000,
+      "final_established": {
+        "frontend": 0,
+        "backend": 0
+      },
+      "binary_sha256": {
+        "webserver": "7ceb6406670bbe8bc98fbe161ecb2a5dce5f3541bb40dad77191df67d307256a",
+        "reverse_proxy": "0f484e7b1515b908790aae7abc91fdb17d6c015dc5777975fcab363085fb43e6"
+      },
+      "metrics": {
+        "schedule_to_send": {
+          "count": 111335,
+          "mean_ms": 71.88253123448611,
+          "max_ms": 395.83670599677134
+        },
+        "slot_full_wait": {
+          "count": 111335,
+          "mean_ms": 35.39232588000795,
+          "max_ms": 225.29377401951933
+        },
+        "slot_available_wait": {
+          "count": 111335,
+          "mean_ms": 36.346353152766014,
+          "max_ms": 194.72966500688926
+        },
+        "admission_to_send": {
+          "count": 111335,
+          "mean_ms": 0.14385220171214466,
+          "max_ms": 49.094251000497025
+        },
+        "send_to_response": {
+          "count": 111335,
+          "mean_ms": 0.5075896885640673,
+          "max_ms": 55.16691599768819
+        },
+        "nonterminal_pending_wall_only": {
+          "count": 121335,
+          "mean_ms": 0.0028755676433016033,
+          "max_ms": 0.8941659999999999,
+          "cpu_seconds": 0.0
+        },
+        "nonterminal_queue_wall_only": {
+          "count": 121335,
+          "mean_ms": 0.07636026702929906,
+          "max_ms": 5.898531,
+          "cpu_seconds": 0.0
+        },
+        "nonterminal_turn": {
+          "count": 121335,
+          "mean_ms": 0.06500434334693206,
+          "max_ms": 2.815366,
+          "cpu_seconds": 7.820026
+        },
+        "server_mutex_wait": {
+          "count": 253920,
+          "mean_ms": 0.009416879332073094,
+          "max_ms": 5.7336339999999995,
+          "cpu_seconds": 0.343341
+        }
+      }
+    },
+    {
+      "round": 2,
+      "concurrency": 8,
+      "status": "passed",
+      "error": null,
+      "elapsed_seconds": 17.621956,
+      "ramp_seconds": 10.893453,
+      "hold_seconds": 6.709747,
+      "requests": 74194,
+      "initialized": 10000,
+      "min_responses": 4,
+      "max_heartbeat_gap_seconds": 2.17161,
+      "snapshots": [
+        {
+          "seconds_at_start": 10.893453,
+          "counts": {
+            "frontend": 10000,
+            "backend": 10000
+          }
+        },
+        {
+          "seconds_at_start": 13.669577,
+          "counts": {
+            "frontend": 10000,
+            "backend": 10000
+          }
+        },
+        {
+          "seconds_at_start": 16.449341,
+          "counts": {
+            "frontend": 10000,
+            "backend": 10000
+          }
+        },
+        {
+          "seconds_at_start": 17.043084,
+          "counts": {
+            "frontend": 10000,
+            "backend": 10000
+          }
+        }
+      ],
+      "tcp_opens": 10000,
+      "backend_accepts": 10000,
+      "final_established": {
+        "frontend": 0,
+        "backend": 0
+      },
+      "binary_sha256": {
+        "webserver": "7ceb6406670bbe8bc98fbe161ecb2a5dce5f3541bb40dad77191df67d307256a",
+        "reverse_proxy": "0f484e7b1515b908790aae7abc91fdb17d6c015dc5777975fcab363085fb43e6"
+      },
+      "metrics": {
+        "schedule_to_send": {
+          "count": 64194,
+          "mean_ms": 21.190386002101487,
+          "max_ms": 170.8404140008497
+        },
+        "slot_full_wait": {
+          "count": 64194,
+          "mean_ms": 4.972879235689528,
+          "max_ms": 74.09608900343301
+        },
+        "slot_available_wait": {
+          "count": 64194,
+          "mean_ms": 15.932763918391418,
+          "max_ms": 114.77698898306699
+        },
+        "admission_to_send": {
+          "count": 64194,
+          "mean_ms": 0.28474284802054256,
+          "max_ms": 29.45582200118224
+        },
+        "send_to_response": {
+          "count": 64194,
+          "mean_ms": 0.7857475142712241,
+          "max_ms": 31.57765500145615
+        },
+        "nonterminal_pending_wall_only": {
+          "count": 74194,
+          "mean_ms": 0.00966129336604038,
+          "max_ms": 7.140476,
+          "cpu_seconds": 0.0
+        },
+        "nonterminal_queue_wall_only": {
+          "count": 74194,
+          "mean_ms": 0.10697468798016013,
+          "max_ms": 6.963978,
+          "cpu_seconds": 0.0
+        },
+        "nonterminal_turn": {
+          "count": 74194,
+          "mean_ms": 0.06730943202954416,
+          "max_ms": 15.072006,
+          "cpu_seconds": 4.938001
+        },
+        "server_mutex_wait": {
+          "count": 156416,
+          "mean_ms": 0.016911108837970538,
+          "max_ms": 10.720956000000001,
+          "cpu_seconds": 0.341557
+        }
+      }
+    },
+    {
+      "round": 3,
+      "concurrency": 4,
+      "status": "passed",
+      "error": null,
+      "elapsed_seconds": 21.089344,
+      "ramp_seconds": 14.4257,
+      "hold_seconds": 6.642409,
+      "requests": 87536,
+      "initialized": 10000,
+      "min_responses": 4,
+      "max_heartbeat_gap_seconds": 2.323025,
+      "snapshots": [
+        {
+          "seconds_at_start": 14.4257,
+          "counts": {
+            "frontend": 10000,
+            "backend": 10000
+          }
+        },
+        {
+          "seconds_at_start": 17.091947,
+          "counts": {
+            "frontend": 10000,
+            "backend": 10000
+          }
+        },
+        {
+          "seconds_at_start": 19.728114,
+          "counts": {
+            "frontend": 10000,
+            "backend": 10000
+          }
+        },
+        {
+          "seconds_at_start": 20.425883,
+          "counts": {
+            "frontend": 10000,
+            "backend": 10000
+          }
+        }
+      ],
+      "tcp_opens": 10000,
+      "backend_accepts": 10000,
+      "final_established": {
+        "frontend": 0,
+        "backend": 0
+      },
+      "binary_sha256": {
+        "webserver": "7ceb6406670bbe8bc98fbe161ecb2a5dce5f3541bb40dad77191df67d307256a",
+        "reverse_proxy": "0f484e7b1515b908790aae7abc91fdb17d6c015dc5777975fcab363085fb43e6"
+      },
+      "metrics": {
+        "schedule_to_send": {
+          "count": 77536,
+          "mean_ms": 46.59816748303411,
+          "max_ms": 314.19098500191467
+        },
+        "slot_full_wait": {
+          "count": 77536,
+          "mean_ms": 19.89283678407008,
+          "max_ms": 136.11413905164227
+        },
+        "slot_available_wait": {
+          "count": 77536,
+          "mean_ms": 26.564015684055473,
+          "max_ms": 183.13935796322767
+        },
+        "admission_to_send": {
+          "count": 77536,
+          "mean_ms": 0.14131501490855583,
+          "max_ms": 27.17234100055066
+        },
+        "send_to_response": {
+          "count": 77536,
+          "mean_ms": 0.4922812771389559,
+          "max_ms": 31.67280900015612
+        },
+        "nonterminal_pending_wall_only": {
+          "count": 87536,
+          "mean_ms": 0.002664263845732042,
+          "max_ms": 0.225301,
+          "cpu_seconds": 0.0
+        },
+        "nonterminal_queue_wall_only": {
+          "count": 87536,
+          "mean_ms": 0.07501320599524768,
+          "max_ms": 4.651038,
+          "cpu_seconds": 0.0
+        },
+        "nonterminal_turn": {
+          "count": 87536,
+          "mean_ms": 0.06394194388594407,
+          "max_ms": 1.3011,
+          "cpu_seconds": 5.544357
+        },
+        "server_mutex_wait": {
+          "count": 183266,
+          "mean_ms": 0.009582732203463817,
+          "max_ms": 2.751347,
+          "cpu_seconds": 0.241111
+        }
+      }
+    },
+    {
+      "round": 3,
+      "concurrency": 8,
+      "status": "passed",
+      "error": null,
+      "elapsed_seconds": 15.190341,
+      "ramp_seconds": 8.051033,
+      "hold_seconds": 7.116329,
+      "requests": 62769,
+      "initialized": 10000,
+      "min_responses": 4,
+      "max_heartbeat_gap_seconds": 2.355848,
+      "snapshots": [
+        {
+          "seconds_at_start": 8.051033,
+          "counts": {
+            "frontend": 10000,
+            "backend": 10000
+          }
+        },
+        {
+          "seconds_at_start": 10.89478,
+          "counts": {
+            "frontend": 10000,
+            "backend": 10000
+          }
+        },
+        {
+          "seconds_at_start": 13.580141,
+          "counts": {
+            "frontend": 10000,
+            "backend": 10000
+          }
+        },
+        {
+          "seconds_at_start": 14.351911,
+          "counts": {
+            "frontend": 10000,
+            "backend": 10000
+          }
+        }
+      ],
+      "tcp_opens": 10000,
+      "backend_accepts": 10000,
+      "final_established": {
+        "frontend": 0,
+        "backend": 0
+      },
+      "binary_sha256": {
+        "webserver": "7ceb6406670bbe8bc98fbe161ecb2a5dce5f3541bb40dad77191df67d307256a",
+        "reverse_proxy": "0f484e7b1515b908790aae7abc91fdb17d6c015dc5777975fcab363085fb43e6"
+      },
+      "metrics": {
+        "schedule_to_send": {
+          "count": 52769,
+          "mean_ms": 62.38697411346936,
+          "max_ms": 345.0779969971336
+        },
+        "slot_full_wait": {
+          "count": 52769,
+          "mean_ms": 14.758093631668741,
+          "max_ms": 122.29686801583739
+        },
+        "slot_available_wait": {
+          "count": 52769,
+          "mean_ms": 47.35207314623575,
+          "max_ms": 278.3861470015836
+        },
+        "admission_to_send": {
+          "count": 52769,
+          "mean_ms": 0.276807335564863,
+          "max_ms": 35.423057997832075
+        },
+        "send_to_response": {
+          "count": 52769,
+          "mean_ms": 0.7942444316668483,
+          "max_ms": 37.59543599880999
+        },
+        "nonterminal_pending_wall_only": {
+          "count": 62769,
+          "mean_ms": 0.00888473609584349,
+          "max_ms": 3.9451499999999995,
+          "cpu_seconds": 0.0
+        },
+        "nonterminal_queue_wall_only": {
+          "count": 62769,
+          "mean_ms": 0.10542535327948509,
+          "max_ms": 5.958214,
+          "cpu_seconds": 0.0
+        },
+        "nonterminal_turn": {
+          "count": 62769,
+          "mean_ms": 0.06852647007280666,
+          "max_ms": 2.470043,
+          "cpu_seconds": 4.242178
+        },
+        "server_mutex_wait": {
+          "count": 137016,
+          "mean_ms": 0.018207494015297483,
+          "max_ms": 6.03058,
+          "cpu_seconds": 0.304762
+        }
+      }
+    }
+  ]
+}

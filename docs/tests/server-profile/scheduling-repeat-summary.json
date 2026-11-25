@@ -1,0 +1,229 @@
+{
+  "conditions": {
+    "connections": 10000,
+    "concurrency": 4,
+    "contexts_each": 8,
+    "empty_body": true,
+    "profile": true,
+    "heartbeat_seconds": 2,
+    "allowed_max_gap_seconds": 3.5,
+    "required_hold_seconds": 6,
+    "total_timeout_seconds": 60
+  },
+  "same_binary_hashes": true,
+  "runs": [
+    {
+      "run": 1,
+      "status": "passed",
+      "error": null,
+      "elapsed_seconds": 22.703199,
+      "ramp_seconds": 15.676025,
+      "hold_seconds": 7.006561,
+      "requests": 87735,
+      "initialized": 10000,
+      "minimum_responses": 4,
+      "snapshot_count": 4,
+      "all_snapshots_full": true,
+      "final_established": {
+        "frontend": 0,
+        "backend": 0
+      },
+      "tcp_opens": 10000,
+      "backend_accepts": 10000,
+      "binary_sha256": {
+        "webserver": "7ceb6406670bbe8bc98fbe161ecb2a5dce5f3541bb40dad77191df67d307256a",
+        "reverse_proxy": "0f484e7b1515b908790aae7abc91fdb17d6c015dc5777975fcab363085fb43e6"
+      },
+      "metrics": {
+        "workers.nonterminal_pending_wall_only": {
+          "count": 87735,
+          "mean_ms": 0.0026742121160312302,
+          "max_ms": 0.45146,
+          "cpu_seconds": 0.0
+        },
+        "workers.nonterminal_queue_wall_only": {
+          "count": 87735,
+          "mean_ms": 0.08276122414087878,
+          "max_ms": 18.427816999999997,
+          "cpu_seconds": 0.0
+        },
+        "workers.nonterminal_turn": {
+          "count": 87735,
+          "mean_ms": 0.06563477517524363,
+          "max_ms": 8.338305,
+          "cpu_seconds": 5.68391
+        },
+        "workers.server_mutex_wait": {
+          "count": 187192,
+          "mean_ms": 0.012562780460703448,
+          "max_ms": 5.813579,
+          "cpu_seconds": 0.299671
+        },
+        "main.server_mutex_wait": {
+          "count": 262335,
+          "mean_ms": 0.002281033792669678,
+          "max_ms": 3.535247,
+          "cpu_seconds": 0.164717
+        },
+        "main.pending_residence_wall_only": {
+          "count": 93594,
+          "mean_ms": 7.961498942239888,
+          "max_ms": 252.66110000000003,
+          "cpu_seconds": 0.0
+        },
+        "loader.reuse_schedule_to_send_seconds": {
+          "count": 77735,
+          "mean_ms": 58.90962205077104,
+          "max_ms": 289.8877440020442
+        },
+        "loader.reuse_send_to_response_seconds": {
+          "count": 77735,
+          "mean_ms": 0.5315539042721669,
+          "max_ms": 31.856325000262586
+        }
+      }
+    },
+    {
+      "run": 2,
+      "status": "passed",
+      "error": null,
+      "elapsed_seconds": 40.04842,
+      "ramp_seconds": 33.155561,
+      "hold_seconds": 6.867243,
+      "requests": 169190,
+      "initialized": 10000,
+      "minimum_responses": 3,
+      "snapshot_count": 3,
+      "all_snapshots_full": true,
+      "final_established": {
+        "frontend": 0,
+        "backend": 0
+      },
+      "tcp_opens": 10000,
+      "backend_accepts": 10000,
+      "binary_sha256": {
+        "webserver": "7ceb6406670bbe8bc98fbe161ecb2a5dce5f3541bb40dad77191df67d307256a",
+        "reverse_proxy": "0f484e7b1515b908790aae7abc91fdb17d6c015dc5777975fcab363085fb43e6"
+      },
+      "metrics": {
+        "workers.nonterminal_pending_wall_only": {
+          "count": 169190,
+          "mean_ms": 0.0030676694840120577,
+          "max_ms": 0.300719,
+          "cpu_seconds": 0.0
+        },
+        "workers.nonterminal_queue_wall_only": {
+          "count": 169190,
+          "mean_ms": 0.08745974939417223,
+          "max_ms": 5.743167000000001,
+          "cpu_seconds": 0.0
+        },
+        "workers.nonterminal_turn": {
+          "count": 169190,
+          "mean_ms": 0.07008535965482593,
+          "max_ms": 8.127192,
+          "cpu_seconds": 11.73452
+        },
+        "workers.server_mutex_wait": {
+          "count": 348550,
+          "mean_ms": 0.011246504088366088,
+          "max_ms": 10.543776,
+          "cpu_seconds": 0.560012
+        },
+        "main.server_mutex_wait": {
+          "count": 484929,
+          "mean_ms": 0.002238041032810989,
+          "max_ms": 5.272242,
+          "cpu_seconds": 0.3338
+        },
+        "main.pending_residence_wall_only": {
+          "count": 174273,
+          "mean_ms": 6.757166514606394,
+          "max_ms": 442.255852,
+          "cpu_seconds": 0.0
+        },
+        "loader.reuse_schedule_to_send_seconds": {
+          "count": 159190,
+          "mean_ms": 108.11506280460932,
+          "max_ms": 512.3620070007746
+        },
+        "loader.reuse_send_to_response_seconds": {
+          "count": 159190,
+          "mean_ms": 0.5495995827695626,
+          "max_ms": 38.818231001641834
+        }
+      }
+    },
+    {
+      "run": 3,
+      "status": "passed",
+      "error": null,
+      "elapsed_seconds": 42.898398,
+      "ramp_seconds": 35.649165,
+      "hold_seconds": 7.234436,
+      "requests": 158114,
+      "initialized": 10000,
+      "minimum_responses": 4,
+      "snapshot_count": 4,
+      "all_snapshots_full": true,
+      "final_established": {
+        "frontend": 0,
+        "backend": 0
+      },
+      "tcp_opens": 10000,
+      "backend_accepts": 10000,
+      "binary_sha256": {
+        "webserver": "7ceb6406670bbe8bc98fbe161ecb2a5dce5f3541bb40dad77191df67d307256a",
+        "reverse_proxy": "0f484e7b1515b908790aae7abc91fdb17d6c015dc5777975fcab363085fb43e6"
+      },
+      "metrics": {
+        "workers.nonterminal_pending_wall_only": {
+          "count": 158114,
+          "mean_ms": 0.0032931808694992223,
+          "max_ms": 7.956072999999999,
+          "cpu_seconds": 0.0
+        },
+        "workers.nonterminal_queue_wall_only": {
+          "count": 158114,
+          "mean_ms": 0.09056237904296899,
+          "max_ms": 9.759471000000001,
+          "cpu_seconds": 0.0
+        },
+        "workers.nonterminal_turn": {
+          "count": 158114,
+          "mean_ms": 0.0746617946544898,
+          "max_ms": 20.657904000000002,
+          "cpu_seconds": 11.688159
+        },
+        "workers.server_mutex_wait": {
+          "count": 327156,
+          "mean_ms": 0.010854625927691987,
+          "max_ms": 11.858847,
+          "cpu_seconds": 0.516215
+        },
+        "main.server_mutex_wait": {
+          "count": 464965,
+          "mean_ms": 0.0023004527222479114,
+          "max_ms": 6.3251669999999995,
+          "cpu_seconds": 0.32762
+        },
+        "main.pending_residence_wall_only": {
+          "count": 163576,
+          "mean_ms": 4.265273836015063,
+          "max_ms": 249.566023,
+          "cpu_seconds": 0.0
+        },
+        "loader.reuse_schedule_to_send_seconds": {
+          "count": 148114,
+          "mean_ms": 191.81315236709347,
+          "max_ms": 1453.348310002184
+        },
+        "loader.reuse_send_to_response_seconds": {
+          "count": 148114,
+          "mean_ms": 0.5939765506130287,
+          "max_ms": 46.39600600057747
+        }
+      }
+    }
+  ]
+}

@@ -6,6 +6,26 @@ import check_c10k as loader
 
 
 class LoaderTests(unittest.TestCase):
+    def test_capacity_clock_tracks_full_intervals_and_released_slots(self):
+        clock = loader.CapacityClock(2, 0)
+        first = clock.admit(1)
+        second = clock.admit(2)  # Full during [2, 4].
+        clock.release(first, 4)
+        third = clock.admit(5)  # Full during [5, 9].
+        clock.release(second, 9)
+        clock.release(second, 10)  # Delayed task callback must not double-release.
+        self.assertEqual(clock.active, 1)
+        self.assertAlmostEqual(clock.full_time_at(1), 0)
+        self.assertAlmostEqual(clock.full_time_at(3), 1)
+        self.assertAlmostEqual(clock.full_time_at(7), 4)
+        self.assertAlmostEqual(clock.full_time_at(12), 6)
+        # A request due at 3 and admitted at 8 waits full=4, available=1.
+        full = clock.full_time_at(8) - clock.full_time_at(3)
+        self.assertAlmostEqual(full, 4)
+        self.assertAlmostEqual((8 - 3) - full, 1)
+        clock.release(third, 12)
+        self.assertEqual(clock.active, 0)
+
     def setUp(self):
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
@@ -53,6 +73,17 @@ class LoaderTests(unittest.TestCase):
                 self.assertLessEqual(observation['max_in_flight_requests'], 2)
                 self.assertGreaterEqual(observation['min_responses_per_connection'], 2)
                 self.assertGreaterEqual(len(observation['snapshots']), 2)
+                metrics = observation['request_timing']
+                for kind in ('first', 'reuse'):
+                    total = metrics[kind + '_schedule_to_send_seconds']
+                    parts = [metrics[kind + '_' + name + '_seconds'] for name in
+                             ('slot_full_wait', 'slot_available_wait', 'admission_to_send')]
+                    self.assertAlmostEqual(total['total'], sum(p['total'] for p in parts), places=7)
+                    for part in parts:
+                        self.assertEqual(part['count'], total['count'])
+                        self.assertGreaterEqual(part['total'], 0)
+                        self.assertGreaterEqual(part['maximum'], 0)
+                self.assertGreater(observation['capacity_timing']['full_seconds'], 0)
             finally:
                 loader.snapshot_counts = original
                 server.close(); await server.wait_closed()
@@ -70,10 +101,15 @@ class LoaderTests(unittest.TestCase):
             server = await asyncio.start_server(handler, '127.0.0.1', 0)
             client = loader.Client(0, empty_body=False)
             stats = dict(tcp_opens=0, initialized=0, requests=0)
+            capacity = loader.CapacityClock(1, loader.time.monotonic())
             try:
-                await client.exchange('127.0.0.1', server.sockets[0].getsockname()[1], stats)
+                await client.exchange('127.0.0.1', server.sockets[0].getsockname()[1], stats,
+                                      capacity=capacity, slot=capacity.admit())
+                self.assertEqual(capacity.active, 0)
                 with self.assertRaises((asyncio.IncompleteReadError, ConnectionError)):
-                    await client.exchange('127.0.0.1', server.sockets[0].getsockname()[1], stats)
+                    await client.exchange('127.0.0.1', server.sockets[0].getsockname()[1], stats,
+                                          capacity=capacity, slot=capacity.admit())
+                self.assertEqual(capacity.active, 0)
                 self.assertEqual(stats['tcp_opens'], 1)
                 self.assertEqual(stats['requests'], 1)
             finally:

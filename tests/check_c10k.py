@@ -1,6 +1,8 @@
 """Async connection-retention test. Never reconnect; legacy check_capacity is unchanged."""
 import argparse
 import asyncio
+from array import array
+from bisect import bisect_right
 from collections import Counter
 from datetime import datetime
 import heapq
@@ -18,6 +20,40 @@ import time
 from check_capacity import ROOT, port, socket_counts
 
 
+class CapacityClock:
+    """Integral of time with all admitted requests unfinished, on the loader clock."""
+    def __init__(self, limit, started):
+        self.limit, self.active = limit, 0
+        self.times = array('d', [started])
+        self.totals = array('d', [0.0])
+
+    def full_time_at(self, now):
+        index = bisect_right(self.times, now) - 1
+        if index < 0:
+            raise ValueError('timestamp precedes capacity clock')
+        return self.totals[index] + (now - self.times[index] if index % 2 else 0)
+
+    def _change(self, delta, now):
+        was_full = self.active == self.limit
+        self.active += delta
+        assert 0 <= self.active <= self.limit
+        if was_full != (self.active == self.limit):
+            total = self.full_time_at(now)
+            self.times.append(now)
+            self.totals.append(total)
+
+    def admit(self, now=None):
+        now = time.monotonic() if now is None else now
+        self._change(1, now)
+        return dict(at=now, released=False)
+
+    def release(self, slot, now=None):
+        if slot['released']:
+            return
+        self._change(-1, time.monotonic() if now is None else now)
+        slot['released'] = True
+
+
 class Client:
     def __init__(self, index, empty_body=True):
         self.index = index
@@ -28,24 +64,42 @@ class Client:
         self.max_gap = 0.0
         self.timing = None
 
-    async def exchange(self, host, target, stats, scheduled_at=None):
+    async def exchange(self, host, target, stats, scheduled_at=None, capacity=None, slot=None):
         started = time.monotonic()
+        if scheduled_at is None:
+            scheduled_at = slot['at'] if slot is not None else started
         self.timing = dict(connection=self.index, request=self.responses + 1,
                            kind='first' if self.writer is None else 'reuse',
-                           scheduled_at=started if scheduled_at is None else scheduled_at,
+                           scheduled_at=scheduled_at,
                            started_at=started, send_at=None, drained_at=None,
                            response_completed_at=None)
+        self.timing['admitted_at'] = slot['at'] if slot is not None else started
         try:
             return await self._exchange(host, target, stats)
         finally:
+            if capacity is not None:
+                capacity.release(slot)
             timing = self.timing
+            extra = []
+            if capacity is not None and timing['send_at'] is not None:
+                due, admitted = timing['scheduled_at'], timing['admitted_at']
+                full = capacity.full_time_at(admitted) - capacity.full_time_at(due)
+                # Tiny rounding error in cumulative clock differences is clamped.
+                full = min(admitted - due, max(0.0, full))
+                timing['slot_full_wait_seconds'] = full
+                timing['slot_available_wait_seconds'] = admitted - due - full
+                timing['admission_to_send_seconds'] = timing['send_at'] - admitted
+                extra = [(name, timing[name + '_seconds']) for name in
+                         ('slot_full_wait', 'slot_available_wait', 'admission_to_send')]
+            durations = []
             for name, end, begin in (
                 ('schedule_to_start', 'started_at', 'scheduled_at'),
                 ('schedule_to_send', 'send_at', 'scheduled_at'),
                 ('write_buffer_wait', 'drained_at', 'send_at'),
                 ('send_to_response', 'response_completed_at', 'send_at')):
                 if timing[end] is None: continue
-                value = timing[end] - timing[begin]
+                durations.append((name, timing[end] - timing[begin]))
+            for name, value in durations + extra:
                 key = timing['kind'] + '_' + name + '_seconds'
                 metric = stats.setdefault('request_timing', {}).setdefault(
                     key, dict(count=0, total=0.0, maximum=0.0, max_request=None))
@@ -119,6 +173,7 @@ async def retain(args, frontend, proxy_pid, backend, observe):
     clients, idle, pending = [], [], set()
     stats = dict(tcp_opens=0, initialized=0, requests=0)
     started = time.monotonic()
+    capacity = CapacityClock(args.concurrency, started)
     full_at = None
     snapshot = None
     snapshot_started = None
@@ -166,8 +221,12 @@ async def retain(args, frontend, proxy_pid, backend, observe):
                     scheduled_at = now
                 else:
                     break
+                slot = capacity.admit()
                 task = asyncio.ensure_future(asyncio.wait_for(
-                    client.exchange('127.0.0.1', frontend, stats, scheduled_at), args.request_timeout))
+                    client.exchange('127.0.0.1', frontend, stats, scheduled_at,
+                                    capacity, slot), args.request_timeout))
+                # Also releases admissions cancelled before exchange ever starts.
+                task.add_done_callback(lambda done, slot=slot: capacity.release(slot))
                 pending.add(task)
             stats['max_in_flight_requests'] = max(stats.get('max_in_flight_requests', 0), len(pending))
             observe.update(stats)
@@ -204,6 +263,12 @@ async def retain(args, frontend, proxy_pid, backend, observe):
                                       scheduled_at=idle[0][0],
                                       previous_response_at=idle[0][2].last,
                                       last_request=idle[0][2].timing) if idle else None))
+        observe['capacity_timing'] = dict(
+            full_seconds=capacity.full_time_at(observed_at),
+            elapsed_seconds=observed_at - started,
+            transition_count=len(capacity.times) - 1,
+            history_bytes=(len(capacity.times) + len(capacity.totals)) * capacity.times.itemsize,
+            scope='admission to exchange finally; completed tasks awaiting scheduler reaping are free; slot waits end at admission')
         for task in pending:
             if not task.done(): task.cancel()
         if pending: await asyncio.gather(*pending, return_exceptions=True)
