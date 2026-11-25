@@ -1,7 +1,9 @@
 // ws.c의 내부 SHA-1과 Base64도 직접 검사한다.
 #include "../chat/ws.c"
+#include "../chat/room.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 
 static int passed, failed;
 
@@ -215,7 +217,32 @@ static void test_utf8(void) {
               ws_utf8((const unsigned char *)cases[i].bytes, cases[i].len));
 }
 
+static void test_shuffle(void) {
+    int a[1000], seen[1000];
+    const int sizes[] = {0, 1, 2, 1000};
+    for (size_t k = 0; k < sizeof(sizes) / sizeof(sizes[0]); k++) {
+        int n = sizes[k];
+        memset(seen, 0, sizeof(seen));
+        for (int i = 0; i < n; i++) a[i] = i;
+        shuffle(a, n);
+        for (int i = 0; i < n; i++)
+            if (a[i] >= 0 && a[i] < n) seen[a[i]]++;
+        for (int i = 0; i < n; i++) check("shuffle 원소 보존", 1, seen[i]);
+    }
+    int counts[3][3] = {{0}};
+    srandom(1);
+    for (int k = 0; k < 6000; k++) {
+        int p[] = {0, 1, 2};
+        shuffle(p, 3);
+        if ((unsigned)p[0] < 3 && (unsigned)p[1] < 3) counts[p[0]][p[1]]++;
+    }
+    for (int i = 0; i < 3; i++)
+        for (int j = 0; j < 3; j++)
+            if (i != j) check("shuffle 순열 분포", 1, counts[i][j] >= 800 && counts[i][j] <= 1200);
+}
+
 int main(void) {
+    test_shuffle();
     test_sha1();
     test_base64();
     test_accept();

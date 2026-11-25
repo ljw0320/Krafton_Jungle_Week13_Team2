@@ -3,6 +3,6 @@
 
 #include <stdint.h>
 
-int server_listen(uint16_t port);
+int server_listen(uint32_t addr, uint16_t port);
 
 #endif

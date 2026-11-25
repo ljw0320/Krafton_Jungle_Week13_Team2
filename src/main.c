@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <netinet/in.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,7 +24,7 @@ int main(int argc, char **argv) {
     for (int i = 3; i < argc; i++)
         if (route_add(argv[i]) < 0) exit(1);
     signal(SIGPIPE, SIG_IGN);
-    int listen_fd = server_listen((uint16_t)port);
+    int listen_fd = server_listen(INADDR_ANY, (uint16_t)port);
     if (listen_fd < 0) exit(1);
     if (loop_run(listen_fd) < 0) exit(1);
     return 0;

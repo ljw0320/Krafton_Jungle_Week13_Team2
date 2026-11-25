@@ -27,29 +27,33 @@ waitport() {
     cat "$LOG" >&2
     exit 1
 }
-for p in 8080 8004 8009; do
+for p in 8080 9001 8004 8009; do
     if (exec 3<>/dev/tcp/127.0.0.1/$p) 2>/dev/null; then
         echo "FAIL start: 포트 $p가 이미 열려 있음" >&2; exit 1
     fi
 done
 python3 -B tests/chat_cases.py backend 8004 </dev/null &
 BP=$!
+$CHATD_WRAP ./chatd 9001 </dev/null 2>"$TMP/chatd.log" &
+CP=$!
 mkdir "$TMP/www" || exit 1
-$SERVER_WRAP ./server 8080 "$TMP/www" /t/=127.0.0.1:8004 /dead/=127.0.0.1:8009 </dev/null 2>"$LOG" &
+$SERVER_WRAP ./server 8080 "$TMP/www" /t/=127.0.0.1:8004 /dead/=127.0.0.1:8009 /ws/=127.0.0.1:9001 </dev/null 2>"$LOG" &
 SP=$!
 waitport 8004 $BP
 waitport 8080 $SP
+waitport 9001 $CP
 cases=(handshake echo closes)
 if [ -z "$SERVER_WRAP" ]; then cases+=(noread timers); fi
+cases+=(chat_http chat_messages chat_matching chat_departures chat_invalid chat_echo_bot)
 for name in "${cases[@]}"; do
     python3 -B tests/chat_cases.py "$name" "$SP"
     check "$name" 0 $?
 done
-kill "$SP"
-wait "$SP" 2>/dev/null
-if grep -qE 'AddressSanitizer|runtime error' "$LOG"; then
+kill "$SP" "$CP"
+wait "$SP" "$CP" 2>/dev/null
+if grep -qE 'AddressSanitizer|runtime error' "$LOG" "$TMP/chatd.log"; then
     fail=$((fail + 1))
-    grep -E 'AddressSanitizer|runtime error' "$LOG" >&2
+    grep -E 'AddressSanitizer|runtime error' "$LOG" "$TMP/chatd.log" >&2
 fi
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

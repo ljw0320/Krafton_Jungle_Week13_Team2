@@ -1,11 +1,14 @@
 """터널 기능 시험과 원시 소켓 백엔드."""
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
+from contextlib import closing, contextmanager
 from hashlib import sha256
 import os
+import json
 from pathlib import Path
 import socket
 import struct
+import subprocess
 import sys
 import threading
 import time
@@ -226,6 +229,226 @@ def timer(name, delay, timeout):
         assert timeout <= elapsed < timeout + 4, (name, elapsed)
 
 
+CHAT = ("127.0.0.1", 8080)
+DIRECT = ("127.0.0.1", 9001)
+KEY = b"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+VERSION = b"Sec-WebSocket-Version: 13\r\n"
+CHAT_REQ = (b"GET /ws/chat?x HTTP/1.1\r\nHost: localhost\r\nConnection: Upgrade\r\n"
+            b"Upgrade: websocket\r\n" + KEY + VERSION + b"\r\n")
+
+
+def chat_http():
+    from chat_bot import frame
+    plain = b"GET /ws/stat HTTP/1.1\r\nHost: localhost\r\n\r\n"
+    for request, status, header in [
+        (plain, 200, b"content-type: application/json"),
+        (plain.replace(b"GET", b"POST").replace(b"/ws/stat", b"/bad"), 405, b"allow: get"),
+        (plain.replace(b"/ws/stat", b"/ws/statue"), 404, b""),
+        (plain.replace(b"/ws/stat", b"/ws/chat"), 400, b""),
+        (CHAT_REQ.replace(KEY, b"").replace(VERSION, b""), 400, b""),
+        (CHAT_REQ.replace(KEY, KEY * 2), 400, b""),
+        (CHAT_REQ.replace(b"Q==", b"Q="), 400, b""),
+        (CHAT_REQ.replace(b": 13", b": 12"), 426, b"sec-websocket-version: 13"),
+        (CHAT_REQ.replace(VERSION, b""), 426, b"sec-websocket-version: 13"),
+        (b"bad\r\n\r\n", 400, b""),
+        (plain[:-2] + b"X: " + b"x" * 8192 + b"\r\n\r\n", 431, b""),
+    ]:
+        with socket.create_connection(DIRECT, 3) as s:
+            s.sendall(request)
+            head, rest = read_head(s)
+            assert int(head.split()[1]) == status, (head, status)
+            assert header in head.lower() and b"connection: close" in head.lower(), head
+            length, = [int(h.split(b":")[1]) for h in head.lower().splitlines()
+                       if h.startswith(b"content-length:")]
+            data = receive(s, length, rest)
+            if status == 200:
+                assert isinstance(json.loads(data), dict)
+    for early in (False, True):
+        with socket.create_connection(DIRECT, 3) as s:
+            ping = frame(9, b"x")
+            if early:
+                s.sendall(CHAT_REQ + ping)
+            else:
+                for byte in CHAT_REQ:
+                    s.sendall(bytes([byte]))
+                s.sendall(ping)
+            head, rest = read_head(s)
+            assert head.split()[1] == b"101" and b"s3pPLMBiTxaQ9kYGzzhZRbK+xOo=" in head
+            assert receive(s, 6, rest) == b"\x81\x01w\x8a\x01x"
+
+
+def next_frame(client, timeout=1.5):
+    deadline = time.monotonic() + timeout
+    while True:
+        item = client.recv(max(0.001, deadline - time.monotonic()))
+        if item[0] != 1 or not item[1].startswith(b"s"):
+            return item
+
+
+@contextmanager
+def group(n):
+    from chat_bot import Client
+    with ExitStack() as stack:
+        clients = [stack.enter_context(closing(Client(CHAT, "/ws/chat"))) for _ in range(n)]
+        for client in clients:
+            assert next_frame(client) == (1, b"w")
+        yield clients
+
+
+@contextmanager
+def pair():
+    with group(2) as clients:
+        for client in clients:
+            assert next_frame(client) == (1, b"c")
+        yield clients
+
+
+def chat_messages():
+    from chat_bot import frame
+    with pair() as (a, b):
+        msg = "m안녕".encode()
+        for byte in frame(1, msg):
+            a.send_raw(bytes([byte]))
+        assert b.recv(1) == (1, msg) and a.recv(1) == (1, b"a")
+        messages = [f"m{i}".encode() for i in range(100)]
+        a.send_raw(b"".join(frame(1, m) for m in messages))
+        for expected in messages:
+            assert b.recv(1) == (1, expected) and a.recv(1) == (1, b"a")
+        a.send_raw(frame(1, msg[:2], fin=False) + frame(9, b"ping"))
+        assert a.recv(1) == (10, b"ping")
+        a.send_raw(frame(0, msg[2:]))
+        assert b.recv(1) == (1, msg) and a.recv(1) == (1, b"a")
+        maximum = b"m" + b"X" * 4095
+        for raw in (frame(1, maximum), frame(1, maximum[:7], fin=False) + frame(0, maximum[7:])):
+            a.send_raw(raw)
+            assert b.recv(1) == (1, maximum) and a.recv(1) == (1, b"a")
+    for op, start in ((1, b"mold"), (1, b"i"), (2, b"old")):
+        with group(1) as (a,):
+            a.send_raw(frame(op, start, fin=False) + frame(9, b"before"))
+            assert next_frame(a) == (10, b"before")
+            with group(1) as (b,):
+                assert next_frame(a) == (1, b"c") and next_frame(b) == (1, b"c")
+                a.send_raw(frame(0, b"end") + frame(1, b"mnew") + frame(9, b"after"))
+                assert b.recv(1) == (1, b"mnew")
+                assert a.recv(1) == (1, b"a") and a.recv(1) == (10, b"after")
+
+
+def chat_matching():
+    variations = set()
+    for _ in range(10):
+        with group(6) as clients:
+            for i, c in enumerate(clients):
+                assert next_frame(c) == (1, b"c")
+                c.send_text(f"m{i}")
+            peers = []
+            for c in clients:
+                items = [c.recv(1), c.recv(1)]
+                items.remove((1, b"a"))
+                (op, msg), = items
+                assert op == 1 and msg.startswith(b"m")
+                peers.append(int(msg[1:]))
+            assert all(j != i and peers[j] == i for i, j in enumerate(peers))
+            variations.add(tuple(peers))
+    assert len(variations) > 1
+    with group(3) as clients:
+        def after_match(c):
+            end = time.monotonic() + 1.5
+            while True:
+                item = c.recv(max(.001, end - time.monotonic()))
+                if item in ((1, b"c"), (1, b"s3 1")):
+                    return item[1]
+
+        with ThreadPoolExecutor(3) as pool:
+            first = list(pool.map(after_match, clients))
+        assert sorted(first) == [b"c", b"c", b"s3 1"], first
+        last = clients[first.index(b"s3 1")]
+        start = time.monotonic()
+        assert last.recv(1.5) == (1, b"s3 1")
+        assert .5 < time.monotonic() - start < 1.5
+
+
+def chat_departures():
+    from chat_bot import Client, frame
+    for method in ("next", "tcp", "rst", "close"):
+        with pair() as (a, b):
+            if method == "next":
+                a.send_text("n")
+                assert next_frame(a) == (1, b"w")
+            elif method == "close":
+                a.send_raw(frame(8, b"\x03\xe8bye"))
+                assert a.recv(1) == (8, b"\x03\xe8")
+            else:
+                if method == "rst":
+                    reset(a.sock)
+                a.close()
+            assert b.recv(1) == (1, b"l")
+            b.send_text("mold")
+            b.send_text("n")
+            assert next_frame(b) == (1, b"w")
+            with ExitStack() as stack:
+                other = a
+                if method != "next":
+                    other = stack.enter_context(closing(Client(CHAT, "/ws/chat")))
+                    assert next_frame(other) == (1, b"w")
+                assert next_frame(other) == (1, b"c") and next_frame(b) == (1, b"c")
+                b.send_text("mnew")
+                assert other.recv(1) == (1, b"mnew")
+    with group(1) as (departed,):
+        departed.close()
+    with group(1) as (last,):
+        last.send_text("n")
+        last.send_text("m")
+        last.send_text("i")
+        last.send_bin(b"ignored")
+        assert last.recv(1.5) == (1, b"s1 1")
+
+
+def chat_invalid():
+    from chat_bot import frame
+    wrong = [
+        (b"\x81\x00", 1002), (b"\xc1\x80", 1002), (b"\x83\x80", 1002),
+        (b"\x81\xfe\x00\x7d", 1002), (b"\x09\x80", 1002),
+        (b"\x89\xfe\x00\x7e", 1002), (b"\x82\xfe\x40\x01", 1009),
+        (frame(0, b"x"), 1002), (frame(1, b"m", fin=False) + frame(1, b"x"), 1002),
+        (frame(8, b"x"), 1002), (frame(1, b""), 1008), (frame(1, b"q"), 1008),
+        (frame(1, b"n!"), 1008), (frame(1, b"m"), 1008),
+        (frame(1, b"i?"), 1008), (frame(2, b"undeclared"), 1008),
+        (frame(1, b"m" * 4097), 1009),
+        (frame(1, b"m" * 4096, fin=False) + frame(0, b"x"), 1009),
+    ]
+    wrong.extend((frame(1, b"m" + data), 1007) for data in
+                 (b"\xc2", b"\xed\xa0\x80", b"\xc0\xaf", b"\xf4\x90\x80\x80"))
+    for raw, code in wrong:
+        with pair() as (a, b):
+            a.send_raw(raw)
+            assert a.recv(1) == (8, struct.pack("!H", code)), (raw[:8], code)
+            assert b.recv(1) == (1, b"l")
+    for raw in (b"", b"q", b"nx"):
+        with group(1) as (a,):
+            a.send_raw(frame(1, raw))
+            assert next_frame(a) == (8, struct.pack("!H", 1008))
+    with group(1) as (a,):
+        a.send_raw(frame(8, b""))
+        assert next_frame(a) == (8, b"")
+
+
+def chat_echo_bot():
+    cmd = [sys.executable, "-B", str(Path(__file__).with_name("chat_bot.py")), "echo"]
+    with subprocess.Popen(cmd) as bot:
+        try:
+            for _ in range(2):
+                with group(1) as (c,):
+                    assert next_frame(c) == (1, b"c")
+                    start = time.monotonic()
+                    c.send_text("m안녕")
+                    assert c.recv(1) == (1, b"a")
+                    op, reply = c.recv(1.5)
+                    assert op == 1 and reply.startswith(b"m") and len(reply) > 1
+                    assert time.monotonic() - start >= .28
+        finally:
+            bot.terminate()
+
+
 if __name__ == "__main__":
     case = sys.argv[1]
     if case == "backend":
@@ -239,4 +462,7 @@ if __name__ == "__main__":
     elif case in ("closes", "noread"):
         {"closes": closes, "noread": noread}[case](int(sys.argv[2]))
     else:
-        {"handshake": handshake, "echo": echo}[case]()
+        {"handshake": handshake, "echo": echo, "chat_http": chat_http,
+         "chat_messages": chat_messages, "chat_matching": chat_matching,
+         "chat_departures": chat_departures, "chat_invalid": chat_invalid,
+         "chat_echo_bot": chat_echo_bot}[case]()
