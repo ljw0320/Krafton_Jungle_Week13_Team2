@@ -77,6 +77,7 @@ static void server_cleanup(struct server *server, int listener)
 /* 초기화 → 준비된 연결 배정 → 종료 신호 후 join·자원 회수 순서입니다. */
 int main(int argc, char **argv)
 {
+    server_profile_start();
     static struct server server;
     int port = parse_port(argc, argv);
     if (setvbuf(stdout, NULL, _IOLBF, 0))
@@ -90,6 +91,7 @@ int main(int argc, char **argv)
 
     server_run(&server, listener);
     server_cleanup(&server, listener);
+    server_profile_report();
 
     return EXIT_SUCCESS;
 }

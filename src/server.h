@@ -2,6 +2,7 @@
 #define SERVER_H
 
 #include "http.h"
+#include "server_profile.h"
 #include "../common/runtime.h"
 
 #include <poll.h>
@@ -94,6 +95,7 @@ struct connection {
     size_t length;
     size_t sent;
 
+    int64_t profile_queued_at;
     int64_t context_wait_deadline;
     int64_t progress;
     int64_t drain_deadline;

@@ -42,30 +42,39 @@ void slots_init(struct server *server)
 
 void timer_cancel(struct server *server, struct connection *client)
 {
+    struct server_stamp stamp = server_profile_begin();
+    uint64_t visits = 0;
     struct connection **at = &server->timers;
-    while (*at && *at != client) at = &(*at)->timer_next;
+    while (*at && *at != client) { at = &(*at)->timer_next; visits++; }
     if (*at) *at = client->timer_next;
     client->timer_next = NULL;
+    server_profile_end(SP_TIMER_CANCEL, stamp, visits);
 }
 
 void timer_update(struct server *server, struct connection *client)
 {
+    struct server_stamp stamp = server_profile_begin();
     timer_cancel(server, client);
-    if (client->state != WAITING) return;
+    if (client->state != WAITING) { server_profile_end(SP_TIMER_UPDATE, stamp, 0); return; }
     client->expires = connection_deadline(client);
     if (client->phase == CGI_OUTPUT)
         client->expires = client->cgi.next_check < client->cgi.deadline ?
                           client->cgi.next_check : client->cgi.deadline;
     struct connection **at = &server->timers;
-    while (*at && (*at)->expires <= client->expires) at = &(*at)->timer_next;
+    uint64_t visits = 0;
+    while (*at && (*at)->expires <= client->expires) { at = &(*at)->timer_next; visits++; }
     client->timer_next = *at;
     *at = client;
+    server_profile_end(SP_TIMER_UPDATE, stamp, visits);
 }
 
 int timer_expire(struct server *server)
 {
+    struct server_stamp stamp = server_profile_begin();
+    uint64_t expired = 0;
     int64_t now = now_ms();
     while (server->timers && server->timers->expires <= now) {
+        expired++;
         struct connection *client = server->timers;
         timer_cancel(server, client);
         if (client->phase == CGI_OUTPUT) enqueue_turn(server, client);
@@ -74,5 +83,6 @@ int timer_expire(struct server *server)
             connection_close(client);
         }
     }
+    server_profile_end(SP_TIMER_EXPIRE, stamp, expired);
     return server->timers ? (int)(server->timers->expires - now) : -1;
 }

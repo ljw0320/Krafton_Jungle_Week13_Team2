@@ -75,7 +75,7 @@ static void accept_clients(struct server *server, int listener)
             break;
         }
 
-        check_thread(pthread_mutex_lock(&server->mutex));
+        check_thread(server_profile_lock(&server->mutex));
         register_client(server, fd);
         check_thread(pthread_mutex_unlock(&server->mutex));
     }
@@ -111,6 +111,7 @@ static nfds_t prepare_poll(struct server *server, int listener,
                            struct pollfd *fds, struct connection **owners,
                            int *timeout)
 {
+    struct server_stamp stamp = server_profile_begin();
     nfds_t count = 2;
     int64_t now = now_ms();
 
@@ -144,13 +145,15 @@ static nfds_t prepare_poll(struct server *server, int listener,
 
     /* 슬롯 순서가 FIFO와 다르면 앞 슬롯의 대기자를 다음 루프에서 재검사합니다. */
 
+    server_profile_end(SP_PREPARE, stamp, (uint64_t)server->capacity);
     return count;
 }
 
 static void dispatch(struct server *server, struct pollfd *fds, struct connection **owners, nfds_t count)
 {
-    check_thread(pthread_mutex_lock(&server->mutex));
+    check_thread(server_profile_lock(&server->mutex));
 
+    struct server_stamp stamp = server_profile_begin();
     for (nfds_t i = 2; i < count; i++) {
         if (owners[i]->state != WAITING)
             continue;
@@ -168,6 +171,7 @@ static void dispatch(struct server *server, struct pollfd *fds, struct connectio
         }
     }
 
+    server_profile_end(SP_DISPATCH, stamp, count-2);
     check_thread(pthread_mutex_unlock(&server->mutex));
 }
 
@@ -181,11 +185,14 @@ void server_run(struct server *server, int listener)
     while (!stop_requested) {
         int timeout;
 
-        check_thread(pthread_mutex_lock(&server->mutex));
+        check_thread(server_profile_lock(&server->mutex));
         nfds_t count = prepare_poll(server, listener, fds, owners, &timeout);
         check_thread(pthread_mutex_unlock(&server->mutex));
 
-        if (poll(fds, count, timeout) == -1) {
+        struct server_stamp stamp = server_profile_begin();
+        int ready = poll(fds, count, timeout);
+        server_profile_end(SP_POLL, stamp, count);
+        if (ready == -1) {
             if (errno == EINTR)
                 continue;
             perror("poll");
@@ -195,11 +202,17 @@ void server_run(struct server *server, int listener)
 
         if (stop_requested)
             break;
-        if (fds[1].revents & POLLIN)
+        if (fds[1].revents & POLLIN) {
+            stamp = server_profile_begin();
             drain_notifications(server->wake_fd);
+            server_profile_end(SP_DRAIN, stamp, 1);
+        }
         dispatch(server, fds, owners, count);
-        if (fds[0].revents & POLLIN)
+        if (fds[0].revents & POLLIN) {
+            stamp = server_profile_begin();
             accept_clients(server, listener);
+            server_profile_end(SP_ACCEPT, stamp, 0);
+        }
     }
     free(fds); free(owners);
 }

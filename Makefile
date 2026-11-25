@@ -3,7 +3,7 @@ CPPFLAGS = -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L -D_FILE_OFFSET_BITS=64
 CFLAGS = -std=c11 -Wall -Wextra -Wpedantic -Werror -g
 LDLIBS = -pthread
 SOURCES = $(wildcard src/*.c)
-HEADERS = src/server.h src/http.h common/runtime.h
+HEADERS = src/server.h src/server_profile.h src/http.h common/runtime.h
 
 .PHONY: all test test_stage1 test_stage2 test_cgi test_keep_alive check_keep_alive test_proxy clean
 all: webserver cgi-bin/adder reverse_proxy
@@ -18,7 +18,7 @@ webserver: $(SOURCES) $(HEADERS)
 test_http: src/tests/test_http.c src/http.c src/files.c src/http.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc src/tests/test_http.c src/http.c src/files.c -o $@
 
-CONNECTION_SOURCES = src/resources.c src/connection.c src/context_pool.c src/platform.c src/http.c src/files.c src/cgi.c src/cgi_spawn.c src/cgi_response.c
+CONNECTION_SOURCES = src/server_profile.c src/resources.c src/connection.c src/context_pool.c src/platform.c src/http.c src/files.c src/cgi.c src/cgi_spawn.c src/cgi_response.c
 
 test_drain: src/tests/test_drain.c $(CONNECTION_SOURCES) $(HEADERS)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc src/tests/test_drain.c $(CONNECTION_SOURCES) -o $@ $(LDLIBS)

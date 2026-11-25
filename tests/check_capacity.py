@@ -50,6 +50,7 @@ def main():
     parser.add_argument('--connections', type=int, default=100)
     parser.add_argument('--output')
     parser.add_argument('--proxy-profile', action='store_true')
+    parser.add_argument('--server-profile', action='store_true')
     parser.add_argument('--empty-body', action='store_true')
     parser.add_argument('--contexts', type=int, default=8)
     parser.add_argument('--rounds', type=int, default=7)
@@ -66,6 +67,7 @@ def main():
     while frontend_port == backend_port: frontend_port = port()
     env = dict(os.environ, JUNGLE_CONNECTIONS=str(capacity), JUNGLE_CONTEXTS=str(args.contexts),
                PROXY_CONNECTIONS=str(capacity), PROXY_CONTEXTS=str(args.contexts))
+    env['JUNGLE_PROFILE'] = '1' if args.server_profile else '0'
     env['PROXY_PROFILE'] = '1' if args.proxy_profile else '0'
     clients, processes, logs = [], [], []
     started = time.monotonic()
@@ -194,11 +196,14 @@ def main():
                     process.terminate()
                     try: process.wait(timeout=3)
                     except subprocess.TimeoutExpired: process.kill(); process.wait()
-            if args.proxy_profile and len(logs) > 1 and 'result' in locals():
-                logs[1].seek(0)
-                for line in logs[1]:
-                    if line.startswith('[proxy_profile] '):
-                        result['proxy_profile'] = json.loads(line[len('[proxy_profile] '):])
+            if 'result' in locals():
+                for flag, index, key in [(args.proxy_profile, 1, 'proxy_profile'),
+                                          (args.server_profile, 0, 'server_profile')]:
+                    if not flag or len(logs) <= index: continue
+                    logs[index].seek(0)
+                    prefix = '['+key+'] '
+                    for line in logs[index]:
+                        if line.startswith(prefix): result[key] = json.loads(line[len(prefix):])
                 if args.output: Path(args.output).write_text(json.dumps(result, indent=2)+'\n')
             for log in logs: log.close()
 
