@@ -216,6 +216,10 @@ static void req_st(const char *name, const char *in, size_t len, int want) {
 #define POST11 "POST /api/x HTTP/1.1\r\n"
 
 static void test_req_rewrite(void) {
+    ROK("WebSocket 요청 헤더", GET11 HOST "Connection: keep-alive, UPGRADE\r\n"
+        "Upgrade: h2c, WebSocket\r\nSec-WebSocket-Key: key\r\nSec-WebSocket-Version: 13\r\n\r\n",
+        GET11 HOST "Connection: Upgrade\r\nUpgrade: websocket\r\n"
+        "Sec-WebSocket-Key: key\r\nSec-WebSocket-Version: 13\r\n\r\n");
     ROK("설계의 예시",
         "POST /api/users?x=1 HTTP/1.1\r\nHost: shop.com\r\nConnection: keep-alive, X-Debug\r\nX-Debug: 1\r\n"
         "X-Forwarded-For: 127.0.0.1\r\nAccept: */*\r\nContent-Length: 5\r\n\r\nhello",
@@ -347,7 +351,7 @@ static ssize_t presp(const char *in, size_t len, int minor, int keep, size_t cap
     char *copy = malloc(len);
     memcpy(copy, in, len);
     *out = malloc(cap);
-    ssize_t n = http_proxy_response(copy, len, minor, keep, *out, cap, r);
+    ssize_t n = http_proxy_response(copy, len, minor, keep, 0, *out, cap, r);
     free(copy);
     return n;
 }
@@ -538,13 +542,118 @@ static void test_resp_rewrite(void) {
     static const char c100[] = "HTTP/1.1 100 Continue\r\nA: 1\r\n\r\n" OK200 "\r\n";
     char out[4] = "zzz";
     struct http_upresp r;
-    check("1xx는 원본 헤더 길이", 31, http_proxy_response(c100, sizeof c100 - 1, 1, 1, out, 0, &r));
+    check("1xx는 원본 헤더 길이", 31, http_proxy_response(c100, sizeof c100 - 1, 1, 1, 0, out, 0, &r));
     check("1xx status", 100, r.status);
     check("1xx out_len", 0, (long long)r.out_len);
     check("1xx out 그대로", 0, strcmp(out, "zzz"));
 }
 
+#define WS_CONN "Connection: Upgrade\r\n"
+#define WS_UP "Upgrade: websocket\r\n"
+
+static void test_ws_parse(void) {
+    static const struct { const char *wire; int ws; } cases[] = {
+        {GET11 HOST "Connection: keep-alive, UPGRADE\r\nUpgrade: WebSocket\r\n\r\n", 1},
+        {GET11 HOST WS_CONN "Connection: keep-alive\r\n" WS_UP "Content-Length: 0\r\n\r\n", 1},
+        {GET11 HOST WS_CONN "Upgrade: h2c\r\n\r\n", 0},
+        {GET11 HOST WS_CONN "Upgrade: websocketx\r\n\r\n", 0},
+        {GET11 HOST CLOSE WS_UP "\r\n", 0},
+        {GET11 HOST WS_CONN "\r\n", 0},
+        {"GET / HTTP/1.0\r\n" WS_CONN WS_UP "\r\n", 0},
+        {POST11 HOST WS_CONN WS_UP "Content-Length: 0\r\n\r\n", 0},
+        {GET11 HOST WS_CONN WS_UP "Content-Length: 1\r\n\r\nx", 0},
+    };
+    struct http_req req;
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        size_t len = strlen(cases[i].wire);
+        check("ws 요청 길이", len, http_parse(cases[i].wire, len, len, &req));
+        check(cases[i].wire, cases[i].ws, req.ws);
+    }
+    static const char in[] = GET11 HOST "Key-X: x\r\nkEy:\t value \t\r\nA: x\r\na: y\r\n\r\n";
+    check("header 요청 길이", sizeof in-1, http_parse(in, sizeof in-1, sizeof in, &req));
+    const char *v = NULL;
+    size_t n = 0;
+    check("없는 헤더", 0, http_header(&req, in, "Ke", &v, &n));
+    int found = http_header(&req, in, "key", &v, &n);
+    check("헤더 하나", 1, found);
+    if (found == 1) same("헤더 값", "value", 5, v, n);
+    check("중복 헤더", -1, http_header(&req, in, "A", &v, &n));
+}
+
+static void test_ws_response(void) {
+#define S101 "HTTP/1.1 101 Switching Protocols\r\n"
+    static const char in[] = S101 "Connection: keep-alive, X-Hop\r\nConnection: upGRade\r\n"
+        "Upgrade: h2c, WebSocket\r\nX-Hop: x\r\nSec-WebSocket-Accept: key\r\n\r\n\x81\x00";
+    static const char want[] = S101 WS_CONN WS_UP "Sec-WebSocket-Accept: key\r\n\r\n";
+    size_t head = sizeof in - 3;
+    struct http_upresp r;
+    char out[256];
+    for (size_t n = 0; n < head; n++)
+        check("분할 101", 0, http_proxy_response(in, n, 1, 1, 1, out, sizeof out, &r));
+    check("101 뒤 프레임", head, http_proxy_response(in, sizeof in-1, 1, 1, 1, out, sizeof want-1, &r));
+    same("101 응답 전체", want, sizeof want-1, out, r.out_len);
+    check("101 status", 101, r.status);
+    check("101 has_len", 0, r.has_len);
+    check("101 keep", 0, r.keep_alive);
+    check("101 cap 부족", -1, http_proxy_response(in, head, 1, 1, 1, out, sizeof want-2, &r));
+    check("일반 요청 101 거부", -1, http_proxy_response(in, head, 1, 1, 0, out, sizeof out, &r));
+    static const char *const invalid[] = {
+        "HTTP/1.0 101 Switching Protocols\r\n" WS_CONN WS_UP "\r\n",
+        S101 WS_CONN "\r\n", S101 WS_CONN "Upgrade: websocketx\r\n\r\n",
+        S101 CLOSE WS_UP "\r\n", S101 WS_CONN WS_UP "Content-Length: 0\r\n\r\n",
+        S101 WS_CONN WS_UP "Transfer-Encoding: chunked\r\n\r\n",
+    };
+    for (size_t i = 0; i < sizeof invalid / sizeof invalid[0]; i++)
+        check(invalid[i], -1, http_proxy_response(invalid[i], strlen(invalid[i]), 1, 1, 1, out, sizeof out, &r));
+    const char *other[] = {"HTTP/1.1 100 Continue\r\n\r\n", "HTTP/1.1 400 Bad Request\r\n\r\n",
+                           "HTTP/1.1 503 Service Unavailable\r\n\r\n"};
+    for (size_t i = 0; i < sizeof other / sizeof other[0]; i++) {
+        char normal[256];
+        struct http_upresp ordinary;
+        size_t n = strlen(other[i]);
+        check("일반 응답", n, http_proxy_response(other[i], n, 1, 1, 0, normal, sizeof normal, &ordinary));
+        check("ws 일반 응답", n, http_proxy_response(other[i], n, 1, 1, 1, out, sizeof out, &r));
+        same(other[i], normal, ordinary.out_len, out, r.out_len);
+        check(other[i], ordinary.status, r.status);
+    }
+}
+
+static void test_json(void) {
+    static const char body[] = "{\"ok\":true}";
+    static const struct { const char *wire, *status; int get, keep; } cases[] = {
+        {GET11 HOST "\r\n", "HTTP/1.1 200 OK\r\n", 1, 1},
+        {POST11 HOST "Content-Length: 0\r\n\r\n", "HTTP/1.1 405 Method Not Allowed\r\n", 0, 1},
+        {"HEAD / HTTP/1.1\r\n" HOST "\r\n", "HTTP/1.1 405 Method Not Allowed\r\n", 0, 1},
+        {"GET / HTTP/1.0\r\n\r\n", "HTTP/1.1 200 OK\r\n", 1, 0},
+    };
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        struct http_req req;
+        struct http_resp resp;
+        size_t n = strlen(cases[i].wire);
+        check("JSON 요청 파싱", n, http_parse(cases[i].wire, n, n, &req));
+        int rc = http_json(&req, body, sizeof body-1, &resp);
+        check("JSON 응답 생성", 0, rc);
+        if (rc) continue;
+        check("JSON 상태", 1, memmem(resp.head, resp.head_len, cases[i].status, strlen(cases[i].status)) == resp.head);
+        check("JSON fd", -1, resp.file_fd);
+        check("JSON keep", cases[i].keep, resp.keep_alive);
+        const char *connection = cases[i].keep ? "Connection: keep-alive\r\n" : CLOSE;
+        check("JSON Connection", 1, memmem(resp.head, resp.head_len, connection, strlen(connection)) != NULL);
+        const char *field = cases[i].get ? "\r\nContent-Type: application/json\r\n" : "\r\nAllow: GET\r\n";
+        check("JSON 헤더", 1, memmem(resp.head, resp.head_len, field, strlen(field)) != NULL);
+        if (cases[i].get) {
+            const char *end = memmem(resp.head, resp.head_len, "\r\n\r\n", 4);
+            check("JSON 헤더 끝", 1, end != NULL);
+            if (end) same("JSON 본문 전체", body, sizeof body-1, end + 4, resp.head + resp.head_len - (end + 4));
+        }
+        free(resp.head);
+    }
+}
+
 int main(void) {
+    test_ws_parse();
+    test_ws_response();
+    test_json();
     test_reject();
     test_accept();
     test_find();

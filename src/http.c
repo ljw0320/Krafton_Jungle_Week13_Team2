@@ -94,6 +94,14 @@ static int head_end(const char *buf, size_t len, size_t *head_len, size_t *line_
 
 struct hdr { const char *name; size_t nlen; const char *v, *ve; };   // 값 [v, ve)은 앞뒤 공백을 뺐다
 
+// 두 헤더 모두 여러 줄과 쉼표 토큰을 허용한다.
+static void ws_tokens(const struct hdr *f, int *conn_upgrade, int *websocket) {
+    if (ieq(f->name, f->nlen, "connection"))
+        *conn_upgrade |= has_token(f->v, f->ve, "upgrade", 7);
+    else if (ieq(f->name, f->nlen, "upgrade"))
+        *websocket |= has_token(f->v, f->ve, "websocket", 9);
+}
+
 // *h의 헤더 한 줄을 읽고 다음 줄로 옮긴다. 1: 읽음, 0: 빈 줄(끝), -1: 형식 오류
 static int hdr_next(const char **h, const char *hend, struct hdr *o) {
     const char *p = *h;
@@ -170,11 +178,12 @@ ssize_t http_parse(const char *buf, size_t len, size_t cap, struct http_req *req
     req->head_len = head_len;
 
     // 5. 헤더
-    int hosts = 0, has_te = 0;
+    int hosts = 0, has_te = 0, conn_upgrade = 0, websocket = 0;
     const char *h = buf + line_len + 2, *hend = buf + head_len;
     struct hdr f;
     int got;
     while ((got = hdr_next(&h, hend, &f)) > 0) {
+        ws_tokens(&f, &conn_upgrade, &websocket);
         if (ieq(f.name, f.nlen, "host")) hosts++;
         else if (ieq(f.name, f.nlen, "transfer-encoding")) has_te = 1;
         else if (ieq(f.name, f.nlen, "connection")) {
@@ -193,7 +202,23 @@ ssize_t http_parse(const char *buf, size_t len, size_t cap, struct http_req *req
     if (has_te) return perr(req, 501);
     if (req->content_length > cap - head_len) return perr(req, 413);
     if (len - head_len < req->content_length) return 0;
+    req->ws = req->method == M_GET && req->minor == 1 && req->content_length == 0 && conn_upgrade && websocket;
     return (ssize_t)(head_len + req->content_length);
+}
+
+int http_header(const struct http_req *req, const char *buf, const char *name, const char **v, size_t *n) {
+    const char *h = (const char *)memchr(buf, '\n', req->head_len) + 1;
+    const char *end = buf + req->head_len;
+    int found = 0;
+    struct hdr f;
+    while (hdr_next(&h, end, &f) > 0) {
+        if (!ieq(f.name, f.nlen, name)) continue;
+        if (found) return -1;
+        *v = f.v;
+        *n = (size_t)(f.ve - f.v);
+        found = 1;
+    }
+    return found;
 }
 
 static const char *reason(int status) {
@@ -355,6 +380,31 @@ int http_keep_alive(const struct http_req *req) {
     return req->minor == 1 ? !req->conn_close : req->conn_keep_alive && !req->conn_close;
 }
 
+static void http_date(char date[40]) {
+    time_t now = time(NULL);
+    struct tm tm;
+    gmtime_r(&now, &tm);
+    strftime(date, 40, "%a, %d %b %Y %H:%M:%S GMT", &tm);
+}
+
+int http_json(const struct http_req *req, const char *body, size_t len, struct http_resp *resp) {
+    int status = req->method == M_GET ? 200 : 405;
+    int keep = http_keep_alive(req);
+    if (status == 405) len = 0;
+    char date[40], head[256];
+    http_date(date);
+    int n = snprintf(head, sizeof head, "HTTP/1.1 %d %s\r\nDate: %s\r\nContent-Type: application/json\r\n"
+                     "Content-Length: %zu\r\nConnection: %s\r\n%s\r\n", status, reason(status), date, len,
+                     keep ? "keep-alive" : "close", status == 405 ? "Allow: GET\r\n" : "");
+    if (n < 0 || (size_t)n >= sizeof head || len > SIZE_MAX - (size_t)n) return -1;
+    char *out = malloc((size_t)n + len);
+    if (!out) return -1;
+    memcpy(out, head, (size_t)n);
+    if (len) memcpy(out + n, body, len);
+    *resp = (struct http_resp){.head = out, .head_len = (size_t)n + len, .file_fd = -1, .keep_alive = keep};
+    return 0;
+}
+
 int http_handle(const struct http_req *req, struct http_resp *resp) {
     int status = req->status, fd = -1;
     off_t size = 0;
@@ -379,10 +429,7 @@ int http_handle(const struct http_req *req, struct http_resp *resp) {
     if (status != 200)
         clen = snprintf(body, sizeof(body), "<h1>%d %s</h1>\n", status, reason(status));
     char date[40];
-    time_t now = time(NULL);
-    struct tm tm;
-    gmtime_r(&now, &tm);
-    strftime(date, sizeof(date), "%a, %d %b %Y %H:%M:%S GMT", &tm);
+    http_date(date);
 
     size_t cap = 512;
     char *buf = malloc(cap);
@@ -487,6 +534,8 @@ static int host_ok(const struct hdr *f) {
     return f->v < f->ve;
 }
 
+static const char ws_headers[] = "Connection: Upgrade\r\nUpgrade: websocket\r\n";
+
 int http_proxy_request(const struct http_req *req, const char *buf, const char *host,
                        char *out, size_t cap, size_t *out_len) {
     static const char *const drop[] = {
@@ -516,7 +565,7 @@ int http_proxy_request(const struct http_req *req, const char *buf, const char *
     put_n(&o, buf, (size_t)(req->target + req->target_len - buf));   // 메서드 SP 대상
     put_str(&o, req->minor ? " HTTP/1.1\r\n" : " HTTP/1.0\r\n");
     put_hdr(&o, &host_hdr);
-    put_str(&o, "Connection: close\r\n");
+    put_str(&o, req->ws ? ws_headers : "Connection: close\r\n");
     if (req->has_cl) put_cl(&o, req->content_length);
     for (h = first; hdr_next(&h, hend, &f) > 0; ) {
         if (name_in(&f, drop) || in_connection(first, hend, &f)) continue;
@@ -541,7 +590,7 @@ static int status_line(const char *s, size_t len) {
     return status >= 100 && status <= 599 ? status : -1;
 }
 
-ssize_t http_proxy_response(const char *buf, size_t len, int minor, int keep,
+ssize_t http_proxy_response(const char *buf, size_t len, int minor, int keep, int ws,
                             char *out, size_t cap, struct http_upresp *r) {
     static const char *const drop[] = {
         "content-length",   // 새로 만든다
@@ -554,13 +603,15 @@ ssize_t http_proxy_response(const char *buf, size_t len, int minor, int keep,
     if (head_end(buf, len < HTTP_HEAD_MAX ? len : HTTP_HEAD_MAX, &head_len, &line_len) < 0) return -1;
     if (!head_len) return len >= HTTP_HEAD_MAX ? -1 : 0;
     int status = status_line(buf, line_len);
-    if (status < 0 || status == 101) return -1;
+    if (status < 0 || (status == 101 && (!ws || buf[7] != '1'))) return -1;
 
     const char *first = buf + line_len + 2, *hend = buf + head_len, *h = first;
     int has_cl = 0, has_te = 0, lines = 0, got;
+    int conn_upgrade = 0, websocket = 0;
     struct hdr f;
     while ((got = hdr_next(&h, hend, &f)) > 0) {
         if (++lines > HTTP_HDR_MAX || has_ctl(f.v, f.ve)) return -1;
+        if (status == 101) ws_tokens(&f, &conn_upgrade, &websocket);
         if (ieq(f.name, f.nlen, "transfer-encoding")) has_te = 1;
         else if (ieq(f.name, f.nlen, "content-length")) {
             if (has_cl || parse_cl(f.v, f.ve, &cl) < 0) return -1;
@@ -570,7 +621,9 @@ ssize_t http_proxy_response(const char *buf, size_t len, int minor, int keep,
     if (got < 0) return -1;
     if (has_te && (has_cl || minor == 0 || buf[7] == '0')) return -1;
     r->status = status;
-    if (status < 200) return (ssize_t)head_len;
+    if (status == 101) {
+        if (!conn_upgrade || !websocket || has_cl || has_te) return -1;
+    } else if (status < 200) return (ssize_t)head_len;
 
     int no_body = status == 204 || status == 304;
     r->has_len = no_body || has_cl;   // TE와 CL이 함께 있는 응답은 위에서 걸렀다
@@ -581,7 +634,8 @@ ssize_t http_proxy_response(const char *buf, size_t len, int minor, int keep,
     put_str(&o, "HTTP/1.1");
     put_n(&o, buf + 8, line_len - 8);
     put_str(&o, line_len == 12 ? " \r\n" : "\r\n");   // 이유가 없어도 SP는 있어야 한다
-    put_str(&o, r->keep_alive ? "Connection: keep-alive\r\n" : "Connection: close\r\n");
+    if (status == 101) put_str(&o, ws_headers);
+    else put_str(&o, r->keep_alive ? "Connection: keep-alive\r\n" : "Connection: close\r\n");
     if (has_cl && status != 204) put_cl(&o, cl);
     for (h = first; hdr_next(&h, hend, &f) > 0; ) {
         if (name_in(&f, drop)) continue;

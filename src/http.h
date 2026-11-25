@@ -19,6 +19,7 @@ struct http_req {
     int minor;                        /* HTTP/1.x의 x */
     int conn_close, conn_keep_alive;  /* Connection 헤더 토큰 */
     int has_cl;
+    int ws;                           /* 본문 없는 HTTP/1.1 GET의 WebSocket 업그레이드 요청 */
     size_t content_length, head_len;
     int backend;                      /* 백엔드 경로면 1. 405의 Allow를 고른다 */
 };
@@ -26,6 +27,8 @@ struct http_req {
 /* buf 앞의 요청 하나를 파싱한다. len <= cap이어야 한다(cap - 헤더 길이가 언더플로하지 않게).
    >0: 요청 길이(헤더 + 본문), 0: 덜 왔다, -1: 형식 오류(req->status에 코드) */
 ssize_t http_parse(const char *buf, size_t len, size_t cap, struct http_req *req);
+/* 파싱한 요청에서 이름이 일치하는 헤더 하나의 값을 찾는다. 1: 있음, 0: 없음, -1: 중복 */
+int http_header(const struct http_req *req, const char *buf, const char *name, const char **v, size_t *n);
 
 /* 클라이언트가 연결 유지를 원하나 */
 int http_keep_alive(const struct http_req *req);
@@ -40,6 +43,7 @@ struct http_resp {
 /* req로 응답을 만든다. req->status가 0이 아니면 그 오류 응답을 만든다.
    -1이면 응답을 만들지 못한 것이다 */
 int http_handle(const struct http_req *req, struct http_resp *resp);
+int http_json(const struct http_req *req, const char *body, size_t len, struct http_resp *resp);
 
 /* buf 안의 req를 백엔드에 보낼 요청(헤더 + 본문)으로 out에 다시 만든다. host는 Host가 없을 때 쓴다.
    0 또는 400/405/411/431/500/501 */
@@ -47,7 +51,7 @@ int http_proxy_request(const struct http_req *req, const char *buf, const char *
                        char *out, size_t cap, size_t *out_len);
 
 struct http_upresp {
-    int    status;                    /* 1xx면 out을 쓰지 않았다 */
+    int    status;                    /* 101을 제외한 1xx면 out을 쓰지 않았다 */
     int    has_len;                   /* 응답의 길이를 아는가 */
     size_t body_len;                  /* has_len이면 본문 길이 */
     int    keep_alive;                /* A를 유지하나 */
@@ -56,7 +60,7 @@ struct http_upresp {
 
 /* 백엔드 응답 헤더를 검사하고 A로 보낼 헤더를 out에 만든다. minor는 보낸 요청의 버전, keep은 클라이언트의 희망.
    >0: 원본 헤더 길이, 0: 덜 왔다, -1: 502 (len이 HTTP_HEAD_MAX인데 헤더 끝이 없는 것도 포함) */
-ssize_t http_proxy_response(const char *buf, size_t len, int minor, int keep,
+ssize_t http_proxy_response(const char *buf, size_t len, int minor, int keep, int ws,
                             char *out, size_t cap, struct http_upresp *r);
 
 #endif

@@ -108,7 +108,7 @@ static int up_head(struct upstream *u) {
     struct http_upresp r;
     ssize_t n;
     for (;;) {
-        n = http_proxy_response(c->wbuf, c->wlen, u->minor, c->keep_alive, out, PROXY_BUF_SIZE, &r);
+        n = http_proxy_response(c->wbuf, c->wlen, u->minor, c->keep_alive, 0, out, PROXY_BUF_SIZE, &r);
         if (n <= 0 || r.status >= 200) break;
         c->wlen -= (size_t)n;  // 1xx는 버린다
         memmove(c->wbuf, c->wbuf + n, c->wlen);
