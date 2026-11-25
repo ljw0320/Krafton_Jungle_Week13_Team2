@@ -650,7 +650,31 @@ static void test_json(void) {
     }
 }
 
+static void test_trace(void) {
+    static const struct { const char *target; long long trace; } cases[] = {
+        {"/ws/chat?trace=1", 1},
+        {"/ws/chat?a=b&trace=4294967295", 4294967295LL},
+        {"/ws/chat?trace=12&trace=x", 12},
+        {"/ws/chat?trace=x&trace=12", 0},
+        {"/ws/chat", 0},
+        {"/ws/chat?trace=", 0},
+        {"/ws/chat?trace=0", 0},
+        {"/ws/chat?trace=4294967296", 0},
+        {"/ws/chat?trace=1x", 0},
+        {"/ws/chat?trace=-1", 0},
+        {"/ws/chat?xtrace=1", 0},
+        {"/ws/chat?trace=12345678901234567890", 0},
+        {"/ws/chat?trace=00000000000000000001", 0},
+        {"/ws/chat?trace=0000000001", 1},
+    };
+    static const char bounded[] = {'/', '?', 't', 'r', 'a', 'c', 'e', '=', '7', 'x'};
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++)
+        check(cases[i].target, cases[i].trace, http_trace(cases[i].target, strlen(cases[i].target)));
+    check("추적은 대상 길이까지만 읽는다", 7, http_trace(bounded, sizeof bounded - 1));
+}
+
 int main(void) {
+    test_trace();
     test_ws_parse();
     test_ws_response();
     test_json();

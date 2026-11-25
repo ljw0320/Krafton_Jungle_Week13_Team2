@@ -5,6 +5,7 @@ from contextlib import closing, contextmanager
 from hashlib import sha256
 import os
 import json
+from http.client import HTTPConnection
 from pathlib import Path
 import socket
 import struct
@@ -277,6 +278,120 @@ def chat_http():
             assert receive(s, 6, rest) == b"\x81\x01w\x8a\x01x"
 
 
+def status_request(path, method="GET"):
+    conn = HTTPConnection(*CHAT, timeout=3)
+    with closing(conn):
+        conn.request(method, path)
+        res = conn.getresponse()
+        data = res.read()
+        return res.status, res.headers, data
+
+
+def stats(path="/_stat"):
+    status, headers, data = status_request(path)
+    assert status == 200 and headers["Content-Type"] == "application/json", (status, headers)
+    return json.loads(data)
+
+
+def wait_stats(path, ready):
+    deadline = time.monotonic() + 3
+    while True:
+        state = stats(path)
+        if ready(state):
+            return state
+        assert time.monotonic() < deadline, state
+        time.sleep(.02)
+
+
+def tunnel_stats():
+    before = wait_stats("/_stat", lambda s: s["tunnels"] == s["pending"] == 0)
+    assert before.keys() == {"now_us", "conns", "tunnels", "up", "down", "pending", "rss_kb", "events"}
+    assert before["rss_kb"] > 0
+    assert before["up"].keys() == before["down"].keys() == {"n", "bytes"}
+    status, headers, _ = status_request("/_stat", "POST")
+    assert status == 405 and headers["Allow"] == "GET"
+    for path in ("/_stat?x", "/_stat/"):
+        assert status_request(path)[0] == 404
+    with closing(connect()) as a, closing(connect()) as b:
+        assert receive(a, len(FIRST), upgrade(a, "first")) == FIRST
+        assert not upgrade(b, "count")
+        expected = 0
+        for sock in (a, b):
+            for i in range(10):
+                data = bytes([i]) * (i + 1)
+                sock.sendall(data)
+                assert receive(sock, len(data)) == data
+                expected += len(data)
+        during = stats()
+        assert during["tunnels"] == 2 and during["conns"] >= 3 and during["pending"] == 0, during
+        assert during["up"]["bytes"] - before["up"]["bytes"] == expected, during
+        assert during["down"]["bytes"] - before["down"]["bytes"] == expected + len(FIRST), during
+        for direction in ("up", "down"):
+            assert during[direction]["n"] > before[direction]["n"], during
+    wait_stats("/_stat", lambda s: s["tunnels"] == s["pending"] == 0)
+    with closing(connect(small=True)) as slow:
+        upgrade(slow, "bigdown")
+        wait_stats("/_stat", lambda s: s["tunnels"] == 1 and s["pending"] > 0)
+        reset(slow)
+    wait_stats("/_stat", lambda s: s["tunnels"] == s["pending"] == 0)
+
+
+def chat_stats():
+    from chat_bot import Client
+
+    path = "/ws/stat"
+    before = wait_stats(path, lambda s: s["users"] == 0)
+    assert before.keys() == {"now_us", "users", "waiting", "rooms", "msgs", "img_bytes",
+                             "paused", "queued", "slow_closed", "rejected", "rss_kb", "events"}
+    assert before["rss_kb"] > 0
+    with closing(Client(CHAT, "/ws/chat?trace=7")) as a:
+        assert next_frame(a) == (1, b"w")
+        waiting = stats(path)
+        assert (waiting["users"], waiting["waiting"], waiting["rooms"]) == (1, 1, 0)
+        with closing(Client(CHAT, "/ws/chat")) as b:
+            assert next_frame(b) == (1, b"w")
+            assert next_frame(a) == next_frame(b) == (1, b"c")
+            srv_before, chat_before = stats(), stats(path)
+            a.send_text("mhello")
+            assert b.recv(1) == (1, b"mhello") and a.recv(1) == (1, b"a")
+            srv, chat = stats(), stats(path)
+            assert (chat["users"], chat["waiting"], chat["rooms"]) == (2, 0, 1)
+            assert chat["msgs"] == before["msgs"] + 1
+            old_srv = {e["seq"] for e in srv_before["events"]}
+            old_chat = {e["seq"] for e in chat_before["events"]}
+            server_events = [e for e in srv["events"] if e["seq"] not in old_srv]
+            chat_events = [e for e in chat["events"] if e["seq"] not in old_chat]
+            assert all(e["trace"] == 7 for e in server_events + chat_events)
+            assert [e["stage"] for e in server_events] == ["A>S", "S>B", "B>S", "S>A"]
+            assert [(e["stage"], e["kind"], e["bytes"]) for e in chat_events] == [
+                ("recv", "m", 6), ("send", "a", 1)]
+            timeline = server_events[:2] + chat_events + server_events[2:]
+            times = [e["t_us"] for e in timeline]
+            assert times == sorted(times), timeline
+            a.send_text("ipng 3")
+            a.send_bin(b"abc")
+            assert b.recv(1) == (1, b"ipng 3") and b.recv(1) == (2, b"abc")
+            assert stats(path)["img_bytes"] == before["img_bytes"] + 3
+            for _ in range(100):
+                a.send_text("mhello")
+                assert b.recv(1) == (1, b"mhello") and a.recv(1) == (1, b"a")
+            srv_ring, chat_ring = stats(), stats(path)
+            for snapshot, prev in ((srv_ring, srv), (chat_ring, chat)):
+                seq = [e["seq"] for e in snapshot["events"]]
+                assert len(seq) == 64 and seq == list(range(seq[0], seq[0] + 64)), seq
+                assert seq[0] > prev["events"][-1]["seq"], seq
+            for i in range(16):
+                steps = srv_ring["events"][i * 4:i * 4 + 4]
+                parsed, ack = chat_ring["events"][32 + i * 2:34 + i * 2]
+                assert [e["stage"] for e in steps] == ["A>S", "S>B", "B>S", "S>A"], steps
+                assert (parsed["stage"], parsed["kind"], ack["stage"], ack["kind"]) == ("recv", "m", "send", "a")
+                timeline = steps[:2] + [parsed, ack] + steps[2:]
+                times = [e["t_us"] for e in timeline]
+                assert times == sorted(times), timeline
+            assert chat_ring["msgs"] == before["msgs"] + 101
+    wait_stats(path, lambda s: s["users"] == s["rooms"] == 0)
+
+
 def next_frame(client, timeout=1.5):
     deadline = time.monotonic() + timeout
     while True:
@@ -496,7 +611,8 @@ def chat_pressure():
     with pair(DIRECT) as (a, b), pair(DIRECT) as (c, d):
         b.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 8192)
         a.send_raw(flood)
-        time.sleep(3)
+        pressured = wait_stats("/ws/stat", lambda s: s["paused"] >= 1 and s["queued"] > 0)
+        assert pressured["rooms"] == 2 and pressured["users"] == 4, pressured
         start = time.monotonic()
         c.send_text("mroom")
         assert d.recv(1) == (1, b"mroom") and c.recv(1) == (1, b"a")
@@ -656,4 +772,4 @@ if __name__ == "__main__":
          "chat_images": chat_images, "chat_image_invalid": chat_image_invalid,
          "chat_image_departure": chat_image_departure, "chat_pressure": chat_pressure,
          "chat_stalled": chat_stalled, "chat_clocks": chat_clocks, "chat_fd_limit": chat_fd_limit,
-         "chat_echo_bot": chat_echo_bot}[case]()
+         "chat_echo_bot": chat_echo_bot, "tunnel_stats": tunnel_stats, "chat_stats": chat_stats}[case]()

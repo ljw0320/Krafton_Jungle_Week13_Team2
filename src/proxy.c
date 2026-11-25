@@ -61,6 +61,7 @@ int proxy_start(struct conn *c, const struct http_req *req, struct route *r) {
     u->w.fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
     if (u->w.fd < 0) return start_fail(c, 500, strerror(errno));
     u->ws = req->ws;
+    c->trace = u->ws ? http_trace(req->target, req->target_len) : 0;
     if (u->ws) {
         int size = TUNNEL_SOCKBUF, on = 1;
         if (setsockopt(u->w.fd, SOL_SOCKET, SO_RCVBUF, &size, sizeof(size)) < 0 ||
@@ -148,7 +149,11 @@ static int up_head(struct upstream *u) {
     u->remain = r.has_len ? r.body_len - body : 0;
     c->keep_alive = r.keep_alive;
     c->outq = 0;  // 앞 응답의 값이 남으면 첫 sweep이 줄어든 것으로 잘못 본다
-    if (r.status == 101) return tunnel_start(c);
+    if (r.status == 101) {
+        // 터널 상태에서 remain은 통계에서 제외할 101 헤더의 남은 길이다.
+        u->remain = r.out_len;
+        return tunnel_start(c);
+    }
     return relay(c);
 }
 

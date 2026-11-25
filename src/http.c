@@ -387,6 +387,31 @@ static void http_date(char date[40]) {
     strftime(date, 40, "%a, %d %b %Y %H:%M:%S GMT", &tm);
 }
 
+uint32_t http_trace(const char *target, size_t len) {
+    const char *end = target + len;
+    const char *part = memchr(target, '?', len);
+    if (!part) return 0;
+    for (part++; part < end; ) {
+        const char *next = memchr(part, '&', (size_t)(end - part));
+        if (!next) next = end;
+        if (next - part >= 6 && memcmp(part, "trace=", 6) == 0) {
+            const char *digits = part + 6;
+            if (next - digits > 10) return 0;
+            uint32_t trace = 0;
+            for (const char *p = digits; p < next; p++) {
+                if (*p < '0' || *p > '9') return 0;
+                uint32_t digit = (uint32_t)(*p - '0');
+                if (trace > (UINT32_MAX - digit) / 10) return 0;
+                trace = trace * 10 + digit;
+            }
+            return trace;
+        }
+        part = next;
+        if (part < end) part++;
+    }
+    return 0;
+}
+
 int http_json(const struct http_req *req, const char *body, size_t len, struct http_resp *resp) {
     int status = req->method == M_GET ? 200 : 405;
     int keep = http_keep_alive(req);

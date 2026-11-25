@@ -2,6 +2,7 @@
 #define HTTP_H
 
 #include <stddef.h>
+#include <stdint.h>
 #include <sys/types.h>
 
 #define HTTP_HEAD_MAX 8192   /* 백엔드 응답 헤더 한도 */
@@ -9,6 +10,7 @@
 
 /* 정적 루트를 realpath로 확인해 저장한다. 실패하면 메시지를 stderr에 찍고 -1 */
 int http_init(const char *root);
+uint32_t http_trace(const char *target, size_t len);
 
 enum http_method { M_GET, M_POST, M_KNOWN /* 알지만 구현 안 함 */, M_UNKNOWN };
 

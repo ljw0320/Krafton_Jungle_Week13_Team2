@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include <errno.h>
+#include <inttypes.h>
 #include <limits.h>
 #include <linux/sockios.h>
 #include <netinet/in.h>
@@ -18,6 +19,7 @@
 
 #include "../src/http.h"
 #include "../src/server.h"
+#include "../src/stat.h"
 #include "room.h"
 #include "ws.h"
 
@@ -34,12 +36,13 @@
 #define DEAD_SEC 30
 #define HANDSHAKE_SEC 10
 #define SLOW_SEC 10
+#define EVENTS 64
 
 enum state { HANDSHAKE, WAITING, PAIRED, ALONE, CLOSING };
 enum blocked { RUNNING, OWN_QUEUE, PEER_QUEUE };
 struct user {
     int fd, dead, counted, wait_pos;
-    uint32_t interest;
+    uint32_t interest, trace;
     enum state state;
     struct user *peer, *dirty_next, **dirty_prev, *garbage_next;
     struct user *next, **prev;
@@ -54,11 +57,73 @@ static int epfd, users, conns, listener_fd, accept_paused;
 static struct user *dirty, *garbage, *active;
 static struct user *waiting[MAX_USERS];
 static int nwaiting;
+static unsigned long long msgs, img_bytes, slow_closed, rejected;
+static struct {
+    uint32_t trace;
+    char kind;
+    int send;
+    size_t bytes;
+    uint64_t t_us;
+} events[EVENTS];
+static uint64_t seq;
 
-static int64_t now_ms(void) {
+static uint64_t now_us(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+    return (uint64_t)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+}
+
+static int64_t now_ms(void) {
+    return (int64_t)(now_us() / 1000);
+}
+
+static void chat_event(const struct user *u, int send, char kind, size_t bytes) {
+    if (!u->trace) return;
+    size_t i = seq++ % EVENTS;
+    events[i].trace = u->trace;
+    events[i].kind = kind;
+    events[i].send = send;
+    events[i].bytes = bytes;
+    events[i].t_us = now_us();
+}
+
+static unsigned long rss_kb(void) {
+    FILE *f = fopen("/proc/self/statm", "r");
+    if (!f) return 0;
+    unsigned long total, resident = 0;
+    if (fscanf(f, "%lu %lu", &total, &resident) != 2) resident = 0;
+    fclose(f);
+    return resident * (unsigned long)(sysconf(_SC_PAGESIZE) / 1024);
+}
+
+static int chat_json(char *out, size_t cap) {
+    int paired = 0, paused = 0;
+    size_t queued = 0;
+    for (const struct user *u = active; u; u = u->next) {
+        if (u->dead) continue;
+        paired += u->state == PAIRED;
+        paused += u->blocked != RUNNING;
+        queued += u->end - u->first;
+    }
+    int len = snprintf(out, cap, "{\"now_us\":%" PRIu64 ",\"users\":%d,\"waiting\":%d,"
+                       "\"rooms\":%d,\"msgs\":%llu,\"img_bytes\":%llu,\"paused\":%d,\"queued\":%zu,"
+                       "\"slow_closed\":%llu,\"rejected\":%llu,\"rss_kb\":%lu,\"events\":[",
+                       now_us(), users, nwaiting, paired / 2, msgs, img_bytes, paused, queued,
+                       slow_closed, rejected, rss_kb());
+    if (len < 0 || (size_t)len >= cap) return -1;
+    uint64_t start = seq > EVENTS ? seq - EVENTS : 0;
+    for (uint64_t n = start; n < seq; n++) {
+        size_t i = n % EVENTS;
+        int written = snprintf(out + len, cap - (size_t)len, "%s{\"seq\":%" PRIu64 ",\"trace\":%" PRIu32
+                               ",\"stage\":\"%s\",\"kind\":\"%c\",\"bytes\":%zu,\"t_us\":%" PRIu64 "}",
+                               n == start ? "" : ",", n + 1, events[i].trace, events[i].send ? "send" : "recv",
+                               events[i].kind, events[i].bytes, events[i].t_us);
+        if (written < 0 || (size_t)written >= cap - (size_t)len) return -1;
+        len += written;
+    }
+    if (cap - (size_t)len < sizeof "]}") return -1;
+    snprintf(out + len, cap - (size_t)len, "]}");
+    return len + 2;
 }
 
 static void mark_dirty(struct user *u) {
@@ -92,13 +157,21 @@ static void append(struct user *u, const void *data, size_t len) {
     if (!(u->interest & EPOLLOUT)) mark_dirty(u);
 }
 
-static int queue_frame(struct user *u, int op, const void *data, size_t len, size_t reserve) {
+static int queue_frame_from(struct user *u, int op, const void *data, size_t len, size_t reserve,
+                            struct user *sender) {
     unsigned char head[10];
     size_t h = ws_head(head, 1, op, len);
     if (h + len + reserve > OUT_CAP - (u->end - u->first)) return -1;
+    char kind = op == 2 ? 'b' : op == 1 && len ? *(const char *)data : 0;
+    if (sender) chat_event(sender, 0, kind, len);
     append(u, head, h);
     append(u, data, len);
+    if (kind) chat_event(u, 1, kind, len);
     return 0;
+}
+
+static int queue_frame(struct user *u, int op, const void *data, size_t len, size_t reserve) {
+    return queue_frame_from(u, op, data, len, reserve, NULL);
 }
 
 static void unqueue_waiter(struct user *u) {
@@ -238,10 +311,14 @@ static size_t image_size(const unsigned char *p, size_t len) {
 static int forward(struct user *u, int op, const unsigned char *p, size_t len, int ack) {
     if (ack && OUT_CAP - (u->end - u->first) < 3 + OUT_RESERVE)
         u->blocked = OWN_QUEUE;
-    else if (queue_frame(u->peer, op, p, len, OUT_RESERVE) < 0)
+    else if (queue_frame_from(u->peer, op, p, len, OUT_RESERVE, u) < 0)
         u->blocked = PEER_QUEUE;
     else {
-        if (ack) queue_frame(u, 1, "a", 1, 0);
+        if (ack) {
+            msgs++;
+            queue_frame(u, 1, "a", 1, 0);
+        }
+        if (op == 2) img_bytes += len;
         return 1;
     }
     interest(u, u->interest & ~EPOLLIN);
@@ -253,8 +330,12 @@ static void handle_text(struct user *u, const unsigned char *p, size_t len, int 
         violation(u, 1007);
         return;
     }
-    if (len && (p[0] == 'm' || p[0] == 'i') && !paired) return;
+    if (len && (p[0] == 'm' || p[0] == 'i') && !paired) {
+        chat_event(u, 0, (char)p[0], len);
+        return;
+    }
     if (len == 1 && p[0] == 'n') {
+        chat_event(u, 0, 'n', len);
         if (u->state != WAITING) {
             leave_room(u);
             join_waiting(u);
@@ -292,7 +373,7 @@ static void handle_frame(struct user *u, const struct ws_frame *f, unsigned char
         if (paired && f->len) {
             if (f->len > u->image_left) violation(u, 1008);
             else if (forward(u, 2, p, f->len, 0)) u->image_left -= f->len;
-        }
+        } else chat_event(u, 0, 'b', f->len);
     } else if (f->len > TEXT_MAX - u->text_len) {
         violation(u, 1009);
     } else if (f->op && f->fin) {
@@ -308,12 +389,16 @@ static void handle_frame(struct user *u, const struct ws_frame *f, unsigned char
 
 static void http_reply(struct user *u, int status) {
     const char *reason = "Bad Request", *extra = "";
-    char body[64] = "";
+    char body[STAT_JSON_CAP];
+    int length = status == 200 ? chat_json(body, sizeof(body)) : 0;
+    if (length < 0) {
+        status = 500;
+        length = 0;
+    }
     switch (status) {
     case 200:
         reason = "OK";
         extra = "Content-Type: application/json\r\n";
-        snprintf(body, sizeof(body), "{\"users\":%d,\"waiting\":%d}", users, nwaiting);
         break;
     case 404: reason = "Not Found"; break;
     case 405: reason = "Method Not Allowed"; extra = "Allow: GET\r\n"; break;
@@ -321,14 +406,16 @@ static void http_reply(struct user *u, int status) {
     case 414: reason = "URI Too Long"; break;
     case 426: reason = "Upgrade Required"; extra = "Sec-WebSocket-Version: 13\r\n"; break;
     case 431: reason = "Request Header Fields Too Large"; break;
+    case 500: reason = "Internal Server Error"; break;
     case 501: reason = "Not Implemented"; break;
-    case 503: reason = "Service Unavailable"; break;
+    case 503: reason = "Service Unavailable"; rejected++; break;
     case 505: reason = "HTTP Version Not Supported"; break;
     }
     char reply[256];
-    int len = snprintf(reply, sizeof(reply), "HTTP/1.1 %d %s\r\n%sContent-Length: %zu\r\n"
-                       "Connection: close\r\n\r\n%s", status, reason, extra, strlen(body), body);
+    int len = snprintf(reply, sizeof(reply), "HTTP/1.1 %d %s\r\n%sContent-Length: %d\r\n"
+                       "Connection: close\r\n\r\n", status, reason, extra, length);
     append(u, reply, len);
+    if (length) append(u, body, (size_t)length);
     closing(u);
 }
 
@@ -357,6 +444,7 @@ static ssize_t handshake(struct user *u) {
         int len = snprintf(reply, sizeof(reply), "HTTP/1.1 101 Switching Protocols\r\n"
                            "Connection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Accept: %s\r\n\r\n", accept);
         append(u, reply, len);
+        u->trace = http_trace(r.target, r.target_len);
         u->counted = 1;
         users++;
         u->ping_at = now_ms() + 1000 * PING_SEC;
@@ -448,6 +536,7 @@ static void accept_users(int listener) {
             return;
         }
         if (conns >= MAX_CONNS) {
+            rejected++;
             close(fd);
             continue;
         }
@@ -493,6 +582,7 @@ static void sweep(int64_t now) {
                 u->outq = pending;
             }
             if (now - u->progress >= 1000 * SLOW_SEC) {
+                slow_closed++;
                 drop(u);
                 continue;
             }

@@ -37,12 +37,12 @@ BP=$!
 $CHATD_WRAP ./chatd 9001 </dev/null 2>"$TMP/chatd.log" &
 CP=$!
 mkdir "$TMP/www" || exit 1
-$SERVER_WRAP ./server 8080 "$TMP/www" /t/=127.0.0.1:8004 /dead/=127.0.0.1:8009 /ws/=127.0.0.1:9001 </dev/null 2>"$LOG" &
+$SERVER_WRAP ./server 8080 "$TMP/www" /t/=127.0.0.1:8004 /dead/=127.0.0.1:8009 /ws/=127.0.0.1:9001 /=127.0.0.1:9001 </dev/null 2>"$LOG" &
 SP=$!
 waitport 8004 $BP
 waitport 8080 $SP
 waitport 9001 $CP
-cases=(handshake echo closes)
+cases=(handshake echo closes tunnel_stats chat_stats)
 if [ -z "$SERVER_WRAP" ]; then cases+=(noread timers); fi
 cases+=(chat_http chat_messages chat_matching chat_departures chat_invalid chat_echo_bot)
 cases+=(chat_images chat_image_invalid chat_image_departure chat_pressure chat_fd_limit)

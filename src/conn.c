@@ -16,10 +16,10 @@
 #include "http.h"
 #include "proxy.h"
 #include "route.h"
+#include "stat.h"
 #include "tunnel.h"
 
 static struct conn *head;
-static int conn_count;
 
 static int conn_process(struct conn *c);
 
@@ -42,7 +42,7 @@ struct conn *conn_new(int fd) {
     c->next = head;
     if (head) head->prev = c;
     head = c;
-    conn_count++;
+    stat_c.conns++;
     if (loop_watch(&c->w, EPOLLIN) < 0) {
         conn_close(c);
         return NULL;
@@ -60,8 +60,12 @@ void conn_close(struct conn *c) {
     if (c->prev) c->prev->next = c->next;
     else head = c->next;
     if (c->next) c->next->prev = c->prev;
-    conn_count--;
-    fprintf(stderr, "close fd=%d conn_count=%d\n", c->w.fd, conn_count);
+    if (c->state == CONN_TUNNEL) {
+        stat_c.tunnels--;
+        stat_c.pending -= (long)(c->rlen - c->roff + c->wlen - c->woff - c->up.remain);
+    }
+    stat_c.conns--;
+    fprintf(stderr, "close fd=%d conn_count=%ld\n", c->w.fd, stat_c.conns);
     free(c);
 }
 
@@ -144,9 +148,17 @@ static int conn_send(struct conn *c) {
 }
 
 // 0: WRITING 준비됨, -1: 닫음
-static int conn_respond(struct conn *c, const struct http_req *req) {
+static int conn_respond(struct conn *c, const struct http_req *req, int local_stat) {
     struct http_resp r;
-    if (http_handle(req, &r) < 0) {
+    int result;
+    if (local_stat) {
+        char json[STAT_JSON_CAP];
+        int len = req->method == M_GET ? stat_json(json, sizeof json) : 0;
+        result = len < 0 ? -1 : http_json(req, json, (size_t)len, &r);
+    } else {
+        result = http_handle(req, &r);
+    }
+    if (result < 0) {
         conn_close(c);
         return -1;
     }
@@ -167,7 +179,7 @@ int conn_error(struct conn *c, int status) {
     free(c->wbuf);
     c->wbuf = NULL;
     struct http_req req = {.status = status};
-    if (conn_respond(c, &req) < 0) return -1;
+    if (conn_respond(c, &req, 0) < 0) return -1;
     // 다 못 보내면 WRITING으로 남고 유휴 검사가 맡는다. 닫는 응답이라 1은 오지 않는다
     return conn_send(c);
 }
@@ -178,14 +190,15 @@ static int conn_process(struct conn *c) {
         struct http_req req;
         ssize_t n = http_parse(c->rbuf, c->rlen, RBUF_SIZE, &req);  // rlen <= RBUF_SIZE
         if (n == 0) break;
-        struct route *r = n > 0 ? route_find(req.target, req.target_len) : NULL;
+        int local_stat = n > 0 && req.target_len == 6 && memcmp(req.target, "/_stat", 6) == 0;
+        struct route *r = n > 0 && !local_stat ? route_find(req.target, req.target_len) : NULL;
         int st = r ? proxy_start(c, &req, r) : 0;
         if (st < 0) return -1;
         if (st > 0) {
             req.status = st;
             req.backend = 1;
         }
-        if ((!r || st > 0) && conn_respond(c, &req) < 0) return -1;
+        if ((!r || st > 0) && conn_respond(c, &req, local_stat) < 0) return -1;
         // req가 rbuf를 가리키므로 응답이나 전달할 요청을 만든 뒤에 지운다
         if (n > 0) {
             c->rlen -= (size_t)n;

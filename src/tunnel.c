@@ -6,6 +6,7 @@
 #include <sys/socket.h>
 
 #include "conn.h"
+#include "stat.h"
 #include "tunnel.h"
 
 static int close_tunnel(struct conn *c) {
@@ -32,6 +33,17 @@ int tunnel_start(struct conn *c) {
         return close_tunnel(c);
     c->state = CONN_TUNNEL;
     c->up.state = UP_TUNNEL;
+    stat_c.tunnels++;
+    size_t down = c->wlen - c->up.remain;
+    stat_c.pending += (long)(c->rlen + down);
+    if (c->rlen) {
+        stat_c.up_n++;
+        stat_event(c->trace, "A>S", c->rlen);
+    }
+    if (down) {
+        stat_c.down_n++;
+        stat_event(c->trace, "B>S", down);
+    }
     c->up.since = c->last_active = time(NULL);
     fprintf(stderr, "fd=%d tunnel open backend fd=%d\n", c->w.fd, c->up.w.fd);
     return watches(c);
@@ -54,13 +66,31 @@ static int transfer(struct conn *c, int down, int readable) {
         if (n < 0 && retry_later()) return 0;
         if (n <= 0) return close_tunnel(c);
         *len = (size_t)n;
+        stat_c.pending += (long)n;
+        if (down) stat_c.down_n++;
+        else stat_c.up_n++;
+        stat_event(c->trace, down ? "B>S" : "A>S", (size_t)n);
         c->last_active = time(NULL);
         if (down) c->up.since = c->last_active;
     }
     if (*off == *len) return 0;
+    // 반대쪽은 send가 반환하기 전에도 바이트를 읽을 수 있다.
+    uint64_t sent_at = c->trace ? stat_now_us() : 0;
     ssize_t n = send(to, buf + *off, *len - *off, 0);
     if (n < 0 && retry_later()) return 0;
     if (n <= 0) return close_tunnel(c);
+    size_t bytes = (size_t)n;
+    if (down && c->up.remain) {
+        size_t header = bytes < c->up.remain ? bytes : c->up.remain;
+        c->up.remain -= header;
+        bytes -= header;
+    }
+    if (bytes) {
+        stat_c.pending -= (long)bytes;
+        if (down) stat_c.down_bytes += bytes;
+        else stat_c.up_bytes += bytes;
+        stat_event_at(c->trace, down ? "S>A" : "S>B", bytes, sent_at);
+    }
     *off += (size_t)n;
     if (*off == *len) *off = *len = 0;
     c->last_active = time(NULL);
