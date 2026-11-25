@@ -1,0 +1,521 @@
+[
+  {
+    "version": "proxy_wait_before",
+    "scenario": "real_server",
+    "concurrency": 16,
+    "repeat": 1,
+    "statuses": {
+      "200": 16
+    },
+    "p95_ms": 12.26,
+    "max_ms": 12.26,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "reverse_proxy",
+    "scenario": "real_server",
+    "concurrency": 16,
+    "repeat": 1,
+    "statuses": {
+      "200": 16
+    },
+    "p95_ms": 11.08,
+    "max_ms": 11.08,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "proxy_wait_before",
+    "scenario": "real_server",
+    "concurrency": 16,
+    "repeat": 2,
+    "statuses": {
+      "200": 16
+    },
+    "p95_ms": 12.01,
+    "max_ms": 12.01,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "reverse_proxy",
+    "scenario": "real_server",
+    "concurrency": 16,
+    "repeat": 2,
+    "statuses": {
+      "200": 16
+    },
+    "p95_ms": 11.05,
+    "max_ms": 11.05,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "proxy_wait_before",
+    "scenario": "real_server",
+    "concurrency": 16,
+    "repeat": 3,
+    "statuses": {
+      "200": 16
+    },
+    "p95_ms": 10.7,
+    "max_ms": 10.7,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "reverse_proxy",
+    "scenario": "real_server",
+    "concurrency": 16,
+    "repeat": 3,
+    "statuses": {
+      "200": 16
+    },
+    "p95_ms": 10.42,
+    "max_ms": 10.42,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "proxy_wait_before",
+    "scenario": "real_server",
+    "concurrency": 32,
+    "repeat": 1,
+    "statuses": {
+      "200": 32
+    },
+    "p95_ms": 19.53,
+    "max_ms": 19.6,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "reverse_proxy",
+    "scenario": "real_server",
+    "concurrency": 32,
+    "repeat": 1,
+    "statuses": {
+      "200": 32
+    },
+    "p95_ms": 19.96,
+    "max_ms": 19.99,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "proxy_wait_before",
+    "scenario": "real_server",
+    "concurrency": 32,
+    "repeat": 2,
+    "statuses": {
+      "200": 32
+    },
+    "p95_ms": 20.65,
+    "max_ms": 21.44,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "reverse_proxy",
+    "scenario": "real_server",
+    "concurrency": 32,
+    "repeat": 2,
+    "statuses": {
+      "200": 32
+    },
+    "p95_ms": 21.47,
+    "max_ms": 21.62,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "proxy_wait_before",
+    "scenario": "real_server",
+    "concurrency": 32,
+    "repeat": 3,
+    "statuses": {
+      "200": 32
+    },
+    "p95_ms": 21.3,
+    "max_ms": 21.7,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "reverse_proxy",
+    "scenario": "real_server",
+    "concurrency": 32,
+    "repeat": 3,
+    "statuses": {
+      "200": 32
+    },
+    "p95_ms": 20.59,
+    "max_ms": 21.03,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "proxy_wait_before",
+    "scenario": "fixed_100ms",
+    "concurrency": 16,
+    "repeat": 1,
+    "statuses": {
+      "503": 8,
+      "200": 8
+    },
+    "p95_ms": 113.14,
+    "max_ms": 113.14,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "reverse_proxy",
+    "scenario": "fixed_100ms",
+    "concurrency": 16,
+    "repeat": 1,
+    "statuses": {
+      "200": 16
+    },
+    "p95_ms": 219.88,
+    "max_ms": 219.88,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "proxy_wait_before",
+    "scenario": "fixed_100ms",
+    "concurrency": 16,
+    "repeat": 2,
+    "statuses": {
+      "200": 8,
+      "503": 8
+    },
+    "p95_ms": 114.31,
+    "max_ms": 114.31,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "reverse_proxy",
+    "scenario": "fixed_100ms",
+    "concurrency": 16,
+    "repeat": 2,
+    "statuses": {
+      "200": 16
+    },
+    "p95_ms": 220.83,
+    "max_ms": 220.83,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "proxy_wait_before",
+    "scenario": "fixed_100ms",
+    "concurrency": 16,
+    "repeat": 3,
+    "statuses": {
+      "503": 8,
+      "200": 8
+    },
+    "p95_ms": 119.13,
+    "max_ms": 119.13,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "reverse_proxy",
+    "scenario": "fixed_100ms",
+    "concurrency": 16,
+    "repeat": 3,
+    "statuses": {
+      "200": 16
+    },
+    "p95_ms": 224.42,
+    "max_ms": 224.42,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "proxy_wait_before",
+    "scenario": "fixed_100ms",
+    "concurrency": 32,
+    "repeat": 1,
+    "statuses": {
+      "503": 24,
+      "200": 8
+    },
+    "p95_ms": 121.08,
+    "max_ms": 123.63,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "reverse_proxy",
+    "scenario": "fixed_100ms",
+    "concurrency": 32,
+    "repeat": 1,
+    "statuses": {
+      "200": 32
+    },
+    "p95_ms": 427.91,
+    "max_ms": 432.72,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "proxy_wait_before",
+    "scenario": "fixed_100ms",
+    "concurrency": 32,
+    "repeat": 2,
+    "statuses": {
+      "200": 8,
+      "503": 24
+    },
+    "p95_ms": 123.31,
+    "max_ms": 126.05,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "reverse_proxy",
+    "scenario": "fixed_100ms",
+    "concurrency": 32,
+    "repeat": 2,
+    "statuses": {
+      "200": 32
+    },
+    "p95_ms": 429.61,
+    "max_ms": 430.41,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "proxy_wait_before",
+    "scenario": "fixed_100ms",
+    "concurrency": 32,
+    "repeat": 3,
+    "statuses": {
+      "503": 24,
+      "200": 8
+    },
+    "p95_ms": 126.05,
+    "max_ms": 126.84,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "reverse_proxy",
+    "scenario": "fixed_100ms",
+    "concurrency": 32,
+    "repeat": 3,
+    "statuses": {
+      "200": 32
+    },
+    "p95_ms": 432.07,
+    "max_ms": 432.53,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "proxy_wait_before",
+    "scenario": "fixed_800ms",
+    "concurrency": 16,
+    "repeat": 1,
+    "statuses": {
+      "503": 8,
+      "200": 8
+    },
+    "p95_ms": 814.84,
+    "max_ms": 814.84,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "reverse_proxy",
+    "scenario": "fixed_800ms",
+    "concurrency": 16,
+    "repeat": 1,
+    "statuses": {
+      "200": 16
+    },
+    "p95_ms": 1621.11,
+    "max_ms": 1621.11,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "proxy_wait_before",
+    "scenario": "fixed_800ms",
+    "concurrency": 16,
+    "repeat": 2,
+    "statuses": {
+      "503": 8,
+      "200": 8
+    },
+    "p95_ms": 817.24,
+    "max_ms": 817.24,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "reverse_proxy",
+    "scenario": "fixed_800ms",
+    "concurrency": 16,
+    "repeat": 2,
+    "statuses": {
+      "200": 16
+    },
+    "p95_ms": 1622.0,
+    "max_ms": 1622.0,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "proxy_wait_before",
+    "scenario": "fixed_800ms",
+    "concurrency": 16,
+    "repeat": 3,
+    "statuses": {
+      "200": 8,
+      "503": 8
+    },
+    "p95_ms": 817.47,
+    "max_ms": 817.47,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "reverse_proxy",
+    "scenario": "fixed_800ms",
+    "concurrency": 16,
+    "repeat": 3,
+    "statuses": {
+      "200": 16
+    },
+    "p95_ms": 1619.56,
+    "max_ms": 1619.56,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "proxy_wait_before",
+    "scenario": "fixed_800ms",
+    "concurrency": 32,
+    "repeat": 1,
+    "statuses": {
+      "503": 24,
+      "200": 8
+    },
+    "p95_ms": 823.89,
+    "max_ms": 825.12,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "reverse_proxy",
+    "scenario": "fixed_800ms",
+    "concurrency": 32,
+    "repeat": 1,
+    "statuses": {
+      "200": 24,
+      "503": 8
+    },
+    "p95_ms": 2430.14,
+    "max_ms": 2430.42,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "proxy_wait_before",
+    "scenario": "fixed_800ms",
+    "concurrency": 32,
+    "repeat": 2,
+    "statuses": {
+      "503": 24,
+      "200": 8
+    },
+    "p95_ms": 827.14,
+    "max_ms": 827.42,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "reverse_proxy",
+    "scenario": "fixed_800ms",
+    "concurrency": 32,
+    "repeat": 2,
+    "statuses": {
+      "200": 24,
+      "503": 8
+    },
+    "p95_ms": 2437.65,
+    "max_ms": 2438.25,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "proxy_wait_before",
+    "scenario": "fixed_800ms",
+    "concurrency": 32,
+    "repeat": 3,
+    "statuses": {
+      "503": 24,
+      "200": 8
+    },
+    "p95_ms": 824.74,
+    "max_ms": 825.37,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  },
+  {
+    "version": "reverse_proxy",
+    "scenario": "fixed_800ms",
+    "concurrency": 32,
+    "repeat": 3,
+    "statuses": {
+      "200": 24,
+      "503": 8
+    },
+    "p95_ms": 2430.54,
+    "max_ms": 2433.92,
+    "recovery_ok": true,
+    "frontend_established": 0,
+    "backend_established": 0
+  }
+]
