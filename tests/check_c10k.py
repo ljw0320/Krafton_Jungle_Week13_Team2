@@ -26,17 +26,47 @@ class Client:
         self.responses = 0
         self.last = None
         self.max_gap = 0.0
+        self.timing = None
 
-    async def exchange(self, host, target, stats):
+    async def exchange(self, host, target, stats, scheduled_at=None):
+        started = time.monotonic()
+        self.timing = dict(connection=self.index, request=self.responses + 1,
+                           kind='first' if self.writer is None else 'reuse',
+                           scheduled_at=started if scheduled_at is None else scheduled_at,
+                           started_at=started, send_at=None, drained_at=None,
+                           response_completed_at=None)
+        try:
+            return await self._exchange(host, target, stats)
+        finally:
+            timing = self.timing
+            for name, end, begin in (
+                ('schedule_to_start', 'started_at', 'scheduled_at'),
+                ('schedule_to_send', 'send_at', 'scheduled_at'),
+                ('write_buffer_wait', 'drained_at', 'send_at'),
+                ('send_to_response', 'response_completed_at', 'send_at')):
+                if timing[end] is None: continue
+                value = timing[end] - timing[begin]
+                key = timing['kind'] + '_' + name + '_seconds'
+                metric = stats.setdefault('request_timing', {}).setdefault(
+                    key, dict(count=0, total=0.0, maximum=0.0, max_request=None))
+                metric['count'] += 1
+                metric['total'] += value
+                if metric['max_request'] is None or value > metric['maximum']:
+                    metric['maximum'] = value
+                    metric['max_request'] = dict(timing)
+
+    async def _exchange(self, host, target, stats):
         first = self.writer is None
         if first:
             self.reader, self.writer = await asyncio.open_connection(host, target)
             stats['tcp_opens'] += 1
         body = b'' if self.empty_body else ('%d:%d' % (self.index, self.responses)).encode()
         request_started = time.monotonic()
+        self.timing['send_at'] = request_started
         self.writer.write(b'POST /echo HTTP/1.1\r\nHost: localhost\r\nContent-Length: ' +
                           str(len(body)).encode() + b'\r\n\r\n' + body)
         await self.writer.drain()
+        self.timing['drained_at'] = time.monotonic()
         header = await self.reader.readuntil(b'\r\n\r\n')
         header_at = time.monotonic()
         if len(header) > 32768:
@@ -55,6 +85,7 @@ class Client:
         assert b'transfer-encoding' not in fields
         assert await self.reader.readexactly(len(body)) == body
         now = time.monotonic()
+        self.timing['response_completed_at'] = now
         kind = 'first' if first else 'reuse'
         stats[kind + '_latency_max'] = max(stats.get(kind + '_latency_max', 0), now - request_started)
         stats[kind + '_body_wait_max'] = max(stats.get(kind + '_body_wait_max', 0), now - header_at)
@@ -128,14 +159,15 @@ async def retain(args, frontend, proxy_pid, backend, observe):
                 snapshot = asyncio.ensure_future(snapshot_counts(proxy_pid, frontend, backend))
             while len(pending) < args.concurrency:
                 if idle and idle[0][0] <= now:
-                    client = heapq.heappop(idle)[2]
+                    scheduled_at, _, client = heapq.heappop(idle)
                 elif len(clients) < args.connections:
                     client = Client(len(clients), empty_body=not args.nonempty_body)
                     clients.append(client)
+                    scheduled_at = now
                 else:
                     break
                 task = asyncio.ensure_future(asyncio.wait_for(
-                    client.exchange('127.0.0.1', frontend, stats), args.request_timeout))
+                    client.exchange('127.0.0.1', frontend, stats, scheduled_at), args.request_timeout))
                 pending.add(task)
             stats['max_in_flight_requests'] = max(stats.get('max_in_flight_requests', 0), len(pending))
             observe.update(stats)
@@ -163,6 +195,15 @@ async def retain(args, frontend, proxy_pid, backend, observe):
                        max_heartbeat_gap_seconds=round(max(c.max_gap for c in clients), 6),
                        elapsed_seconds=round(time.monotonic() - started, 6))
     finally:
+        observed_at = time.monotonic()
+        observe['timing_at_stop'] = dict(
+            observed_at=observed_at,
+            unfinished_requests=[dict(c.timing) for c in clients
+                                 if c.timing and c.timing['response_completed_at'] is None],
+            oldest_idle_request=(dict(connection=idle[0][2].index,
+                                      scheduled_at=idle[0][0],
+                                      previous_response_at=idle[0][2].last,
+                                      last_request=idle[0][2].timing) if idle else None))
         for task in pending:
             if not task.done(): task.cancel()
         if pending: await asyncio.gather(*pending, return_exceptions=True)
@@ -213,6 +254,9 @@ def main():
         fd_soft_before=soft, fd_soft_test=max(soft, wanted),
         binary_sha256={name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
                        for name in ('webserver', 'reverse_proxy')},
+        timing_clock='time.monotonic seconds; same loader clock, arbitrary origin',
+        timing_send_boundary='immediately before StreamWriter.write; drain is local buffer backpressure, neither proves wire send or server receipt',
+        timing_schedule='reuse: previous completion + heartbeat; first: admission time (no preassigned ramp deadline)',
         snapshot_method='separate subprocess; no loader GIL sharing',
         scope='connection retention/reuse with bounded concurrent heartbeats; not throughput benchmark',
         observation=observe)
