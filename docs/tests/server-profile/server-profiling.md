@@ -1,7 +1,7 @@
 # 웹서버 내부 구간 계측
 
 아래는 웹서버 poll 전환 전 계측 기록이다. 현재 epoll 구현과 후속 비교는
-[웹서버 epoll 전환](server-epoll.md)에 있다. 현재 출력 키는 poll→epoll_wait,
+[웹서버 epoll 전환](../server-epoll/server-epoll.md)에 있다. 현재 출력 키는 poll→epoll_wait,
 dispatch_scan→ready_dispatch이며 후자는 반환된 이벤트 수를 units로 기록한다.
 
 이번 변경은 계측 추가이며 서버의 poll·정렬 타이머·큐·자원·시간 정책은 유지한다.
@@ -12,8 +12,8 @@ stderr로 출력한다. 메인 스레드와 작업자 전체를 구분한다. �
 
 ```bash
 JUNGLE_PROFILE=1 ./webserver 8081 www cgi-bin
-python3 tests/check_capacity.py --connections 1000 --empty-body --rounds 1 --server-profile --proxy-profile --output docs/server-profile-1000.json
-python3 tests/check_capacity.py --connections 10000 --empty-body --rounds 1 --server-profile --proxy-profile --output docs/server-profile-10000.json
+python3 tests/check_capacity.py --connections 1000 --empty-body --rounds 1 --server-profile --proxy-profile --output artifacts/server-profile/server-profile-1000.json
+python3 tests/check_capacity.py --connections 10000 --empty-body --rounds 1 --server-profile --proxy-profile --output artifacts/server-profile/server-profile-10000.json
 ```
 
 ## 계측 범위
@@ -88,4 +88,4 @@ JUNGLE_PROFILE=1 python3 proxy/tests/test_proxy.py
 계측 비활성 시 출력 없음, 활성 JSON·작업자 집계의 일관성, 동일 HTTP 응답을
 확인했다. 스케줄러·타이머 검사와 기존 TCP 11개도 실행한다.
 
-후속 완료 큐 적용 후 prepare_scan은 prepare_changed로 바뀌며 units도 변경·선두 확인 수이다. 상세는 [완료 큐·배정 FIFO](server-queues.md)에 있다.
+후속 완료 큐 적용 후 prepare_scan은 prepare_changed로 바뀌며 units도 변경·선두 확인 수이다. 상세는 [완료 큐·배정 FIFO](../server-queues/server-queues.md)에 있다.

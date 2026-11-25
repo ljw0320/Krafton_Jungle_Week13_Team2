@@ -46,8 +46,8 @@ make all test_scheduler test_context test_server_epoll
 python3 tests/test_server_profile.py
 python3 proxy/tests/test_proxy.py
 python3 src/tests/test_cgi.py
-python3 tests/check_capacity.py --connections 1000 --empty-body --rounds 1 --server-profile --proxy-profile --output docs/server-queues-1000.json
-python3 tests/check_capacity.py --connections 10000 --empty-body --rounds 1 --server-profile --proxy-profile --output docs/server-queues-10000.json
+python3 tests/check_capacity.py --connections 1000 --empty-body --rounds 1 --server-profile --proxy-profile --output artifacts/server-queues/server-queues-1000.json
+python3 tests/check_capacity.py --connections 10000 --empty-body --rounds 1 --server-profile --proxy-profile --output artifacts/server-queues/server-queues-10000.json
 ```
 
 ## 단회 측정 결과
@@ -77,3 +77,13 @@ python3 tests/check_capacity.py --connections 10000 --empty-body --rounds 1 --se
 다음 후보는 그대로 남은 정렬 타이머의 선형 갱신·취소 비용이다. 기존 연결을
 유지하면서 새 연결을 늘리는 부하 생성기 개선도 별도 과제다. 시험 방식 변경의
 효과를 서버 자체의 최적화 효과와 분리하고 C10K 유지를 다시 검증해야 한다.
+
+
+## 후속 반복 비교
+
+정확한 이전9dd357f·현재80b5a16을 각각3회씩 별도 빌드해 비교했다.
+요청 wall 중앙값15.092→11.103초, 웹서버 CPU 중앙값11.38→7.37초,
+준비 CPU 중앙값4.715→1.129초이다. CPU 절감은 반복됐지만 wall 범위는 겹치며
+한 쌍에서는 현재 버전이 느렸다. 기존 단회 결과만으로 회귀를 단정하지 않는다.
+6회 모두10000건 첫 요청 성공·연결 유지 미통과다.
+[실행별 수치·방법·원본](comparison/README.md)에 기록했다.

@@ -1,0 +1,152 @@
+[
+  {
+    "run": 1,
+    "version": "before",
+    "exit_code": 1,
+    "status": "failed",
+    "completed_requests": 10000,
+    "wall_seconds": 15.092003,
+    "cpu_seconds": {
+      "loader": 11.598187,
+      "backend": 11.47,
+      "proxy": 4.37
+    },
+    "prepare_cpu_seconds": 4.917823,
+    "prepare_units": 200937000,
+    "loop_calls": 18266,
+    "first_snapshot": {
+      "frontend": 2535,
+      "backend": 1820
+    },
+    "final_observation": {
+      "frontend": 2334,
+      "backend": 1813
+    },
+    "report": "01-before.json"
+  },
+  {
+    "run": 2,
+    "version": "after",
+    "exit_code": 1,
+    "status": "failed",
+    "completed_requests": 10000,
+    "wall_seconds": 11.103138,
+    "cpu_seconds": {
+      "loader": 12.33727,
+      "backend": 7.37,
+      "proxy": 3.06
+    },
+    "prepare_cpu_seconds": 0.964298,
+    "prepare_units": 27975,
+    "loop_calls": 23204,
+    "first_snapshot": {
+      "frontend": 4775,
+      "backend": 3667
+    },
+    "final_observation": {
+      "frontend": 4523,
+      "backend": 3373
+    },
+    "report": "02-after.json"
+  },
+  {
+    "run": 3,
+    "version": "after",
+    "exit_code": 1,
+    "status": "failed",
+    "completed_requests": 10000,
+    "wall_seconds": 10.433609,
+    "cpu_seconds": {
+      "loader": 11.472698,
+      "backend": 6.77,
+      "proxy": 3.01
+    },
+    "prepare_cpu_seconds": 1.128721,
+    "prepare_units": 30002,
+    "loop_calls": 26688,
+    "first_snapshot": {
+      "frontend": 4210,
+      "backend": 3241
+    },
+    "final_observation": {
+      "frontend": 3931,
+      "backend": 2932
+    },
+    "report": "03-after.json"
+  },
+  {
+    "run": 4,
+    "version": "before",
+    "exit_code": 1,
+    "status": "failed",
+    "completed_requests": 10000,
+    "wall_seconds": 27.112534,
+    "cpu_seconds": {
+      "loader": 13.633238,
+      "backend": 11.38,
+      "proxy": 4.35
+    },
+    "prepare_cpu_seconds": 4.715366,
+    "prepare_units": 209715000,
+    "loop_calls": 19064,
+    "first_snapshot": {
+      "frontend": 3946,
+      "backend": 2980
+    },
+    "final_observation": {
+      "frontend": 3754,
+      "backend": 2765
+    },
+    "report": "04-before.json"
+  },
+  {
+    "run": 5,
+    "version": "before",
+    "exit_code": 1,
+    "status": "failed",
+    "completed_requests": 10000,
+    "wall_seconds": 11.396092,
+    "cpu_seconds": {
+      "loader": 11.346652,
+      "backend": 9.65,
+      "proxy": 2.74
+    },
+    "prepare_cpu_seconds": 4.180169,
+    "prepare_units": 237490000,
+    "loop_calls": 21589,
+    "first_snapshot": {
+      "frontend": 2559,
+      "backend": 1764
+    },
+    "final_observation": {
+      "frontend": 2375,
+      "backend": 1536
+    },
+    "report": "05-before.json"
+  },
+  {
+    "run": 6,
+    "version": "after",
+    "exit_code": 1,
+    "status": "failed",
+    "completed_requests": 10000,
+    "wall_seconds": 12.59188,
+    "cpu_seconds": {
+      "loader": 13.727391,
+      "backend": 8.53,
+      "proxy": 3.65
+    },
+    "prepare_cpu_seconds": 1.192929,
+    "prepare_units": 28129,
+    "loop_calls": 23645,
+    "first_snapshot": {
+      "frontend": 3623,
+      "backend": 3051
+    },
+    "final_observation": {
+      "frontend": 3470,
+      "backend": 2907
+    },
+    "report": "06-after.json"
+  }
+]

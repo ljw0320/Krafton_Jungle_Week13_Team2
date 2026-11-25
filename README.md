@@ -650,7 +650,7 @@ PROXY_CONNECTIONS=128 PROXY_CONTEXTS=8 ./reverse_proxy 8080 127.0.0.1 8081
 ```bash
 make all
 python3 tests/test_runtime_config.py
-python3 tests/check_capacity.py --connections 100 --output docs/capacity-100.json
+python3 tests/check_capacity.py --connections 100 --output artifacts/capacity/capacity-100.json
 ```
 
 용량 실행기는 별도 프로세스로 서버·프록시를 시작하고 종료하며, 실행기와 자식의
@@ -659,7 +659,7 @@ FD soft 한도만 hard 범위 내에서 최대 65536 이상으로 확보한다. 
 최대 4건의 동시 POST로 100개 연결을 7회 순회하며 유휴 제한에 걸리지 않게 한다.
 동시에 100개 요청을 처리하는 검사가 아니라 연결 유지·재사용 검사이다.
 
-[100개 연결 결과](docs/capacity-100.json): 약 12.93초, POST 700건 성공,
+[100개 연결 결과](docs/tests/capacity/capacity-100.json): 약 12.93초, POST 700건 성공,
 백엔드 accept 100회(준비 확인 제외), 실행 중 FD는 프록시 204개·백엔드 106개,
 클라이언트 종료 후 프록시의 양쪽 ESTABLISHED 연결 0개를 확인했다.
 버퍼 2개·연결 16개 재사용 시험, 잘못된 설정·FD 예산 12개 검사,
@@ -672,13 +672,13 @@ FD soft 한도만 hard 범위 내에서 최대 65536 이상으로 확보한다. 
 
 ### 1000개 연결 유지 확인
 
-`python3 tests/check_capacity.py --connections 1000 --empty-body --output docs/capacity-1000.json`
+`python3 tests/check_capacity.py --connections 1000 --empty-body --output artifacts/capacity/capacity-1000.json`
 
 양쪽 상한 1100개·버퍼 8개에서 빈 POST 7000건을 약 13.654초 동안 처리했다.
 각 순회 후 프록시의 클라이언트 연결 1000개·백엔드 연결 1000개를 확인했고,
 백엔드 accept도 준비 확인을 제외하고 1000회로 유지됐다. 실행 중 FD는 프록시
 2004개·백엔드 1006개이며 클라이언트 종료 후 양쪽 ESTABLISHED는 0개였다.
-결과는 [capacity-1000.json](docs/capacity-1000.json)에 있다.
+결과는 [capacity-1000.json](docs/tests/capacity/capacity-1000.json)에 있다.
 
 기존 본문 포함 순차 순회 방식은 유휴 기한을 넘겨 BrokenPipe로 실패했다.
 서버 정책을 바꾸지 않고 빈 POST 옵션으로 연결 유지 능력을 분리 확인했다.
@@ -688,7 +688,7 @@ FD soft 한도만 hard 범위 내에서 최대 65536 이상으로 확보한다. 
 
 ### 10000개 연결 시험: 미통과
 
-`python3 tests/check_capacity.py --connections 10000 --empty-body --output docs/capacity-10000.json`
+`python3 tests/check_capacity.py --connections 10000 --empty-body --output artifacts/capacity/capacity-10000.json`
 
 양쪽 연결 상한 11000개·처리 버퍼 8개·FD soft 65536에서 실행했다.
 첫 시도는 클라이언트 응답 대기 시간 초과였다. 실패 시점의 진단 저장과
@@ -711,8 +711,8 @@ FD soft 한도만 hard 범위 내에서 최대 65536 이상으로 확보한다. 
 
 시험 실행기에 요청 구간·연결 검사 구간의 wall 시간과 실행기/백엔드/프록시의
 프로세스 CPU 시간(`/proc/PID/stat`)을 추가했다. 서버 정책이나 동작 코드는
-변경하지 않았다. 결과 파일은 [profile-1000.json](docs/profile-1000.json),
-[profile-10000.json](docs/profile-10000.json)이다.
+변경하지 않았다. 결과 파일은 [profile-1000.json](docs/tests/baseline-profile/profile-1000.json),
+[profile-10000.json](docs/tests/baseline-profile/profile-10000.json)이다.
 
 | 구간 | 1000개 | 10000개 |
 | --- | --- | --- |
@@ -739,8 +739,8 @@ poll 배열 구성·상태 검사·배정, 슬롯 탐색이 후보이며, 백엔
 ### 프록시 연결 관리 개선 결과 (poll 유지)
 
 변경 전/후 모두 연결 상한 11000·버퍼8·요청 동시성4·빈 POST·1회 순회·계측
-활성으로 비교했다. 결과는 [proxy-before-10000.json](docs/proxy-before-10000.json),
-[proxy-after-10000.json](docs/proxy-after-10000.json)에 있다.
+활성으로 비교했다. 결과는 [proxy-before-10000.json](docs/tests/proxy-management/proxy-before-10000.json),
+[proxy-after-10000.json](docs/tests/proxy-management/proxy-after-10000.json)에 있다.
 
 | 항목 | 변경 전 | 변경 후 |
 | --- | --- | --- |
@@ -770,8 +770,8 @@ poll 배열 구성·상태 검사·배정, 슬롯 탐색이 후보이며, 백엔
 
 프록시만 LT epoll로 전환했다. 웹서버는 poll 유지다. 이벤트 최대64개·송신
 최대4회·accept 최대16개·기존 유휴/전체 기한·버퍼8·재시도 정책은 유지했다.
-이전 poll 결과는 변경하지 않고 [epoll-1000.json](docs/epoll-1000.json),
-[epoll-10000.json](docs/epoll-10000.json)에 새 결과를 저장했다.
+이전 poll 결과는 변경하지 않고 [epoll-1000.json](docs/tests/proxy-epoll/epoll-1000.json),
+[epoll-10000.json](docs/tests/proxy-epoll/epoll-10000.json)에 새 결과를 저장했다.
 
 | 10000건 단회 비교 | 기존 poll 프록시 | epoll 프록시 |
 | --- | --- | --- |
@@ -792,7 +792,7 @@ WSL에서 실행되는 단회 비교로 수치를 일반화하지 않는다. 상
 wall/CPU 시간을 합산해 종료 시 출력한다. 기본값은 비활성이며 서버 동작 정책은
 유지한다. 실행기에는 `--server-profile` 옵션을 추가했다.
 
-[계측 범위·해석·결과](docs/server-profiling.md)에 자세히 정리했다.
+[계측 범위·해석·결과](docs/tests/server-profile/server-profiling.md)에 자세히 정리했다.
 10000개 단회 누적 CPU는 메인 poll10.023초, 준비 순회1.677초, 배정 순회1.215초,
 작업자 요청 처리0.855초였다. 가장 큰 개선 대상은 메인 poll이며 여러 계측 구간은
 중첩되므로 단순 합산하지 않는다. C10K 유지 검증은 여전히 미통과다.
@@ -809,7 +809,7 @@ wall/CPU 시간을 합산해 종료 시 출력한다. 기본값은 비활성이�
 감시 구간 누적 CPU10.023→0.118초였다. 1000개 유지 검사는 통과했고 10000개는
 검사 시 앞단5911·백엔드4734개여서 미통과다. 여러 번 반복한 성능 보장은 아니다.
 
-구현 정책·검사·원본 결과는 [웹서버 epoll 전환](docs/server-epoll.md)에 정리했다.
+구현 정책·검사·원본 결과는 [웹서버 epoll 전환](docs/tests/server-epoll/server-epoll.md)에 정리했다.
 앞선 poll 관련 단계 설명과 내부 계측 결과는 전환 전 기록이다.
 
 
@@ -823,4 +823,10 @@ wall/CPU 시간을 합산해 종료 시 출력한다. 기본값은 비활성이�
 10000건 단회에서 준비 CPU2.601→1.058초, 웹서버 CPU7.50→6.71초였으나 요청
 wall은8.201→9.456초였다. 전체 성능 향상은 확인되지 않았으며 C10K 유지는 미통과다.
 1000개 유지와 기존 TCP11개·CGI8개, 추가 큐 검사는 통과했다.
-[범위·검증·원본 결과](docs/server-queues.md)에 비교 조건과 한계를 기록했다.
+[범위·검증·원본 결과](docs/tests/server-queues/server-queues.md)에 비교 조건과 한계를 기록했다.
+
+
+## 검증 문서와 임시 결과
+
+검증 기록은 [docs 문서 목록](docs/README.md)에서 테스트 단위로 확인할 수 있다.
+기본 반복 실행 결과는 Git에서 제외되는 `artifacts/`에 저장하며, 대표 결과만 `docs/tests/`에 선별 보관한다.

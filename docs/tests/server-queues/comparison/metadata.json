@@ -1,0 +1,26 @@
+{
+  "commits": {
+    "before": "9dd357fecd4349863806b45a07fe4ba92c1b5901",
+    "after": "80b5a162c73f4667f22c02206f6fe621ba59e2b1"
+  },
+  "order": [
+    "before",
+    "after",
+    "after",
+    "before",
+    "before",
+    "after"
+  ],
+  "compiler": "cc (Ubuntu 7.5.0-3ubuntu1~18.04) 7.5.0",
+  "kernel": "6.18.58.1-microsoft-standard-WSL2",
+  "python": "3.6.9 (default, Mar 10 2023, 16:46:00) \n[GCC 8.4.0]",
+  "warmup": false,
+  "condition": "10000 empty POST, concurrency4, contexts8, capacity11000, both profiles on; one round; no loader changes",
+  "note": "Alternating paired order AB/BA/AB. Expected retention failures are recorded, not suppressed as passes.",
+  "runner_sha256": "a7289de03ec92bf4ebef6028a4789e888c532d62150b932d45afbc870f24f96a",
+  "proxy_sha256": "762e9ed0b2dab013cbea8955f834077a30a4c2a57acad838789c72476e9d4acd",
+  "server_sha256": {
+    "before": "e8c145b211c926d16ce75c1c8dee9b42939b952cd974e5eeb3e33f07c675ea5f",
+    "after": "f2387f624d3528dd0fee49aa8245b636f4499e01bb4bfc4886decb854e365702"
+  }
+}

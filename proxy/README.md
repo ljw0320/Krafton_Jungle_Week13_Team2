@@ -163,7 +163,7 @@ update는 accept/이벤트 처리/타이머 안에서 호출되므로 해당 계
 슬롯 검사 수, 이후 값은 poll 항목 검사 수로 집계 단위가 달라 직접 비율로 비교하지 않는다.
 
 ```bash
-python3 tests/check_capacity.py --connections 10000 --empty-body --rounds 1 --proxy-profile --output docs/proxy-after-10000.json
+python3 tests/check_capacity.py --connections 10000 --empty-body --rounds 1 --proxy-profile --output artifacts/proxy-management/proxy-after-10000.json
 ```
 
 같은 설정·계측 활성 단회 결과는 루트 README에 정리했다. C10K 유지 검증은
@@ -201,6 +201,6 @@ poll 29.628초에서 epoll 15.844초, 프록시 CPU 28.11초에서 2.77초로 �
 기존 유휴 제한4~5초를 넘긴 상태이며, 백엔드 CPU17.9초와 실행기 CPU10.94초도
 남아 있다. 프로세스 CPU 시간은 병렬이므로 합산해 wall 시간으로 해석하지 않는다.
 
-결과는 docs/epoll-1000.json·docs/epoll-10000.json이다. 공유 WSL의 단회 비교이므로
+결과는 docs/tests/proxy-epoll/epoll-1000.json·docs/tests/proxy-epoll/epoll-10000.json이다. 공유 WSL의 단회 비교이므로
 일반적인 성능 개선율이나 C10K 통과를 주장하지 않는다. 다음은 웹서버 비용을
 세분화해 개선하고 부하 실행기의 순회 지연도 함께 확인하는 단계다.

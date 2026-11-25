@@ -1,5 +1,6 @@
 """Linux/WSL capacity smoke test; bounded concurrency, not throughput benchmarking."""
 import argparse
+from datetime import datetime
 import concurrent.futures
 import http.client
 import json
@@ -48,7 +49,7 @@ def socket_counts(pid, frontend, backend, details=None):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--connections', type=int, default=100)
-    parser.add_argument('--output')
+    parser.add_argument('--output', help='JSON report (default: artifacts/capacity-<count>-<timestamp>.json)')
     parser.add_argument('--proxy-profile', action='store_true')
     parser.add_argument('--server-profile', action='store_true')
     parser.add_argument('--empty-body', action='store_true')
@@ -58,6 +59,10 @@ def main():
     if not 1 <= args.connections <= 10000: parser.error('connections must be 1..10000')
     if not 1 <= args.contexts <= 4096: parser.error('contexts must be 1..4096')
     if not 1 <= args.rounds <= 90: parser.error('rounds must be 1..90')
+    if args.output is None:
+        args.output = str(ROOT / 'artifacts' / ('capacity-%d-%s.json' %
+            (args.connections, datetime.now().strftime('%Y%m%d-%H%M%S-%f'))))
+    Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
     wanted = max(soft, 65536)
     if hard != resource.RLIM_INFINITY: wanted = min(wanted, hard)

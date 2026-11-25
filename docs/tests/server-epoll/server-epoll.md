@@ -1,6 +1,6 @@
 # 웹서버 LT epoll + EPOLLONESHOT
 
-아래는 전환 당시 기록이다. 후속 전체 순회 축소는 [완료 큐·배정 FIFO](server-queues.md)에 있다.
+아래는 전환 당시 기록이다. 후속 전체 순회 축소는 [완료 큐·배정 FIFO](../server-queues/server-queues.md)에 있다.
 
 ## 범위와 동작
 
@@ -40,8 +40,8 @@ make all test_scheduler test_context test_server_epoll
 python3 tests/test_server_profile.py
 python3 proxy/tests/test_proxy.py
 python3 src/tests/test_cgi.py
-python3 tests/check_capacity.py --connections 1000 --empty-body --rounds 1 --server-profile --proxy-profile --output docs/server-epoll-1000.json
-python3 tests/check_capacity.py --connections 10000 --empty-body --rounds 1 --server-profile --proxy-profile --output docs/server-epoll-10000.json
+python3 tests/check_capacity.py --connections 1000 --empty-body --rounds 1 --server-profile --proxy-profile --output artifacts/server-epoll/server-epoll-1000.json
+python3 tests/check_capacity.py --connections 10000 --empty-body --rounds 1 --server-profile --proxy-profile --output artifacts/server-epoll/server-epoll-10000.json
 ```
 
 ## 단회 비교

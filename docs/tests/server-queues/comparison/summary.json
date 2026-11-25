@@ -1,0 +1,57 @@
+{
+  "before": {
+    "wall_seconds": {
+      "median": 15.092003,
+      "minimum": 11.396092,
+      "maximum": 27.112534
+    },
+    "backend_cpu_seconds": {
+      "median": 11.38,
+      "minimum": 9.65,
+      "maximum": 11.47
+    },
+    "proxy_cpu_seconds": {
+      "median": 4.35,
+      "minimum": 2.74,
+      "maximum": 4.37
+    },
+    "loader_cpu_seconds": {
+      "median": 11.598187,
+      "minimum": 11.346652,
+      "maximum": 13.633238
+    },
+    "prepare_cpu_seconds": {
+      "median": 4.715366,
+      "minimum": 4.180169,
+      "maximum": 4.917823
+    }
+  },
+  "after": {
+    "wall_seconds": {
+      "median": 11.103138,
+      "minimum": 10.433609,
+      "maximum": 12.59188
+    },
+    "backend_cpu_seconds": {
+      "median": 7.37,
+      "minimum": 6.77,
+      "maximum": 8.53
+    },
+    "proxy_cpu_seconds": {
+      "median": 3.06,
+      "minimum": 3.01,
+      "maximum": 3.65
+    },
+    "loader_cpu_seconds": {
+      "median": 12.33727,
+      "minimum": 11.472698,
+      "maximum": 13.727391
+    },
+    "prepare_cpu_seconds": {
+      "median": 1.128721,
+      "minimum": 0.964298,
+      "maximum": 1.192929
+    }
+  },
+  "elapsed_seconds": 125.479
+}

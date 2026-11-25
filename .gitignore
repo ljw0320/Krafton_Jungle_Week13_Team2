@@ -28,3 +28,6 @@ core.*
 /test_proxy_reactor
 
 /test_server_epoll
+
+# Local repeat runs and temporary reports
+/artifacts/
