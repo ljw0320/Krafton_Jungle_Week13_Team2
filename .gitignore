@@ -26,6 +26,7 @@ core.*
 /test_proxy_state
 
 /test_proxy_reactor
+/test_proxy_buffer_wait
 
 /test_server_epoll
 

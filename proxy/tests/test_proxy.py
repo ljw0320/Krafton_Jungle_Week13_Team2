@@ -2,6 +2,7 @@
 import concurrent.futures
 import http.client
 import http.server
+import os
 from pathlib import Path
 import queue
 import socket
@@ -84,10 +85,13 @@ class PersistentHandler(http.server.BaseHTTPRequestHandler):
 
 
 class ProxyTests(unittest.TestCase):
-    def start(self, backend_port):
+    def start(self, backend_port, contexts=None):
         port = free_port()
+        env = dict(os.environ)
+        if contexts is not None:
+            env.update(PROXY_CONTEXTS=str(contexts), PROXY_CONNECTIONS='16')
         process = subprocess.Popen([str(ROOT/'reverse_proxy'), str(port), '127.0.0.1', str(backend_port)],
-                                   stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, env=env)
         self.addCleanup(self.stop, process)
         end = time.monotonic()+3
         while time.monotonic() < end:
@@ -111,7 +115,7 @@ class ProxyTests(unittest.TestCase):
         if process.stderr:
             process.stderr.close()
 
-    def mock(self, reply):
+    def mock(self, reply, contexts=None):
         backend = Backend(('127.0.0.1', 0), Handler)
         backend.reply = reply
         backend.seen = queue.Queue()
@@ -119,7 +123,7 @@ class ProxyTests(unittest.TestCase):
         thread.start()
         self.addCleanup(backend.server_close)
         self.addCleanup(backend.shutdown)
-        port, process = self.start(backend.server_address[1])
+        port, process = self.start(backend.server_address[1], contexts=contexts)
         return port, backend, process
 
     def request(self, port, path='/', body=None):
@@ -218,7 +222,7 @@ class ProxyTests(unittest.TestCase):
     def test_capacity_recovery_abort_and_connection_failure(self):
         release = threading.Event()
         def reply(s, data):
-            release.wait(3)
+            release.wait(6)
             s.sendall(b'HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n')
         port, backend, process = self.mock(reply)
         self.addCleanup(release.set)
@@ -228,7 +232,9 @@ class ProxyTests(unittest.TestCase):
                 s = socket.create_connection(('127.0.0.1', port), 2); peers.append(s)
                 s.sendall(b'GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n')
                 backend.seen.get(timeout=2)
+            started = time.monotonic()
             self.assertEqual(self.request(port)[0], 503)
+            self.assertGreaterEqual(time.monotonic() - started, 1.8)
             release.set()
             for s in peers:
                 r = http.client.HTTPResponse(s); r.begin(); self.assertEqual(r.status, 200); r.read()

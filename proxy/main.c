@@ -15,7 +15,7 @@
 #include "profile.h"
 #include "reactor.h"
 
-enum phase { UNUSED, IDLE, REQUEST, CONNECTING, UPLOAD, RESPONSE, RELAY, ERROR_REPLY, DRAIN };
+enum phase { UNUSED, IDLE, BUFFER_WAIT, REQUEST, CONNECTING, UPLOAD, RESPONSE, RELAY, ERROR_REPLY, DRAIN };
 struct buffers {
     bool used;
     char request[HEADER_LIMIT + BODY_LIMIT];
@@ -28,6 +28,8 @@ static int active_capacity = PROXY_ACTIVE, client_capacity = PROXY_CLIENTS;
 struct exchange {
     struct reactor_node *node;
     struct exchange *free_next;
+    struct exchange *wait_prev, *wait_next;
+    int64_t buffer_wait_until;
     bool in_free;
     struct buffers *buffers;
     bool keep_alive;
@@ -50,9 +52,12 @@ struct exchange {
 };
 static struct exchange *clients;
 static struct exchange *free_clients;
+static struct exchange *buffer_wait_head, *buffer_wait_tail;
+static size_t buffer_wait_count;
 static struct reactor_node *nodes;
 static struct reactor reactor;
 static void refresh_exchange(struct exchange *c);
+static bool resume_buffer_waiters(void);
 static struct sockaddr_in backend;
 static char backend_host[64];
 static volatile sig_atomic_t stopping;
@@ -84,8 +89,35 @@ static void release_buffers(struct exchange *c)
     c->buffers = NULL;
 }
 
+/* One intrusive queue entry per accepted connection; no per-request allocation. */
+static void remove_buffer_waiter(struct exchange *c)
+{
+    if (!c->buffer_wait_until) return;
+    if (c->wait_prev) c->wait_prev->wait_next = c->wait_next;
+    else buffer_wait_head = c->wait_next;
+    if (c->wait_next) c->wait_next->wait_prev = c->wait_prev;
+    else buffer_wait_tail = c->wait_prev;
+    c->wait_prev = c->wait_next = NULL;
+    c->buffer_wait_until = 0;
+    buffer_wait_count--;
+}
+
+static void wait_for_buffers(struct exchange *c)
+{
+    if (c->buffer_wait_until) return;
+    c->wait_prev = buffer_wait_tail;
+    c->wait_next = NULL;
+    if (buffer_wait_tail) buffer_wait_tail->wait_next = c;
+    else buffer_wait_head = c;
+    buffer_wait_tail = c;
+    c->buffer_wait_until = now_ms() + BUFFER_WAIT_MS;
+    c->phase = BUFFER_WAIT;
+    buffer_wait_count++;
+}
+
 static bool acquire_buffers(struct exchange *c)
 {
+    if (buffer_wait_head && buffer_wait_head != c) return false;
     for (int i = 0; i < active_capacity; i++) {
         if (pool[i].used) continue;
         c->buffers = &pool[i];
@@ -97,6 +129,7 @@ static bool acquire_buffers(struct exchange *c)
 
 static void dispose(struct exchange *c)
 {
+    remove_buffer_waiter(c);
     release_buffers(c);
     close_upstream(c);
     if (c->node && !reactor_watch(&reactor, c->node, false, -1, 0, 0)) perror("epoll remove client");
@@ -151,6 +184,7 @@ static void finish(struct exchange *c)
 
 static void fail_request(struct exchange *c, int status)
 {
+    remove_buffer_waiter(c);
     if (c->committed) { dispose(c); return; }
     close_upstream(c);
     c->keep_alive = false;
@@ -377,7 +411,8 @@ static int64_t deadline(const struct exchange *c)
 {
     int64_t limit = c->first ? c->first + TOTAL_MS : c->client_progress + IDLE_MS;
     int64_t idle = limit;
-    if (c->phase == REQUEST || c->phase == ERROR_REPLY)
+    if (c->phase == BUFFER_WAIT) idle = c->buffer_wait_until;
+    else if (c->phase == REQUEST || c->phase == ERROR_REPLY)
         idle = c->client_progress + IDLE_MS;
     else if (c->phase == CONNECTING) idle = c->connect_started + CONNECT_MS;
     else if (c->phase == UPLOAD || c->phase == RESPONSE)
@@ -391,7 +426,7 @@ static int64_t deadline(const struct exchange *c)
 static void expire(struct exchange *c)
 {
     if (c->phase == IDLE || c->phase == DRAIN || c->phase == ERROR_REPLY || c->committed) { dispose(c); return; }
-    fail_request(c, c->phase == REQUEST ? 408 : 504);
+    fail_request(c, c->phase == BUFFER_WAIT ? 503 : c->phase == REQUEST ? 408 : 504);
     /* At the absolute deadline attempt only an immediate error write; never extend it. */
     if (c->first && now_ms() >= c->first + TOTAL_MS) {
         send_response(c);
@@ -434,7 +469,7 @@ static void refresh_exchange(struct exchange *c)
     profile_end(P_UPDATE, stamp);
 }
 
-static int prepare_timers(void)
+static void prepare_timers(void)
 {
     struct profile_stamp stamp = profile_begin();
     int64_t now = now_ms();
@@ -447,8 +482,12 @@ static int prepare_timers(void)
         if (deadline(c) <= now) expire(c);
         refresh_exchange(c);
     }
-    int64_t left = reactor.heap_count ? reactor.heap[0]->due - now_ms() : 1000;
     profile_end(P_TIMERS, stamp);
+}
+
+static int timer_timeout(void)
+{
+    int64_t left = reactor.heap_count ? reactor.heap[0]->due - now_ms() : 1000;
     return left < 0 ? 0 : left > 1000 ? 1000 : (int)left;
 }
 
@@ -464,7 +503,7 @@ static void dispatch(struct exchange *c, short client_events, short upstream_eve
             if (n == 0 || (n < 0 && !retry())) { dispose(c); return; }
             if (n < 0) return;
             c->first = c->client_progress = now_ms();
-            if (!acquire_buffers(c)) { fail_request(c, 503); return; }
+            if (!acquire_buffers(c)) { wait_for_buffers(c); return; }
             c->phase = REQUEST;
         }
         if (c->phase == REQUEST) read_request(c);
@@ -485,6 +524,31 @@ static void dispatch(struct exchange *c, short client_events, short upstream_eve
         else if (c->phase == RESPONSE) read_response(c);
         else if (c->phase == RELAY && !has_output(c) && c->remaining) read_body(c);
     }
+}
+
+/* A returned buffer resumes FIFO heads before another epoll wait. Bound cleanup
+ * work too, so a burst of disconnected/expired waiters cannot starve other I/O. */
+static bool resume_buffer_waiters(void)
+{
+    int visited = 0;
+    while (buffer_wait_head && visited < REACTOR_BATCH) {
+        struct exchange *c = buffer_wait_head;
+        visited++;
+        if (deadline(c) <= now_ms()) expire(c);
+        else {
+            unsigned char byte;
+            ssize_t n = recv(c->client, &byte, 1, MSG_PEEK | MSG_DONTWAIT);
+            if (!n || (n < 0 && !retry())) dispose(c);
+            else if (n < 0 || !acquire_buffers(c)) break;
+            else {
+                remove_buffer_waiter(c);
+                c->phase = REQUEST;
+                read_request(c);
+            }
+        }
+        refresh_exchange(c);
+    }
+    return buffer_wait_head && visited == REACTOR_BATCH;
 }
 
 /* Rejected connections only drain for 100ms; they never reserve an upstream. */
@@ -625,7 +689,9 @@ int main(int argc, char **argv)
     int exit_status = 0;
     while (!stopping) {
         if (profile_enabled) profile_loops++;
-        int timeout = prepare_timers();
+        prepare_timers();
+        bool resume_more = resume_buffer_waiters();
+        int timeout = resume_more ? 0 : timer_timeout();
         struct profile_stamp stamp = profile_begin();
         prepare_rejections(&timeout);
         profile_end(P_PREPARE, stamp);

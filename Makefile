@@ -54,7 +54,7 @@ check_keep_alive: all
 	python3 src/tests/run_keep_alive_checks.py --output keep-alive-report.json
 
 clean:
-	rm -f test_timer_heap test_server_epoll test_proxy_reactor webserver reverse_proxy test_proxy_headers test_proxy_state test_http test_drain test_context test_context_pool cgi-bin/adder
+	rm -f test_timer_heap test_server_epoll test_proxy_reactor test_proxy_buffer_wait webserver reverse_proxy test_proxy_headers test_proxy_state test_http test_drain test_context test_context_pool cgi-bin/adder
 
 PROXY_SOURCES = proxy/main.c proxy/headers.c src/http.c
 reverse_proxy: $(PROXY_SOURCES) proxy/proxy.h proxy/reactor.h proxy/profile.h src/http.h common/runtime.h
@@ -63,11 +63,13 @@ reverse_proxy: $(PROXY_SOURCES) proxy/proxy.h proxy/reactor.h proxy/profile.h sr
 test_proxy_headers: proxy/tests/test_headers.c proxy/headers.c proxy/proxy.h src/http.c src/http.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc -Iproxy proxy/tests/test_headers.c proxy/headers.c src/http.c -o $@
 
-test_proxy: reverse_proxy test_proxy_headers test_proxy_state test_proxy_reactor all
+test_proxy: reverse_proxy test_proxy_headers test_proxy_state test_proxy_reactor test_proxy_buffer_wait all
 	./test_proxy_headers
 	./test_proxy_state
 	./test_proxy_reactor
+	./test_proxy_buffer_wait
 	python3 proxy/tests/test_proxy.py
+	python3 proxy/tests/test_buffer_wait.py
 
 test_scheduler: src/tests/test_scheduler.c src/server.c $(CONNECTION_SOURCES) src/thread_pool.c src/timers.c $(HEADERS)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc src/tests/test_scheduler.c $(CONNECTION_SOURCES) src/thread_pool.c src/timers.c -o $@ $(LDLIBS)
@@ -77,6 +79,9 @@ test_proxy_state: proxy/tests/test_state.c $(PROXY_SOURCES) proxy/proxy.h proxy/
 
 test_proxy_reactor: proxy/tests/test_reactor.c proxy/proxy.h proxy/reactor.h common/runtime.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc -Iproxy proxy/tests/test_reactor.c -o $@
+
+test_proxy_buffer_wait: proxy/tests/test_buffer_wait.c $(PROXY_SOURCES) proxy/proxy.h proxy/reactor.h proxy/profile.h src/http.h common/runtime.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc -Iproxy proxy/tests/test_buffer_wait.c proxy/headers.c src/http.c -o $@
 
 # Real epoll sockets and the existing scheduler/worker implementation.
 test_server_epoll: src/tests/test_server_epoll.c src/server.c $(CONNECTION_SOURCES) src/thread_pool.c src/timers.c $(HEADERS)
