@@ -28,8 +28,7 @@ static int watches(struct conn *c) {
 
 int tunnel_start(struct conn *c) {
     int size = TUNNEL_SOCKBUF;
-    if (setsockopt(c->w.fd, SOL_SOCKET, SO_RCVBUF, &size, sizeof(size)) < 0 ||
-        setsockopt(c->w.fd, SOL_SOCKET, SO_SNDBUF, &size, sizeof(size)) < 0)
+    if (setsockopt(c->w.fd, SOL_SOCKET, SO_SNDBUF, &size, sizeof(size)) < 0)
         return close_tunnel(c);
     c->state = CONN_TUNNEL;
     c->up.state = UP_TUNNEL;

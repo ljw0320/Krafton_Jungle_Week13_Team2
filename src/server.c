@@ -13,6 +13,9 @@ int server_listen(uint32_t address, uint16_t port) {
 
     int one = 1;
     if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one) < 0) { perror("setsockopt"); goto fail; }
+    // 열린 소켓에서 줄이면 이미 알린 창보다 작아져 조각이 버려진다. 여기서 정하면 accept한 소켓이 상속한다.
+    int size = SERVER_RCVBUF;
+    if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &size, sizeof size) < 0) { perror("setsockopt"); goto fail; }
 
     struct sockaddr_in addr = { .sin_family = AF_INET, .sin_port = htons(port), .sin_addr.s_addr = htonl(address) };
     if (bind(fd, (struct sockaddr *)&addr, sizeof addr) < 0) { perror("bind"); goto fail; }

@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>요청 흐름</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="flow.js" defer></script>
+</head>
+<body class="flow-page">
+  <main class="flow">
+    <div class="flow-main">
+      <section class="flow-panel" aria-labelledby="flow-title">
+        <h1 id="flow-title">요청 흐름</h1>
+        <div class="flow-stations">
+          <div class="flow-station"><strong>클라이언트</strong></div>
+          <div class="flow-station" id="flow-server">
+            <strong>내 서버</strong>
+            <span id="flow-server-status" role="status">조회 중</span>
+          </div>
+          <div class="flow-station" id="flow-backend">
+            <strong>백엔드</strong>
+            <span id="flow-backend-status" role="status">조회 중</span>
+          </div>
+        </div>
+        <div class="flow-lanes">
+          <div class="flow-lane">요청 →</div>
+          <div class="flow-lane">← 응답</div>
+          <div id="flow-dots" aria-hidden="true"></div>
+        </div>
+        <ul class="flow-legend">
+          <li><span class="flow-swatch flow-relay"></span><span id="flow-relay-scale">중계 횟수 조회 중</span></li>
+          <li><span class="flow-swatch flow-trace"></span>내 글의 이동을 느리게 표시</li>
+        </ul>
+      </section>
+
+      <div class="flow-stats">
+        <section class="flow-panel">
+          <h2>내 서버 통계</h2>
+          <dl>
+            <div><dt>연결</dt><dd data-stat="server.conns">-</dd></div>
+            <div><dt>터널</dt><dd data-stat="server.tunnels">-</dd></div>
+            <div><dt>요청 중계 횟수</dt><dd data-stat="server.up.n">-</dd></div>
+            <div><dt>응답 중계 횟수</dt><dd data-stat="server.down.n">-</dd></div>
+            <div><dt>요청 전송 (B)</dt><dd data-stat="server.up.bytes">-</dd></div>
+            <div><dt>응답 전송 (B)</dt><dd data-stat="server.down.bytes">-</dd></div>
+            <div><dt>전송 대기 (B)</dt><dd data-stat="server.pending">-</dd></div>
+            <div><dt>RSS (KB)</dt><dd data-stat="server.rss_kb">-</dd></div>
+          </dl>
+        </section>
+        <section class="flow-panel">
+          <h2>백엔드 통계</h2>
+          <dl>
+            <div><dt>사용자</dt><dd data-stat="backend.users">-</dd></div>
+            <div><dt>매칭 대기</dt><dd data-stat="backend.waiting">-</dd></div>
+            <div><dt>채팅방</dt><dd data-stat="backend.rooms">-</dd></div>
+            <div><dt>글</dt><dd data-stat="backend.msgs">-</dd></div>
+            <div><dt>이미지 전송 (B)</dt><dd data-stat="backend.img_bytes">-</dd></div>
+            <div><dt>읽기 중지</dt><dd data-stat="backend.paused">-</dd></div>
+            <div><dt>전송 대기 (B)</dt><dd data-stat="backend.queued">-</dd></div>
+            <div><dt>지연 종료</dt><dd data-stat="backend.slow_closed">-</dd></div>
+            <div><dt>연결 거절</dt><dd data-stat="backend.rejected">-</dd></div>
+            <div><dt>RSS (KB)</dt><dd data-stat="backend.rss_kb">-</dd></div>
+          </dl>
+        </section>
+      </div>
+
+      <section class="flow-panel">
+        <h2>내 글</h2>
+        <table class="flow-table">
+          <thead>
+            <tr><th scope="col">글 번호</th><th scope="col">서버 → 백엔드</th><th scope="col">백엔드 → 서버</th><th scope="col">왕복</th></tr>
+          </thead>
+          <tbody id="flow-messages"></tbody>
+        </table>
+      </section>
+    </div>
+    <iframe class="flow-chat" src="chat.html" title="1:1 채팅"></iframe>
+  </main>
+</body>
+</html>

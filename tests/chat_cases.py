@@ -3,16 +3,20 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from contextlib import closing, contextmanager
 from hashlib import sha256
+import asyncio
 import os
 import json
 from http.client import HTTPConnection
 from pathlib import Path
+import signal
 import socket
 import struct
 import subprocess
 import sys
+from tempfile import TemporaryDirectory
 import threading
 import time
+from types import SimpleNamespace
 
 from backend import body, resp
 
@@ -54,6 +58,17 @@ def handle(s):
                 s.sendall(body(4096))
                 return
             if name == b"rst":
+                s.recv(1)
+                reset(s)
+                return
+            if name == b"fillrst":
+                s.settimeout(.5)
+                try:
+                    while True:
+                        s.sendall(body(65536))
+                except TimeoutError:
+                    pass
+                s.settimeout(None)
                 s.recv(1)
                 reset(s)
                 return
@@ -139,15 +154,47 @@ def handshake():
             assert read_head(s)[0].split(b" ")[1] == b"502"
 
 
+@contextmanager
+def stopped(pid):
+    try:
+        os.kill(pid, signal.SIGSTOP)
+        while Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0] != "T":
+            time.sleep(.01)
+        yield
+    finally:
+        os.kill(pid, signal.SIGCONT)
+
+
 def closes(pid):
     def fds():
         return len(os.listdir(f"/proc/{pid}/fd"))
 
+    quiet = lambda s: s["conns"] == 1 and s["tunnels"] == s["pending"] == 0
+    wait_stats("/_stat", quiet)
+    time.sleep(.5)  # 방금 조회한 연결까지 닫힌 뒤의 수를 기준으로 삼는다.
     baseline = fds()
     with connect() as s:
         rest = upgrade(s, "close")
         assert receive(s, 4096, rest) == body(4096)
         assert s.recv(1) == b""
+    # 서버가 멈춘 동안 보낼 자리와 FIN을 함께 만들어 한 이벤트에 IN과 OUT이 온다.
+    with connect(small=True) as s:
+        upgrade(s, "bigdown")
+        wait_stats("/_stat", lambda state: state["pending"] > 0)
+        with stopped(pid):
+            s.shutdown(socket.SHUT_WR)
+            s.settimeout(.5)
+            try:
+                while s.recv(65536):
+                    pass
+            except TimeoutError:
+                pass
+        s.settimeout(3)
+        try:
+            while s.recv(65536):
+                pass
+        except ConnectionResetError:
+            pass
     with ExitStack() as stack:
         sockets = [stack.enter_context(connect()) for _ in range(100)]
         for i, s in enumerate(sockets):
@@ -169,9 +216,32 @@ def closes(pid):
             list(pool.map(finish, enumerate(sockets)))
     for _ in range(100):
         if fds() == baseline:
-            return
+            break
         time.sleep(.05)
-    raise AssertionError(("server fds", baseline, fds()))
+    else:
+        raise AssertionError(("server fds", baseline, fds()))
+    # 같은 연결을 두 번 닫으면 conns가 어긋난다.
+    wait_stats("/_stat", quiet)
+
+
+def assert_idle(pid):
+    from chat_bot import cpu_seconds
+
+    used = cpu_seconds(pid)
+    time.sleep(1)
+    used = cpu_seconds(pid) - used
+    assert used < .2, ("busy loop", used)
+
+
+def unwatch(pid):
+    with connect(small=True) as s:
+        upgrade(s, "fillrst")
+        wait_stats("/_stat", lambda state: state["pending"] > 0)
+        assert_idle(pid)
+        s.sendall(b"x")
+        time.sleep(.5)
+        assert stats()["tunnels"] == 1
+        assert_idle(pid)
 
 
 def noread(pid):
@@ -192,8 +262,61 @@ def noread(pid):
                 s.sendall(block)
         except socket.timeout:
             assert rss() - initial < 1024, (initial, rss())
+            assert_idle(pid)
+            reset(s)
             return
         raise AssertionError("64 MiB sent without backpressure")
+
+
+def quiet_stall():
+    """조용하던 터널의 첫 전송이 EAGAIN이면 그때부터 10초를 센다(up.since)."""
+    def push(s, n):
+        before = stats()
+        s.sendall(bytes(n))
+        goal = before["down"]["bytes"] + before["pending"] + n
+        state = wait_stats("/_stat", lambda now: now["down"]["bytes"] + now["pending"] == goal)
+        return state["pending"] > before["pending"]
+
+    @contextmanager
+    def tunnel():
+        with connect(small=True) as s:
+            upgrade(s, "echo")
+            yield s
+        wait_stats("/_stat", lambda state: state["tunnels"] == 0)
+
+    def fill(s, chunks, count):
+        return any(push(s, 2048) for _ in range(chunks)) or any(push(s, 1) for _ in range(count))
+
+    # 송신 버퍼가 정확히 차는 양은 커널이 정한다. 먼저 재고, 같은 순서로 다시 채운다.
+    with tunnel() as s:
+        chunks = 0
+        while not push(s, 2048):
+            chunks += 1
+    chunks -= 2
+    with tunnel() as s:
+        assert not fill(s, chunks, 0)
+        count = 0
+        while not push(s, 1):
+            count += 1
+    for _ in range(3):
+        with ExitStack() as stack:
+            quiet = []
+            for extra in range(-1, 4):
+                s = stack.enter_context(connect(small=True))
+                upgrade(s, "echo")
+                if fill(s, chunks, count + extra):
+                    s.close()
+                    wait_stats("/_stat", lambda state: state["tunnels"] == len(quiet))
+                else:
+                    quiet.append(s)
+            time.sleep(5)
+            blocked = [push(s, 1) for s in quiet]
+            if any(blocked):
+                time.sleep(7.5)
+                assert stats()["tunnels"] == len(quiet), "stalled tunnel closed early"
+                return
+        wait_stats("/_stat", lambda state: state["tunnels"] == 0)
+    raise AssertionError("send buffer never filled exactly")
 
 
 def slow():
@@ -264,6 +387,15 @@ def chat_http():
             data = receive(s, length, rest)
             if status == 200:
                 assert isinstance(json.loads(data), dict)
+    with_body = CHAT_REQ[:-2] + b"Content-Length: 4\r\n\r\nbody"
+    for request, status in [(CHAT_REQ.replace(b"websocket", b"h2c"), 400),
+                            (CHAT_REQ.replace(b"HTTP/1.1", b"HTTP/1.0"), 400),
+                            (with_body, 400), (with_body.replace(b"GET", b"POST"), 405)]:
+        with connect() as s:
+            s.sendall(request)
+            head, _ = read_head(s)
+            # chatd의 오류에는 본문과 Content-Type이 없다.
+            assert int(head.split()[1]) == status and b"content-type" not in head.lower(), (head, status)
     for early in (False, True):
         with socket.create_connection(DIRECT, 3) as s:
             ping = frame(9, b"x")
@@ -278,8 +410,8 @@ def chat_http():
             assert receive(s, 6, rest) == b"\x81\x01w\x8a\x01x"
 
 
-def status_request(path, method="GET"):
-    conn = HTTPConnection(*CHAT, timeout=3)
+def status_request(path, method="GET", addr=CHAT):
+    conn = HTTPConnection(*addr, timeout=3)
     with closing(conn):
         conn.request(method, path)
         res = conn.getresponse()
@@ -287,20 +419,20 @@ def status_request(path, method="GET"):
         return res.status, res.headers, data
 
 
-def stats(path="/_stat"):
-    status, headers, data = status_request(path)
+def stats(path="/_stat", addr=CHAT):
+    status, headers, data = status_request(path, addr=addr)
     assert status == 200 and headers["Content-Type"] == "application/json", (status, headers)
     return json.loads(data)
 
 
-def wait_stats(path, ready):
+def wait_stats(path, ready, addr=CHAT):
     deadline = time.monotonic() + 3
     while True:
-        state = stats(path)
+        state = stats(path, addr)
         if ready(state):
             return state
         assert time.monotonic() < deadline, state
-        time.sleep(.02)
+        time.sleep(.002)
 
 
 def tunnel_stats():
@@ -401,18 +533,18 @@ def next_frame(client, timeout=1.5):
 
 
 @contextmanager
-def group(n, addr=CHAT):
+def group(n, addr=CHAT, rcvbuf=0):
     from chat_bot import Client
     with ExitStack() as stack:
-        clients = [stack.enter_context(closing(Client(addr, "/ws/chat"))) for _ in range(n)]
+        clients = [stack.enter_context(closing(Client(addr, "/ws/chat", rcvbuf))) for _ in range(n)]
         for client in clients:
             assert next_frame(client) == (1, b"w")
         yield clients
 
 
 @contextmanager
-def pair(addr=CHAT):
-    with group(2, addr) as clients:
+def pair(addr=CHAT, rcvbuf=0):
+    with group(2, addr, rcvbuf) as clients:
         for client in clients:
             assert next_frame(client) == (1, b"c")
         yield clients
@@ -572,6 +704,29 @@ def chat_images():
             assert received.digest() == sent.digest()
 
 
+def image_frames(payload):
+    from chat_bot import frame
+    return frame(1, f"ipng {len(payload)}".encode()) + b"".join(
+        frame(2, payload[i:i + 16384]) for i in range(0, len(payload), 16384))
+
+
+def chat_upload():
+    payload = body(2 * MB)
+    with pair() as (a, b), ThreadPoolExecutor(1) as pool:
+        raw = image_frames(payload)
+        start = time.monotonic()
+        sender = pool.submit(a.send_raw, raw)
+        assert b.recv(3) == (1, b"ipng 2097152")
+        received = bytearray()
+        while len(received) < len(payload):
+            op, data = b.recv(3)
+            assert op == 2
+            received.extend(data)
+            assert time.monotonic() - start < 3, len(received)
+        sender.result()
+        assert sha256(received).digest() == sha256(payload).digest()
+
+
 def chat_image_invalid():
     from chat_bot import frame
     for tail in (b"png 2097153", b"jpg 0", b"gif 1", b"jpg -1", b"png 1x",
@@ -602,6 +757,25 @@ def chat_image_departure():
                 assert next_frame(client) == (1, b"c")
             a.send_raw(frame(1, b"ijpg 1") + frame(2, b"x"))
             assert b.recv(1) == (1, b"ijpg 1") and b.recv(1) == (2, b"x")
+    for leaver in ("sender", "peer"):
+        with pair(DIRECT) as (a, b):
+            a.send_raw(frame(1, b"ipng 9") + frame(2, b"p"))
+            assert b.recv(1) == (1, b"ipng 9") and b.recv(1) == (2, b"p")
+            first, second = (a, b) if leaver == "sender" else (b, a)
+            if second is a:
+                second.send_raw(frame(2, b"old"))
+            reset(first.sock)
+            first.close()
+            if second is a:
+                second.send_raw(frame(2, b"old"))
+            assert second.recv(1) == (1, b"l")
+            second.send_raw(frame(2, b"o") + frame(1, b"n"))
+            assert next_frame(second) == (1, b"w")
+            with group(1, DIRECT) as (fresh,):
+                assert next_frame(fresh) == (1, b"c") and next_frame(second) == (1, b"c")
+                for sender, receiver in ((second, fresh), (fresh, second)):
+                    sender.send_raw(frame(1, b"ijpg 2") + frame(2, b"xy"))
+                    assert receiver.recv(1) == (1, b"ijpg 2") and receiver.recv(1) == (2, b"xy")
 
 
 def chat_pressure():
@@ -650,23 +824,112 @@ def chat_pressure():
             raise AssertionError("all messages arrived before the blocked sender left")
 
 
+def chat_same_batch():
+    pid = int(os.environ["CHATD_PID"])
+    zero = ("users", "rooms", "waiting", "paused", "queued")
+    with pair(DIRECT) as (a, b), pair(DIRECT) as (c, d):
+        a.send_raw(image_frames(body(MB)))
+        wait_stats("/ws/stat", lambda s: s["paused"] == 1 and s["queued"] > 0)
+        with stopped(pid):
+            for client in (a, c, b, d):
+                if client in (a, c):
+                    reset(client.sock)
+                client.close()
+    wait_stats("/ws/stat", lambda s: not any(s[key] for key in zero))
+    with pair(DIRECT) as (a, b):
+        a.send_text("mnew")
+        assert b.recv(1) == (1, b"mnew")
+
+
+def free_addr():
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()
+
+
+def wait_open(addr):
+    for _ in range(100):
+        try:
+            with socket.create_connection(addr, .1):
+                return
+        except ConnectionRefusedError:
+            time.sleep(.02)
+
+
+def chat_killed():
+    from chat_bot import Client
+    chat, proxy = free_addr(), free_addr()
+    with TemporaryDirectory() as root, ExitStack() as stack:
+        daemon = stack.enter_context(subprocess.Popen(["./chatd", str(chat[1])]))
+        stack.callback(daemon.kill)
+        server = stack.enter_context(subprocess.Popen(
+            ["./server", str(proxy[1]), root, f"/ws/=127.0.0.1:{chat[1]}"], stderr=subprocess.DEVNULL))
+        stack.callback(server.kill)
+        wait_open(chat)
+        wait_open(proxy)
+        with pair(proxy) as clients:
+            assert stats("/_stat", proxy)["tunnels"] == 2
+            daemon.kill()
+            daemon.wait()
+            for client in clients:
+                try:
+                    item = next_frame(client)
+                except (EOFError, ConnectionResetError):
+                    continue
+                raise AssertionError(("chat stayed open", item))
+            try:
+                Client(proxy, "/ws/chat").close()
+            except ValueError as exc:
+                assert "502" in str(exc), exc
+            else:
+                raise AssertionError("upgraded without chatd")
+        wait_stats("/_stat", lambda s: s["tunnels"] == s["pending"] == 0, proxy)
+        assert server.poll() is None
+
+
+def established(client):
+    peer = f"0100007F:{client.sock.getsockname()[1]:04X}"
+    rows = [row.split() for row in Path("/proc/net/tcp").read_text().splitlines()[1:]]
+    return any(r[1] == "0100007F:2329" and r[2] == peer and r[3] == "01" for r in rows)
+
+
 def chat_stalled():
     from chat_bot import frame
     with pair(DIRECT) as clients:
         block = frame(1, b"m" * 4096) * 192
         for c in clients:
             c.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 8192)
-        peers = {f"0100007F:{c.sock.getsockname()[1]:04X}" for c in clients}
         start = time.monotonic()
         for c in clients:
             c.send_raw(block)
         while time.monotonic() - start < 16:
-            rows = [row.split() for row in Path("/proc/net/tcp").read_text().splitlines()[1:]]
-            if sum(r[1] == "0100007F:2329" and r[2] in peers and r[3] == "01" for r in rows) < 2:
+            if not all(map(established, clients)):
                 assert time.monotonic() - start >= 10
-                return
+                break
             time.sleep(.1)
-        raise AssertionError("stalled queues stayed connected")
+        else:
+            raise AssertionError("stalled queues stayed connected")
+    wait_stats("/ws/stat", lambda s: s["users"] == 0)
+    # 4초 먼저 막힌 쪽만 끊긴다. 이미지 조각은 a가 없어 자기 큐에 막히지 않는다.
+    with pair(DIRECT, 4096) as (first, last):
+        block = image_frames(body(MB))
+        start = time.monotonic()
+        last.send_raw(block)
+        wait_stats("/ws/stat", lambda s: s["paused"] == 1)
+        time.sleep(4)
+        first.send_raw(block)
+        wait_stats("/ws/stat", lambda s: s["paused"] == 2)
+        while established(first):
+            assert time.monotonic() - start < 13, "first stalled client stayed connected"
+            assert established(last), "later client closed first"
+            time.sleep(.1)
+        assert time.monotonic() - start >= 10
+        assert last.recv(1) == (1, b"ipng 1048576")
+        while (item := last.recv(3))[0] == 2:
+            pass
+        assert item == (1, b"l"), item
+        last.send_text("n")
+        assert next_frame(last) == (1, b"w")
 
 
 def chat_clocks():
@@ -713,19 +976,12 @@ def chat_clocks():
 def chat_fd_limit():
     import resource
     from chat_bot import Client
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        addr = probe.getsockname()
+    addr = free_addr()
     def limit():
         resource.setrlimit(resource.RLIMIT_NOFILE, (20, 20))
     with subprocess.Popen(["./chatd", str(addr[1])], preexec_fn=limit) as daemon, ExitStack() as stack:
         stack.callback(daemon.terminate)
-        for _ in range(100):
-            try:
-                with socket.create_connection(addr, .1):
-                    break
-            except ConnectionRefusedError:
-                time.sleep(.02)
+        wait_open(addr)
         with pair(addr) as (a, b):
             pending = [stack.enter_context(socket.create_connection(addr, 2)) for _ in range(30)]
             a.send_text("mfd")
@@ -753,6 +1009,59 @@ def chat_echo_bot():
             bot.terminate()
 
 
+def chat_bot_drop():
+    result = subprocess.run([sys.executable, "-B", "tests/chat_bot.py", "load",
+                             "--users", "20", "--sec", "3", "--self-test-drop"],
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 1 and "sequence" in result.stderr, (
+        result.returncode, result.stdout, result.stderr)
+
+
+def full():
+    from chat_bot import Bot, handshake, raise_fd_limit
+
+    async def capacity():
+        args = SimpleNamespace(mode="full", users=6000, addr=DIRECT, path="/ws/chat", self_test_drop=False)
+        bots = [Bot(i, args) for i in range(args.users)]
+        slots = asyncio.Semaphore(24)
+        readers = []
+        try:
+            async with asyncio.timeout(90), asyncio.TaskGroup() as tasks:
+                async def hold(bot):
+                    async with slots:
+                        await bot.open()
+                    readers.append(tasks.create_task(bot.read()))
+                    await bot.connected.wait()
+
+                await asyncio.gather(*(hold(b) for b in bots))
+                reader, writer = await asyncio.open_connection(*DIRECT)
+                try:
+                    request, _ = handshake(DIRECT, args.path)
+                    writer.write(request)
+                    header = await reader.readuntil(b"\r\n\r\n")
+                    assert header.split()[:2] == [b"HTTP/1.1", b"503"], header
+                finally:
+                    writer.close()
+                    await writer.wait_closed()
+                state = await asyncio.to_thread(stats, "/ws/stat", DIRECT)
+                assert state["users"] == 6000, state
+                bots[0].messages(1)
+                await bots[0].until(lambda: bots[0].acks == 1)
+                while not (peer := next((b for b in bots if b.peer == 0), None)):
+                    await asyncio.sleep(.01)
+                peer.messages(1)
+                await peer.until(lambda: peer.acks == 1)
+                await bots[0].until(lambda: bots[0].received == 1)
+                for reader_task in readers:
+                    reader_task.cancel()
+        finally:
+            for b in bots:
+                b.close()
+
+    raise_fd_limit()
+    asyncio.run(capacity())
+
+
 if __name__ == "__main__":
     case = sys.argv[1]
     if case == "backend":
@@ -763,13 +1072,14 @@ if __name__ == "__main__":
                     pool.submit(timer, "echo", 0, 30), pool.submit(slow)]
             for run in runs:
                 run.result()
-    elif case in ("closes", "noread"):
-        {"closes": closes, "noread": noread}[case](int(sys.argv[2]))
+    elif case in ("closes", "noread", "unwatch"):
+        {"closes": closes, "noread": noread, "unwatch": unwatch}[case](int(sys.argv[2]))
     else:
-        {"handshake": handshake, "echo": echo, "chat_http": chat_http,
+        {"full": full, "chat_bot_drop": chat_bot_drop, "handshake": handshake, "echo": echo, "chat_http": chat_http,
          "chat_messages": chat_messages, "chat_matching": chat_matching,
          "chat_departures": chat_departures, "chat_invalid": chat_invalid,
          "chat_images": chat_images, "chat_image_invalid": chat_image_invalid,
          "chat_image_departure": chat_image_departure, "chat_pressure": chat_pressure,
+         "quiet_stall": quiet_stall, "chat_upload": chat_upload, "chat_same_batch": chat_same_batch, "chat_killed": chat_killed,
          "chat_stalled": chat_stalled, "chat_clocks": chat_clocks, "chat_fd_limit": chat_fd_limit,
          "chat_echo_bot": chat_echo_bot, "tunnel_stats": tunnel_stats, "chat_stats": chat_stats}[case]()

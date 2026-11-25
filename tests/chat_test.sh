@@ -1,5 +1,6 @@
 #!/bin/bash
 cd "$(dirname "$0")/.." || exit 1
+if [[ ${1:-} == load ]]; then ulimit -n 65536 || exit 1; fi
 TMP=$(mktemp -d)
 LOG=$TMP/server.log
 pass=0
@@ -42,15 +43,44 @@ SP=$!
 waitport 8004 $BP
 waitport 8080 $SP
 waitport 9001 $CP
-cases=(handshake echo closes tunnel_stats chat_stats)
-if [ -z "$SERVER_WRAP" ]; then cases+=(noread timers); fi
+export SERVER_PID=$SP CHATD_PID=$CP
+bot() { python3 -B tests/chat_bot.py "$@"; }
+load_suite() {
+    bot load --users 5000 --rate 1 --sec 60 &&
+    bot burst --users 5000 --n 20 --rounds 3 &&
+    bot flood --users 200 --sec 30 &&
+    bot slow --users 200 --witness 100 &&
+    bot image --users 200 &&
+    bot churn --users 1000 --sec 30 &&
+    python3 -B tests/chat_cases.py full
+}
+short_suite() {
+    bot load --users 20 --rate 1 --sec 10 &&
+    bot burst --users 20 --n 20 --rounds 1 &&
+    bot flood --users 20 --sec 5 &&
+    bot image --users 20 &&
+    bot slow --users 20 --witness 10 &&
+    bot churn --users 20 --sec 5
+}
+cases=(handshake echo closes unwatch tunnel_stats chat_stats)
+if [ -z "$SERVER_WRAP" ]; then cases+=(noread quiet_stall timers); fi
 cases+=(chat_http chat_messages chat_matching chat_departures chat_invalid chat_echo_bot)
-cases+=(chat_images chat_image_invalid chat_image_departure chat_pressure chat_fd_limit)
+cases+=(chat_images chat_upload chat_image_invalid chat_image_departure chat_pressure)
+cases+=(chat_same_batch chat_fd_limit chat_killed)
 if [ -z "$CHATD_WRAP" ]; then cases+=(chat_stalled chat_clocks); fi
+cases+=(chat_bot_drop short)
 if (( $# )); then cases=("$@"); fi
 for name in "${cases[@]}"; do
-    python3 -B tests/chat_cases.py "$name" "$SP"
+    case "$name" in
+        short) short_suite ;;
+        load) load_suite ;;
+        *) python3 -B tests/chat_cases.py "$name" "$SP" ;;
+    esac
     check "$name" 0 $?
+done
+for p in "$SP" "$CP"; do
+    kill -0 "$p" 2>/dev/null
+    check "alive $p" 0 $?
 done
 kill "$SP" "$CP"
 wait "$SP" "$CP" 2>/dev/null

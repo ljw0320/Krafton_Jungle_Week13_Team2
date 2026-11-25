@@ -658,10 +658,9 @@ int main(int argc, char **argv) {
     if (n != sizeof(seed)) { perror("getrandom"); return 1; }
     srandom(seed);
     signal(SIGPIPE, SIG_IGN);
-    int listener = server_listen(INADDR_LOOPBACK, port), size = 16384;
+    int listener = server_listen(INADDR_LOOPBACK, port);
     if (listener < 0) return 1;
-    if (setsockopt(listener, SOL_SOCKET, SO_RCVBUF, &size, sizeof(size)) < 0 ||
-        run(listener) < 0) {
+    if (run(listener) < 0) {
         perror("chatd");
         return 1;
     }

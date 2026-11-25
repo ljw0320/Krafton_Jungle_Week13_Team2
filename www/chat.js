@@ -32,7 +32,7 @@ const stateLabels = {
 let state = "start";
 let socket;
 let trace;
-let sentCount = 0;
+let ackCount = 0;
 let pendingAcks = [];
 let incomingImage;
 let upload;
@@ -133,6 +133,17 @@ function receive(data) {
   } else if (state === "waiting" && data.startsWith("s")) {
     const stats = /^s([0-9]+) ([0-9]+)$/.exec(data);
     if (stats) counts.textContent = `접속 ${stats[1]}명 · 대기 ${stats[2]}명`;
+  } else if (data === "a") {
+    // An ACK can arrive after changing rooms cleared the pending RTTs.
+    const n = ++ackCount;
+    const sent = pendingAcks.shift();
+    if (sent === undefined) return;
+    const report = { trace, n, rtt_ms: performance.now() - sent };
+    if (window.frameElement?.matches(".flow-chat")) {
+      window.parent.postMessage(report, location.origin);
+    } else {
+      flow.postMessage(report);
+    }
   } else if (state === "chatting") {
     if (data.startsWith("m")) {
       appendText(false, data.slice(1));
@@ -142,9 +153,6 @@ function receive(data) {
       const size = Number(header[2]);
       if (size < 1 || size > maxImage) return;
       incomingImage = { type: imageTypes[header[1]], remaining: size, chunks: [] };
-    } else if (data === "a" && pendingAcks.length > 0) {
-      const sent = pendingAcks.shift();
-      flow.postMessage({ trace, n: sent.n, rtt_ms: performance.now() - sent.time });
     }
   }
 }
@@ -152,7 +160,7 @@ function receive(data) {
 function connect() {
   stopConversation();
   clearMessages();
-  sentCount = 0;
+  ackCount = 0;
   trace = (crypto.getRandomValues(new Uint32Array(1))[0] & 0x7fffffff) || 1;
   counts.textContent = "접속 및 대기 수를 확인하는 중입니다.";
   showState("connecting");
@@ -194,7 +202,17 @@ next.addEventListener("click", () => {
 });
 
 message.addEventListener("compositionstart", () => { composing = true; });
-message.addEventListener("compositionend", () => { composing = false; });
+function clampMessage() {
+  const chars = [...message.value];
+  if (chars.length <= maxText) return;
+  const pos = message.selectionStart;
+  message.value = chars.slice(0, maxText).join("");
+  const end = Math.min(pos, message.value.length);
+  message.setSelectionRange(end, end);
+  notice.textContent = "메시지는 1,000자까지 보낼 수 있습니다.";
+}
+message.addEventListener("compositionend", () => { composing = false; clampMessage(); });
+message.addEventListener("input", (event) => { if (!event.isComposing && !composing) clampMessage(); });
 message.addEventListener("keydown", (event) => {
   if (event.key !== "Enter" || event.isComposing || composing) return;
   event.preventDefault();
@@ -209,7 +227,7 @@ composer.addEventListener("submit", (event) => {
     notice.textContent = "메시지는 1,000자까지 보낼 수 있습니다.";
     return;
   }
-  pendingAcks.push({ n: ++sentCount, time: performance.now() });
+  pendingAcks.push(performance.now());
   socket.send(`m${text}`);
   appendText(true, text);
   message.value = "";

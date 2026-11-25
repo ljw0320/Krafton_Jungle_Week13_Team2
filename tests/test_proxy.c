@@ -641,6 +641,9 @@ static void test_json(void) {
         check("JSON Connection", 1, memmem(resp.head, resp.head_len, connection, strlen(connection)) != NULL);
         const char *field = cases[i].get ? "\r\nContent-Type: application/json\r\n" : "\r\nAllow: GET\r\n";
         check("JSON 헤더", 1, memmem(resp.head, resp.head_len, field, strlen(field)) != NULL);
+        char length[48];
+        snprintf(length, sizeof length, "\r\nContent-Length: %zu\r\n", cases[i].get ? sizeof body-1 : 0);
+        check("JSON Content-Length", 1, memmem(resp.head, resp.head_len, length, strlen(length)) != NULL);
         if (cases[i].get) {
             const char *end = memmem(resp.head, resp.head_len, "\r\n\r\n", 4);
             check("JSON 헤더 끝", 1, end != NULL);
