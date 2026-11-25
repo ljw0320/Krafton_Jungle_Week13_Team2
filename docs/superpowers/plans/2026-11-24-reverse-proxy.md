@@ -256,16 +256,18 @@ Task 2 (route, main, Makefile, 테스트) ─┴─ Task 3 (http.c, test_proxy.c
 
 ### Task 10: 최종 리뷰와 Minor 정리
 
-- [ ] **Step 1** — `final-reviewer`에게 `git diff 5cc6594..HEAD`
-- [ ] **Step 2** — 메인 세션이 지적마다 수정, 문서화, 범위 밖 중 하나로 정한다. Critical/Important와 "Minor 모음"을 `builder`에게 한 번에 맡긴다.
-- [ ] **Step 3** — 공통 확인과 Task 9 Step 2. `verifier`가 고친 범위만 다시 본다.
-- [ ] **Step 4: 커밋, push** — `fix: 프록시 최종 리뷰 정리`. PR은 사용자에게 묻는다.
+- [x] **Step 1** — `final-reviewer`가 `git diff 5cc6594..ba2820a`를 검토했다. Critical과 Important 발견 사항은 없었다.
+- [x] **Step 2** — Minor별 처리와 검증 범위를 아래에 기록했다.
+- [x] **Step 3** — 격리된 WSL의 `/tmp` 사본에서 일반 사용자로 공통 확인과 Valgrind를 다시 실행했다. 네 명령 모두 종료 코드 0. 빌드 경고 0건, 일반과 ASan·UBSan 각각 2,607건 통과, Valgrind 117건 통과 및 로그 2개 모두 누수와 메모리 오류 0건이었다.
+- [x] **Step 4: 커밋** — `fix: 프록시 최종 리뷰 정리`로 계획과 설계를 정리하고 개요의 Reverse Proxy를 완료로 표시했다.
+- [ ] **Step 4: push** — `origin/shw`로 전송하기 전에 원격 저장소와 푸시 승인을 확인한다. PR은 사용자에게 묻는다.
 
 ---
 
 ## Minor 모음
 
-- Task 1: `event_loop.c:12` 주석의 `loop_unwatch가 재개할`을 `loop_accept_resume`으로, `event_loop.h:8`의 쓰지 않는 `struct conn;` 삭제 (Task 5에서 고침)
-- Task 5: `up_send`의 부분 전송 검사를 빼도 기능 테스트가 잡지 못한다. 요청이 8.4KB 이하라 보통 한 번에 나간다(사본에서 `send`를 잘라 확인함). `start_fail`의 `free` 누락은 valgrind(Task 9)로만 잡힌다
-- Task 6: 테스트가 잡지 못하는 결함(비용이 커서 문서화만): `proxy_resume`·`up_send`·연결 완료의 `since` 제거, `relay`와 `proxy_fail`의 `last_active` 제거, 한도 비교의 `>`를 `>=`로(3회 중 1회만 실패). 원본은 코드 대조와 사본 실험으로 확인했다(SENDING 타이머 포함)
-- Task 7: `event_loop.c`의 `ev_n = 0`은 없어도 동작이 같다(`for`가 끝나면 `ev_i == ev_n`). 설계 코드라 남겼고, 지울지는 Task 10에서 정한다. valgrind에서는 fd를 3개로 맞출 수 없어 `resume`, `idle`을 건너뛰고, fd 한도 케이스의 curl 56을 허용한다(valgrind의 `accept4`가 한도를 넘은 연결을 닫는 것을 strace로 확인)
+- Task 1 — **범위 밖(수정 완료)**. Task 5에서 `event_loop.c`의 accept 재개 주석을 고치고 `event_loop.h`의 미사용 선언을 삭제했다.
+- Task 5 — **문서화**. 백엔드로 보내는 요청은 약 8.4KB 이하라 기능 테스트에서 한 번에 전송될 수 있다. 부분 전송 후 재개를 자동 검증하려면 짧은 `send` 반환을 제어할 수 있는 테스트가 필요하다. `start_fail`의 버퍼 회수는 Valgrind 결과를 확인한다.
+- Task 6 — **문서화**. `proxy_resume`·`up_send`·연결 완료의 `since`, `relay`·`proxy_fail`의 `last_active`, 타임아웃 비교의 `>`는 코드와 설계를 대조했다. 기존 테스트는 각 갱신의 누락이나 비교 연산 변경을 항상 검출하지는 않는다.
+- Task 7 — **범위 밖**. `ev_n = 0`은 배치 처리가 끝났음을 명시하므로 유지한다. **문서화**. Valgrind는 자체 fd를 사용하므로 `resume`과 `idle`은 일반 및 ASan·UBSan 실행에서 확인한다. Valgrind의 fd 한도 검사만 curl 56을 허용한다. Valgrind의 `accept4`가 한도 초과 연결을 닫는 동작은 앞선 strace 검사에서 확인했다.
+- 최종 리뷰 — **문서화**. 백엔드 응답의 `Transfer-Encoding` 값과 본문에 대한 검증 범위를 프록시 설계에 명시했다.
