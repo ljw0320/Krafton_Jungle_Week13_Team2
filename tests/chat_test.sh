@@ -45,6 +45,9 @@ waitport 9001 $CP
 cases=(handshake echo closes)
 if [ -z "$SERVER_WRAP" ]; then cases+=(noread timers); fi
 cases+=(chat_http chat_messages chat_matching chat_departures chat_invalid chat_echo_bot)
+cases+=(chat_images chat_image_invalid chat_image_departure chat_pressure chat_fd_limit)
+if [ -z "$CHATD_WRAP" ]; then cases+=(chat_stalled chat_clocks); fi
+if (( $# )); then cases=("$@"); fi
 for name in "${cases[@]}"; do
     python3 -B tests/chat_cases.py "$name" "$SP"
     check "$name" 0 $?

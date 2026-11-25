@@ -286,18 +286,18 @@ def next_frame(client, timeout=1.5):
 
 
 @contextmanager
-def group(n):
+def group(n, addr=CHAT):
     from chat_bot import Client
     with ExitStack() as stack:
-        clients = [stack.enter_context(closing(Client(CHAT, "/ws/chat"))) for _ in range(n)]
+        clients = [stack.enter_context(closing(Client(addr, "/ws/chat"))) for _ in range(n)]
         for client in clients:
             assert next_frame(client) == (1, b"w")
         yield clients
 
 
 @contextmanager
-def pair():
-    with group(2) as clients:
+def pair(addr=CHAT):
+    with group(2, addr) as clients:
         for client in clients:
             assert next_frame(client) == (1, b"c")
         yield clients
@@ -432,6 +432,194 @@ def chat_invalid():
         assert next_frame(a) == (8, b"")
 
 
+def chat_images():
+    from chat_bot import frame
+    with pair() as (a, b):
+        for kind, size in (("jpg", 1), ("png", 16384), ("jpg", 16385),
+                           ("png", 2 * MB), ("jpg", 2 * MB)):
+            header = f"i{kind} {size}".encode()
+            a.send_raw(frame(1, header))
+            assert b.recv(1) == (1, header)
+            sent, received = sha256(), sha256()
+            for offset in range(0, size, 16384):
+                chunk = bytes([offset // 16384]) * min(size - offset, 16384)
+                sent.update(chunk)
+                split = len(chunk) // 2
+                a.send_raw(frame(2, chunk[:split], fin=False) + frame(0, chunk[split:]))
+                for part in (chunk[:split], chunk[split:]):
+                    if part:
+                        op, data = b.recv(2)
+                        assert op == 2 and len(data) == len(part)
+                        received.update(data)
+                if offset == 0:
+                    a.send_text("mhello")
+                    assert b.recv(1) == (1, b"mhello") and a.recv(1) == (1, b"a")
+            assert received.digest() == sent.digest()
+
+
+def chat_image_invalid():
+    from chat_bot import frame
+    for tail in (b"png 2097153", b"jpg 0", b"gif 1", b"jpg -1", b"png 1x",
+                 b"jpg 00000001", b"png "):
+        with pair(DIRECT) as (a, b):
+            a.send_raw(frame(1, b"i" + tail))
+            assert a.recv(1) == (8, b"\x03\xf0") and b.recv(1) == (1, b"l")
+    for invalid in (frame(1, b"ijpg 1"), frame(2, b"XX")):
+        with pair(DIRECT) as (a, b):
+            a.send_raw(frame(1, b"ipng 1") + invalid)
+            assert b.recv(1) == (1, b"ipng 1") and b.recv(1) == (1, b"l")
+            assert a.recv(1) == (8, b"\x03\xf0")
+
+
+def chat_image_departure():
+    from chat_bot import frame
+    for leaver in ("sender", "peer"):
+        with pair(DIRECT) as (a, b):
+            for sender, receiver in ((a, b), (b, a)):
+                sender.send_raw(frame(1, b"ipng 8") + frame(2, b"p"))
+                assert receiver.recv(1) == (1, b"ipng 8") and receiver.recv(1) == (2, b"p")
+            first, second = (a, b) if leaver == "sender" else (b, a)
+            first.send_text("n")
+            assert next_frame(first) == (1, b"w") and second.recv(1) == (1, b"l")
+            second.send_raw(frame(2, b"old") + frame(1, b"n"))
+            assert next_frame(second) == (1, b"w")
+            for client in (a, b):
+                assert next_frame(client) == (1, b"c")
+            a.send_raw(frame(1, b"ijpg 1") + frame(2, b"x"))
+            assert b.recv(1) == (1, b"ijpg 1") and b.recv(1) == (2, b"x")
+
+
+def chat_pressure():
+    from chat_bot import frame
+    messages = [f"m{i:099}".encode() for i in range(5000)]
+    flood = b"".join(frame(1, msg[:1], fin=False) + frame(0, msg[1:]) for msg in messages)
+    with pair(DIRECT) as (a, b), pair(DIRECT) as (c, d):
+        b.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 8192)
+        a.send_raw(flood)
+        time.sleep(3)
+        start = time.monotonic()
+        c.send_text("mroom")
+        assert d.recv(1) == (1, b"mroom") and c.recv(1) == (1, b"a")
+        assert time.monotonic() - start < 1
+        short = [f"m{i}".encode() for i in range(1000)]
+        b.send_raw(b"".join(frame(1, msg) for msg in short))
+        time.sleep(.1)
+        def collect(client, expected, acks):
+            forwarded, acknowledged = [], 0
+            for _ in range(len(expected) + acks):
+                op, data = client.recv(5)
+                assert op == 1
+                if data == b"a":
+                    acknowledged += 1
+                else:
+                    forwarded.append(data)
+            assert acknowledged == acks and forwarded == expected
+        with ThreadPoolExecutor(2) as pool:
+            first = pool.submit(collect, a, short, len(messages))
+            collect(b, messages, len(short))
+            first.result()
+    with pair(DIRECT) as (a, b):
+        b.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 8192)
+        a.send_raw(flood)
+        assert a.recv(1) == (1, b"a")
+        time.sleep(.1)
+        reset(a.sock)
+        a.close()
+        for expected in messages:
+            item = b.recv(3)
+            if item == (1, b"l"):
+                break
+            assert item == (1, expected)
+        else:
+            raise AssertionError("all messages arrived before the blocked sender left")
+
+
+def chat_stalled():
+    from chat_bot import frame
+    with pair(DIRECT) as clients:
+        block = frame(1, b"m" * 4096) * 192
+        for c in clients:
+            c.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 8192)
+        peers = {f"0100007F:{c.sock.getsockname()[1]:04X}" for c in clients}
+        start = time.monotonic()
+        for c in clients:
+            c.send_raw(block)
+        while time.monotonic() - start < 16:
+            rows = [row.split() for row in Path("/proc/net/tcp").read_text().splitlines()[1:]]
+            if sum(r[1] == "0100007F:2329" and r[2] in peers and r[3] == "01" for r in rows) < 2:
+                assert time.monotonic() - start >= 10
+                return
+            time.sleep(.1)
+        raise AssertionError("stalled queues stayed connected")
+
+
+def chat_clocks():
+    from chat_bot import frame
+    def half():
+        with socket.create_connection(DIRECT, 13) as s:
+            start = time.monotonic()
+            s.sendall(b"GET /ws")
+            assert not s.recv(1) and 10 <= time.monotonic() - start < 13
+    def heartbeat(respond):
+        with socket.create_connection(DIRECT, 12) as s, s.makefile("rb") as f:
+            start = time.monotonic()
+            s.sendall(CHAT_REQ)
+            assert b"101" in f.readline()
+            while True:
+                line = f.readline()
+                assert line
+                if line == b"\r\n":
+                    break
+            last = start
+            pings = 0
+            while True:
+                head = f.read(2)
+                if not head:
+                    assert not respond and 30 <= time.monotonic() - start < 34
+                    return
+                op, length = head
+                payload = f.read(length)
+                if op == 0x89:
+                    now = time.monotonic()
+                    assert 9 <= now - last < 12
+                    last = now
+                    pings += 1
+                    if respond:
+                        s.sendall(frame(10, payload))
+                        if pings >= 4 and now - start >= 40:
+                            return
+    with ThreadPoolExecutor(3) as pool:
+        jobs = [pool.submit(half), pool.submit(heartbeat, False), pool.submit(heartbeat, True)]
+        for job in jobs:
+            job.result()
+
+
+def chat_fd_limit():
+    import resource
+    from chat_bot import Client
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        addr = probe.getsockname()
+    def limit():
+        resource.setrlimit(resource.RLIMIT_NOFILE, (20, 20))
+    with subprocess.Popen(["./chatd", str(addr[1])], preexec_fn=limit) as daemon, ExitStack() as stack:
+        stack.callback(daemon.terminate)
+        for _ in range(100):
+            try:
+                with socket.create_connection(addr, .1):
+                    break
+            except ConnectionRefusedError:
+                time.sleep(.02)
+        with pair(addr) as (a, b):
+            pending = [stack.enter_context(socket.create_connection(addr, 2)) for _ in range(30)]
+            a.send_text("mfd")
+            assert b.recv(1) == (1, b"mfd")
+            for s in pending:
+                s.close()
+            with closing(Client(addr, "/ws/chat")) as fresh:
+                assert next_frame(fresh) == (1, b"w")
+
+
 def chat_echo_bot():
     cmd = [sys.executable, "-B", str(Path(__file__).with_name("chat_bot.py")), "echo"]
     with subprocess.Popen(cmd) as bot:
@@ -465,4 +653,7 @@ if __name__ == "__main__":
         {"handshake": handshake, "echo": echo, "chat_http": chat_http,
          "chat_messages": chat_messages, "chat_matching": chat_matching,
          "chat_departures": chat_departures, "chat_invalid": chat_invalid,
+         "chat_images": chat_images, "chat_image_invalid": chat_image_invalid,
+         "chat_image_departure": chat_image_departure, "chat_pressure": chat_pressure,
+         "chat_stalled": chat_stalled, "chat_clocks": chat_clocks, "chat_fd_limit": chat_fd_limit,
          "chat_echo_bot": chat_echo_bot}[case]()
