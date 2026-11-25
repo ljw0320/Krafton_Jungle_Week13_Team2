@@ -250,8 +250,8 @@ Task 2 (route, main, Makefile, 테스트) ─┴─ Task 3 (http.c, test_proxy.c
 
 - [x] **Step 1** — 공통 확인 3개 종료 코드 0. 일반 테스트와 ASan·UBSan 테스트는 각각 526 + 1794 + 168 + 119건을 통과했다.
 - [x] **Step 2: valgrind** — `rm -f /tmp/vg.*.log` 뒤 `make clean && make && SERVER_WRAP='valgrind --leak-check=full --log-file=/tmp/vg.%p.log' bash tests/proxy_test.sh` 실행. 종료 코드 0, 117건 통과. 로그 2개 모두 `definitely lost: 0 bytes`, `Invalid read`와 `Invalid write` 0건이었다.
-- [ ] **Step 3: 브라우저 (사용자)** — 서버와 `backend.py`를 띄워 두고 `/index.html`, `/api/echo`, `/rr/port`를 연다. `/rr/port`를 새로 고침할 때 8001과 8002가 번갈아 표시되는지 확인한다.
-- [x] **Step 4: 문서** — 품질 체크리스트에 단위 테스트, 동시 다중 클라이언트 접속, 메모리, 엣지 케이스를 표시했다. 브라우저 확인이 필요한 기능 테스트 항목은 Step 3 뒤에 표시한다. `grep -n '프록시' docs/architecture-tcp.md docs/architecture-http.md CLAUDE.md` 결과에 프록시 단계에서 바뀔 예정임을 나타내는 표시는 없었다.
+- [x] **Step 3: 브라우저 (사용자)** — 2026-11-25 Chrome에서 사용자가 확인했다. `/index.html`에 `home`이 표시됐고, `/api/echo`에는 백엔드가 받은 `GET /api/echo HTTP/1.1` 요청과 헤더가 표시됐다. `/rr/port`의 본문은 새로 고침 전 `8001`, 새로 고침 후 `8002`였다.
+- [x] **Step 4: 문서** — 품질 체크리스트에 단위 테스트, curl·브라우저 기능 테스트, 동시 다중 클라이언트 접속, 메모리, 엣지 케이스를 표시했다. `grep -n '프록시' docs/architecture-tcp.md docs/architecture-http.md CLAUDE.md` 결과에 프록시 단계에서 바뀔 예정임을 나타내는 표시는 없었다.
 - [x] **Step 5: 커밋, push** — 자동 확인 결과를 `docs: 프록시 종합 확인`으로 반영했다.
 
 ### Task 10: 최종 리뷰와 Minor 정리
