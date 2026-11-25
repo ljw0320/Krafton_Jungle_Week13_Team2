@@ -49,6 +49,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--connections', type=int, default=100)
     parser.add_argument('--output')
+    parser.add_argument('--proxy-profile', action='store_true')
     parser.add_argument('--empty-body', action='store_true')
     parser.add_argument('--contexts', type=int, default=8)
     parser.add_argument('--rounds', type=int, default=7)
@@ -65,6 +66,7 @@ def main():
     while frontend_port == backend_port: frontend_port = port()
     env = dict(os.environ, JUNGLE_CONNECTIONS=str(capacity), JUNGLE_CONTEXTS=str(args.contexts),
                PROXY_CONNECTIONS=str(capacity), PROXY_CONTEXTS=str(args.contexts))
+    env['PROXY_PROFILE'] = '1' if args.proxy_profile else '0'
     clients, processes, logs = [], [], []
     started = time.monotonic()
     progress = [0]
@@ -192,6 +194,12 @@ def main():
                     process.terminate()
                     try: process.wait(timeout=3)
                     except subprocess.TimeoutExpired: process.kill(); process.wait()
+            if args.proxy_profile and len(logs) > 1 and 'result' in locals():
+                logs[1].seek(0)
+                for line in logs[1]:
+                    if line.startswith('[proxy_profile] '):
+                        result['proxy_profile'] = json.loads(line[len('[proxy_profile] '):])
+                if args.output: Path(args.output).write_text(json.dumps(result, indent=2)+'\n')
             for log in logs: log.close()
 
 if __name__ == '__main__': main()

@@ -1,0 +1,93 @@
+{
+  "status": "failed",
+  "connections": 10000,
+  "configured_connections": 11000,
+  "contexts_each": 8,
+  "empty_body": true,
+  "completed_requests": 10000,
+  "elapsed_seconds": 39.391,
+  "error_type": "AssertionError",
+  "error": "{'frontend': 1315, 'backend': 1027}",
+  "observed_established": {
+    "frontend": 1291,
+    "backend": 1000
+  },
+  "backend_accepts_including_probe": 10000,
+  "backend_close_reasons": {
+    "peer_closed": 9014
+  },
+  "fd_soft_test": 65536,
+  "timings": [
+    {
+      "phase": "requests_round_0",
+      "wall_seconds": 39.058326,
+      "cpu_seconds": {
+        "loader": 12.11051,
+        "backend": 25.58,
+        "proxy": 38.52
+      }
+    },
+    {
+      "phase": "connection_snapshot_round_0",
+      "wall_seconds": 0.173958,
+      "cpu_seconds": {
+        "loader": 0.174565,
+        "backend": 0.06,
+        "proxy": 0.1
+      },
+      "parts": {
+        "fd_enumeration_seconds": 0.046552,
+        "tcp_table_read_seconds": 0.080754,
+        "tcp_parse_seconds": 0.045695
+      },
+      "observed_established": {
+        "frontend": 1315,
+        "backend": 1027
+      },
+      "oldest_request_age_seconds": 39.206571
+    }
+  ],
+  "scope": "bounded-concurrency connection retention test; failure does not isolate loader/server bottleneck",
+  "proxy_profile": {
+    "loops": 17348,
+    "slots_checked": 190828000,
+    "ready_events": 55562,
+    "stages": {
+      "prepare": {
+        "calls": 17348,
+        "wall_seconds": 6.243478,
+        "cpu_seconds": 6.208398
+      },
+      "generations": {
+        "calls": 17348,
+        "wall_seconds": 1.464102,
+        "cpu_seconds": 1.452896
+      },
+      "poll": {
+        "calls": 17348,
+        "wall_seconds": 23.904906,
+        "cpu_seconds": 22.973786
+      },
+      "ready_scan_dispatch": {
+        "calls": 17348,
+        "wall_seconds": 8.103047,
+        "cpu_seconds": 8.005191
+      },
+      "accept": {
+        "calls": 17348,
+        "wall_seconds": 0.287514,
+        "cpu_seconds": 0.280759
+      },
+      "update": {
+        "calls": 0,
+        "wall_seconds": 0.0,
+        "cpu_seconds": 0.0
+      },
+      "timers": {
+        "calls": 0,
+        "wall_seconds": 0.0,
+        "cpu_seconds": 0.0
+      }
+    }
+  }
+}

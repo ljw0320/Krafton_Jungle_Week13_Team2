@@ -12,6 +12,9 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "profile.h"
+#include "reactor.h"
+
 enum phase { UNUSED, IDLE, REQUEST, CONNECTING, UPLOAD, RESPONSE, RELAY, ERROR_REPLY, DRAIN };
 struct buffers {
     bool used;
@@ -23,6 +26,9 @@ struct buffers {
 static struct buffers *pool;
 static int active_capacity = PROXY_ACTIVE, client_capacity = PROXY_CLIENTS;
 struct exchange {
+    struct reactor_node *node;
+    struct exchange *free_next;
+    bool in_free;
     struct buffers *buffers;
     bool keep_alive;
     unsigned requests;
@@ -43,6 +49,10 @@ struct exchange {
     uint64_t remaining;
 };
 static struct exchange *clients;
+static struct exchange *free_clients;
+static struct reactor_node *nodes;
+static struct reactor reactor;
+static void refresh_exchange(struct exchange *c);
 static struct sockaddr_in backend;
 static char backend_host[64];
 static volatile sig_atomic_t stopping;
@@ -105,6 +115,7 @@ static void finish(struct exchange *c)
         int64_t buffered_at = c->buffered_at;
         struct buffers *buffers = c->buffers;
         if (left) memmove(buffers->request, buffers->request + consumed, left);
+        struct reactor_node *node = c->node;
         int upstream = c->upstream;
         unsigned backend_requests = c->backend_requests, generation = c->upstream_generation;
         int64_t backend_idle_at = c->backend_idle_at;
@@ -112,6 +123,7 @@ static void finish(struct exchange *c)
         int client = c->client;
         unsigned requests = c->requests;
         memset(c, 0, sizeof(*c));
+        c->node = node;
         c->client = client; c->upstream = upstream;
         c->backend_requests = backend_requests; c->upstream_generation = generation;
         c->backend_idle_at = backend_idle_at; c->backend_reusable = reusable;
@@ -385,35 +397,51 @@ static void expire(struct exchange *c)
     }
 }
 
-static nfds_t prepare(struct pollfd *fds, int listener, int *timeout)
+/* Only a changed connection updates its two watches and one heap entry. */
+static void refresh_exchange(struct exchange *c)
 {
-    fds[0] = (struct pollfd){.fd = listener, .events = POLLIN};
-    int64_t now = now_ms();
-    *timeout = 1000; /* also bounds signal-driven shutdown latency */
-    for (int i = 0; i < client_capacity; i++) {
-        struct exchange *c = &clients[i];
-        if (c->upstream >= 0 && c->backend_idle_at) {
-            int64_t left = c->backend_idle_at + BACKEND_IDLE_MS - now;
-            if (left <= 0) close_upstream(c);
-            else if (left < *timeout) *timeout = (int)left;
+    struct profile_stamp stamp = profile_begin();
+    struct reactor_node *node = c->node;
+    if (c->phase == UNUSED) {
+        reactor_watch(&reactor, node, false, -1, 0, 0);
+        reactor_watch(&reactor, node, true, -1, 0, 0);
+        reactor_timer(&reactor, node, -1);
+        if (!c->in_free) {
+            c->free_next = free_clients; free_clients = c; c->in_free = true;
         }
-        if (c->phase != UNUSED && deadline(c) <= now) expire(c);
+    } else {
         short client_events = 0, upstream_events = 0;
         if (c->phase == IDLE || c->phase == REQUEST || c->phase == DRAIN) client_events = POLLIN;
         if (c->phase == ERROR_REPLY || (c->phase == RELAY && has_output(c))) client_events = POLLOUT;
         if (c->backend_idle_at) upstream_events = POLLIN;
         if (c->phase == CONNECTING || c->phase == UPLOAD) upstream_events = POLLOUT;
-        if (c->phase == RESPONSE || (c->phase == RELAY && !has_output(c) && c->remaining))
-            upstream_events = POLLIN;
-        fds[1 + 2*i] = (struct pollfd){.fd = c->phase == UNUSED ? -1 : c->client, .events = client_events};
-        /* Suppress even HUP while paused; otherwise an EOF upstream can spin poll. */
-        fds[2 + 2*i] = (struct pollfd){.fd = upstream_events ? c->upstream : -1, .events = upstream_events};
-        if (c->phase != UNUSED) {
-            int64_t left = deadline(c) - now;
-            if (left < *timeout) *timeout = left > 0 ? (int)left : 0;
-        }
+        if (c->phase == RESPONSE || (c->phase == RELAY && !has_output(c) && c->remaining)) upstream_events = POLLIN;
+        reactor_watch(&reactor, node, false, c->client, client_events, c->upstream_generation);
+        reactor_watch(&reactor, node, true, upstream_events ? c->upstream : -1, upstream_events, c->upstream_generation);
+        int64_t due = deadline(c);
+        if (c->backend_idle_at && c->upstream >= 0 && c->backend_idle_at + BACKEND_IDLE_MS < due)
+            due = c->backend_idle_at + BACKEND_IDLE_MS;
+        reactor_timer(&reactor, node, due);
     }
-    return 1 + 2 * client_capacity;
+    profile_end(P_UPDATE, stamp);
+}
+
+static int prepare_timers(void)
+{
+    struct profile_stamp stamp = profile_begin();
+    int64_t now = now_ms();
+    while (reactor.heap_count) {
+        now = now_ms();
+        if (reactor.heap[0]->due > now) break;
+        struct exchange *c = reactor.heap[0]->owner;
+        if (c->upstream >= 0 && c->backend_idle_at && c->backend_idle_at + BACKEND_IDLE_MS <= now)
+            close_upstream(c);
+        if (deadline(c) <= now) expire(c);
+        refresh_exchange(c);
+    }
+    int64_t left = reactor.heap_count ? reactor.heap[0]->due - now_ms() : 1000;
+    profile_end(P_TIMERS, stamp);
+    return left < 0 ? 0 : left > 1000 ? 1000 : (int)left;
 }
 
 static void dispatch(struct exchange *c, short client_events, short upstream_events, unsigned generation)
@@ -462,9 +490,7 @@ static void accept_clients(int listener)
     for (int budget = 0; budget < 16; budget++) {
         int fd = accept4(listener, NULL, NULL, SOCK_NONBLOCK | SOCK_CLOEXEC);
         if (fd < 0) return;
-        struct exchange *c = NULL;
-        for (int i = 0; i < client_capacity; i++)
-            if (clients[i].phase == UNUSED) { c = &clients[i]; break; }
+        struct exchange *c = free_clients;
         if (!c) {
             bool saved = false;
             for (int i = 0; i < REJECT_SLOTS; i++) {
@@ -476,10 +502,15 @@ static void accept_clients(int listener)
             if (!saved) close(fd);
             continue;
         }
+        free_clients = c->free_next;
+        struct reactor_node *node = c->node;
+        node->life++;
         memset(c, 0, sizeof(*c));
+        c->node = node;
         c->client = fd; c->upstream = -1;
         c->phase = IDLE;
         c->client_progress = now_ms();
+        refresh_exchange(c);
     }
 }
 
@@ -526,6 +557,7 @@ static int port(const char *value)
 
 int main(int argc, char **argv)
 {
+    profile_enabled = getenv("PROXY_PROFILE") && !strcmp(getenv("PROXY_PROFILE"), "1");
     client_capacity = runtime_limit("PROXY_CONNECTIONS", PROXY_CLIENTS, 65536);
     active_capacity = runtime_limit("PROXY_CONTEXTS", PROXY_ACTIVE, 4096);
     if (active_capacity > client_capacity) {
@@ -557,27 +589,59 @@ int main(int argc, char **argv)
     struct sigaction action = {.sa_handler = stop};
     sigemptyset(&action.sa_mask);
     sigaction(SIGINT, &action, NULL); sigaction(SIGTERM, &action, NULL);
-    for (int i = 0; i < client_capacity; i++) clients[i].client = clients[i].upstream = -1;
+    reactor_init(&reactor, client_capacity, 1 + REJECT_SLOTS);
+    nodes = runtime_alloc((size_t)client_capacity, sizeof(*nodes));
+    reactor.fds[0] = (struct pollfd){.fd=listener, .events=POLLIN};
+    for (int i = client_capacity - 1; i >= 0; i--) {
+        struct exchange *c = &clients[i];
+        c->client = c->upstream = -1;
+        c->node = &nodes[i];
+        nodes[i] = (struct reactor_node){.owner=c, .watch={-1,-1}, .heap_index=-1};
+        c->free_next = free_clients; free_clients = c; c->in_free = true;
+    }
     for (int i = 0; i < REJECT_SLOTS; i++) rejected[i].fd = -1;
-    struct pollfd *fds = runtime_alloc((size_t)(1 + client_capacity*2 + REJECT_SLOTS), sizeof(*fds));
-    unsigned *generations = runtime_alloc((size_t)client_capacity, sizeof(*generations));
     while (!stopping) {
-        int timeout;
-        nfds_t count = prepare(fds, listener, &timeout);
-        prepare_rejections(fds + count, &timeout);
-        for (int i = 0; i < client_capacity; i++) generations[i] = clients[i].upstream_generation;
-        if (poll(fds, count + REJECT_SLOTS, timeout) < 0) {
+        if (profile_enabled) profile_loops++;
+        int timeout = prepare_timers();
+        struct profile_stamp stamp = profile_begin();
+        prepare_rejections(reactor.fds + 1, &timeout);
+        profile_end(P_PREPARE, stamp);
+        stamp = profile_begin();
+        int ready = poll(reactor.fds, reactor.count, timeout);
+        profile_end(P_POLL, stamp);
+        if (ready < 0) {
             if (errno == EINTR) continue;
             perror("proxy poll"); break;
         }
-        for (int i = 0; i < client_capacity; i++)
-            dispatch(&clients[i], fds[1+2*i].revents, fds[2+2*i].revents, generations[i]);
-        dispatch_rejections(fds + count);
-        if (fds[0].revents & POLLIN) accept_clients(listener);
+        stamp = profile_begin();
+        bool accepting = (reactor.fds[0].revents & POLLIN) != 0;
+        size_t count = reactor_collect(&reactor, ready, profile_enabled ? &profile_slots : NULL);
+        if (profile_enabled) profile_ready += (uint64_t)ready;
+        for (size_t i = 0; i < count; i++) {
+            struct ready_event event = reactor.ready[i];
+            struct exchange *c = event.node->owner;
+            if (event.node->life != event.life || c->phase == UNUSED) continue;
+            dispatch(c, event.upstream ? 0 : event.events, event.upstream ? event.events : 0, event.generation);
+            /* Bounded nonblocking continuation: no extra poll just to send ready data. */
+            for (int calls = 0; calls < 4; calls++) {
+                enum phase before = c->phase;
+                if (before == UPLOAD) upload(c);
+                else if (before == RELAY || before == ERROR_REPLY) send_response(c);
+                else break;
+                if (c->phase == before) break;
+            }
+            refresh_exchange(c);
+        }
+        dispatch_rejections(reactor.fds + 1);
+        profile_end(P_SCAN, stamp);
+        stamp = profile_begin();
+        if (accepting) accept_clients(listener);
+        profile_end(P_ACCEPT, stamp);
     }
     for (int i = 0; i < client_capacity; i++) dispose(&clients[i]);
     for (int i = 0; i < REJECT_SLOTS; i++) if (rejected[i].fd >= 0) close(rejected[i].fd);
+    profile_report();
     close(listener);
-    free(fds); free(generations); free(clients); free(pool);
+    reactor_destroy(&reactor); free(nodes); free(clients); free(pool);
     return 0;
 }

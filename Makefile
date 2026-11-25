@@ -54,22 +54,26 @@ check_keep_alive: all
 	python3 src/tests/run_keep_alive_checks.py --output keep-alive-report.json
 
 clean:
-	rm -f webserver reverse_proxy test_proxy_headers test_proxy_state test_http test_drain test_context test_context_pool cgi-bin/adder
+	rm -f test_proxy_reactor webserver reverse_proxy test_proxy_headers test_proxy_state test_http test_drain test_context test_context_pool cgi-bin/adder
 
 PROXY_SOURCES = proxy/main.c proxy/headers.c src/http.c
-reverse_proxy: $(PROXY_SOURCES) proxy/proxy.h src/http.h common/runtime.h
+reverse_proxy: $(PROXY_SOURCES) proxy/proxy.h proxy/reactor.h proxy/profile.h src/http.h common/runtime.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc $(PROXY_SOURCES) -o $@
 
 test_proxy_headers: proxy/tests/test_headers.c proxy/headers.c proxy/proxy.h src/http.c src/http.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc -Iproxy proxy/tests/test_headers.c proxy/headers.c src/http.c -o $@
 
-test_proxy: reverse_proxy test_proxy_headers test_proxy_state all
+test_proxy: reverse_proxy test_proxy_headers test_proxy_state test_proxy_reactor all
 	./test_proxy_headers
 	./test_proxy_state
+	./test_proxy_reactor
 	python3 proxy/tests/test_proxy.py
 
 test_scheduler: src/tests/test_scheduler.c $(CONNECTION_SOURCES) src/thread_pool.c src/timers.c $(HEADERS)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc src/tests/test_scheduler.c $(CONNECTION_SOURCES) src/thread_pool.c src/timers.c -o $@ $(LDLIBS)
 
-test_proxy_state: proxy/tests/test_state.c $(PROXY_SOURCES) proxy/proxy.h src/http.h common/runtime.h
+test_proxy_state: proxy/tests/test_state.c $(PROXY_SOURCES) proxy/proxy.h proxy/reactor.h proxy/profile.h src/http.h common/runtime.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc -Iproxy proxy/tests/test_state.c proxy/headers.c src/http.c -o $@
+
+test_proxy_reactor: proxy/tests/test_reactor.c proxy/proxy.h proxy/reactor.h common/runtime.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc -Iproxy proxy/tests/test_reactor.c -o $@

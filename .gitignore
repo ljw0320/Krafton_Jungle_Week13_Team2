@@ -24,3 +24,5 @@ core.*
 /test_proxy_headers
 
 /test_proxy_state
+
+/test_proxy_reactor

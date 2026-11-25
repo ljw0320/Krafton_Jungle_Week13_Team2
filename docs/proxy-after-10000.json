@@ -1,0 +1,94 @@
+{
+  "status": "failed",
+  "connections": 10000,
+  "configured_connections": 11000,
+  "contexts_each": 8,
+  "empty_body": true,
+  "completed_requests": 10000,
+  "elapsed_seconds": 30.053,
+  "error_type": "AssertionError",
+  "error": "{'frontend': 1634, 'backend': 1253}",
+  "observed_established": {
+    "frontend": 1551,
+    "backend": 1185
+  },
+  "backend_accepts_including_probe": 9999,
+  "backend_close_reasons": {
+    "peer_closed": 8826,
+    "peer_closed=665]": 1
+  },
+  "fd_soft_test": 65536,
+  "timings": [
+    {
+      "phase": "requests_round_0",
+      "wall_seconds": 29.628238,
+      "cpu_seconds": {
+        "loader": 13.891004,
+        "backend": 27.34,
+        "proxy": 28.11
+      }
+    },
+    {
+      "phase": "connection_snapshot_round_0",
+      "wall_seconds": 0.268444,
+      "cpu_seconds": {
+        "loader": 0.267501,
+        "backend": 0.19,
+        "proxy": 0.24
+      },
+      "parts": {
+        "fd_enumeration_seconds": 0.072919,
+        "tcp_table_read_seconds": 0.158594,
+        "tcp_parse_seconds": 0.035446
+      },
+      "observed_established": {
+        "frontend": 1634,
+        "backend": 1253
+      },
+      "oldest_request_age_seconds": 29.884454
+    }
+  ],
+  "scope": "bounded-concurrency connection retention test; failure does not isolate loader/server bottleneck",
+  "proxy_profile": {
+    "loops": 14677,
+    "slots_checked": 28080558,
+    "ready_events": 36315,
+    "stages": {
+      "prepare": {
+        "calls": 14677,
+        "wall_seconds": 0.011518,
+        "cpu_seconds": 0.006861
+      },
+      "generations": {
+        "calls": 0,
+        "wall_seconds": 0.0,
+        "cpu_seconds": 0.0
+      },
+      "poll": {
+        "calls": 14677,
+        "wall_seconds": 25.759056,
+        "cpu_seconds": 24.10914
+      },
+      "ready_scan_dispatch": {
+        "calls": 14677,
+        "wall_seconds": 3.710793,
+        "cpu_seconds": 3.58741
+      },
+      "accept": {
+        "calls": 14677,
+        "wall_seconds": 0.400861,
+        "cpu_seconds": 0.395868
+      },
+      "update": {
+        "calls": 59006,
+        "wall_seconds": 0.252668,
+        "cpu_seconds": 0.131511
+      },
+      "timers": {
+        "calls": 14677,
+        "wall_seconds": 0.769076,
+        "cpu_seconds": 0.75408
+      }
+    }
+  }
+}

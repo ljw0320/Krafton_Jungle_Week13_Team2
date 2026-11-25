@@ -80,7 +80,7 @@ class PersistentHandler(http.server.BaseHTTPRequestHandler):
             self.send_header('Connection', 'close')
             self.close_connection = True
         self.end_headers()
-        self.wfile.write(body)
+        if body: self.wfile.write(body)
 
 
 class ProxyTests(unittest.TestCase):
