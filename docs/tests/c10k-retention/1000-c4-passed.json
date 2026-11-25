@@ -1,0 +1,75 @@
+{
+  "status": "passed",
+  "connections": 1000,
+  "configured_connections": 1100,
+  "contexts_each": 8,
+  "concurrency": 4,
+  "empty_body": true,
+  "heartbeat_seconds": 2.0,
+  "allowed_max_gap_seconds": 3.5,
+  "required_hold_seconds": 6.0,
+  "profile": false,
+  "fd_soft_before": 10240,
+  "fd_soft_test": 65536,
+  "binary_sha256": {
+    "webserver": "bc98343c504bf8105d73df56a0369005077ec6ff9692a8545492aa7d6e07b478",
+    "reverse_proxy": "0f484e7b1515b908790aae7abc91fdb17d6c015dc5777975fcab363085fb43e6"
+  },
+  "snapshot_method": "separate subprocess; no loader GIL sharing",
+  "scope": "connection retention/reuse with bounded concurrent heartbeats; not throughput benchmark",
+  "observation": {
+    "tcp_opens": 1000,
+    "initialized": 1000,
+    "requests": 4000,
+    "max_in_flight_requests": 4,
+    "first_latency_max": 0.02073841099991114,
+    "first_body_wait_max": 0.00011729900143109262,
+    "ramp_seconds": 0.654601,
+    "snapshots": [
+      {
+        "seconds_at_start": 0.654601,
+        "counts": {
+          "frontend": 1000,
+          "backend": 1000
+        }
+      },
+      {
+        "seconds_at_start": 2.914221,
+        "counts": {
+          "frontend": 1000,
+          "backend": 1000
+        }
+      },
+      {
+        "seconds_at_start": 5.246092,
+        "counts": {
+          "frontend": 1000,
+          "backend": 1000
+        }
+      },
+      {
+        "seconds_at_start": 6.655477,
+        "counts": {
+          "frontend": 1000,
+          "backend": 1000
+        }
+      }
+    ],
+    "reuse_latency_max": 0.005721503999666311,
+    "reuse_body_wait_max": 0.0008881319990905467,
+    "hold_seconds": 6.331328,
+    "min_responses_per_connection": 4,
+    "max_responses_per_connection": 4,
+    "max_heartbeat_gap_seconds": 2.041746,
+    "elapsed_seconds": 6.986137,
+    "max_completed_heartbeat_gap_seconds": 2.041746
+  },
+  "final_established": {
+    "frontend": 0,
+    "backend": 0
+  },
+  "backend_accepts_excluding_probe": 1000,
+  "backend_close_reasons": {
+    "peer_closed": 1001
+  }
+}

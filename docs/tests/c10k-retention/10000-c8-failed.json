@@ -1,0 +1,34 @@
+{
+  "status": "failed",
+  "connections": 10000,
+  "configured_connections": 11000,
+  "contexts_each": 8,
+  "concurrency": 8,
+  "empty_body": true,
+  "heartbeat_seconds": 2.0,
+  "allowed_max_gap_seconds": 3.5,
+  "required_hold_seconds": 6.0,
+  "profile": false,
+  "fd_soft_before": 10240,
+  "fd_soft_test": 65536,
+  "scope": "connection retention/reuse with bounded concurrent heartbeats; not throughput benchmark",
+  "observation": {
+    "tcp_opens": 8440,
+    "initialized": 8440,
+    "requests": 150701,
+    "max_in_flight_requests": 8,
+    "first_latency_max": 0.809252994000417,
+    "first_body_wait_max": 0.0014552030006598216,
+    "reuse_latency_max": 0.8086534260000917,
+    "reuse_body_wait_max": 0.009831027000473114,
+    "elapsed_seconds": 57.033164,
+    "max_completed_heartbeat_gap_seconds": 3.491705
+  },
+  "backend_accepts_excluding_probe": 8441,
+  "backend_close_reasons": {
+    "peer_closed": 5183,
+    "keep_alive_timeout": 3259
+  },
+  "error_type": "ConnectionResetError",
+  "error": "[Errno 104] Connection reset by peer"
+}

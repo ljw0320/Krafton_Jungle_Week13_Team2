@@ -13,6 +13,7 @@
 | 웹서버 계측 | [tests/server-profile/server-profiling.md](tests/server-profile/server-profiling.md) | 웹서버 내부 구간 계측 |
 | 웹서버 epoll | [tests/server-epoll/server-epoll.md](tests/server-epoll/server-epoll.md) | LT epoll + ONESHOT |
 | 웹서버 큐 | [tests/server-queues/server-queues.md](tests/server-queues/server-queues.md) | 완료 큐·배정 FIFO |
+| C10K 유지 실행기 | [tests/c10k-retention/](tests/c10k-retention/) | 비동기 유지 요청·재접속 없는 검증 |
 | 웹서버 힙 타이머 | [tests/server-timer-heap/](tests/server-timer-heap/) | 인덱스 최소 힙 전환·반복 비교 |
 | 큐 반복 비교 | [tests/server-queues/comparison/README.md](tests/server-queues/comparison/README.md) | 대표 비교 6회·원본·메타데이터 |
 

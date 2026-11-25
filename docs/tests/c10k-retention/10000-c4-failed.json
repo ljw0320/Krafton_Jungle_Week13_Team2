@@ -1,0 +1,35 @@
+{
+  "status": "failed",
+  "connections": 10000,
+  "configured_connections": 11000,
+  "contexts_each": 8,
+  "concurrency": 4,
+  "empty_body": true,
+  "heartbeat_seconds": 2.0,
+  "allowed_max_gap_seconds": 3.5,
+  "required_hold_seconds": 6.0,
+  "profile": false,
+  "fd_soft_before": 10240,
+  "fd_soft_test": 65536,
+  "scope": "connection retention/reuse with bounded concurrent heartbeats; not throughput benchmark",
+  "observation": {
+    "tcp_opens": 9365,
+    "initialized": 9365,
+    "requests": 69386,
+    "max_in_flight_requests": 4,
+    "first_latency_max": 0.03177151599811623,
+    "first_body_wait_max": 0.0033234040020033717,
+    "reuse_latency_max": 0.03841369899964775,
+    "reuse_body_wait_max": 0.006480314998043468,
+    "elapsed_seconds": 22.185111,
+    "max_completed_heartbeat_gap_seconds": 3.500051
+  },
+  "backend_accepts_excluding_probe": 9365,
+  "backend_close_reasons": {
+    "peer_closed": 9277,
+    "keep_alive_timeout": 19,
+    "server_shutdown": 70
+  },
+  "error_type": "AssertionError",
+  "error": "('heartbeat gap exceeded', 9285, 3.5000512000005983)"
+}
