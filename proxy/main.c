@@ -69,6 +69,7 @@ static bool retry(void) { return errno == EAGAIN || errno == EWOULDBLOCK || errn
 
 static void close_upstream(struct exchange *c)
 {
+    if (c->node && !reactor_watch(&reactor, c->node, true, -1, 0, 0)) perror("epoll remove upstream");
     if (c->upstream >= 0) close(c->upstream);
     c->upstream = -1;
     c->upstream_generation++;
@@ -98,6 +99,7 @@ static void dispose(struct exchange *c)
 {
     release_buffers(c);
     close_upstream(c);
+    if (c->node && !reactor_watch(&reactor, c->node, false, -1, 0, 0)) perror("epoll remove client");
     if (c->client >= 0) close(c->client);
     c->client = -1;
     c->phase = UNUSED;
@@ -416,8 +418,14 @@ static void refresh_exchange(struct exchange *c)
         if (c->backend_idle_at) upstream_events = POLLIN;
         if (c->phase == CONNECTING || c->phase == UPLOAD) upstream_events = POLLOUT;
         if (c->phase == RESPONSE || (c->phase == RELAY && !has_output(c) && c->remaining)) upstream_events = POLLIN;
-        reactor_watch(&reactor, node, false, c->client, client_events, c->upstream_generation);
-        reactor_watch(&reactor, node, true, upstream_events ? c->upstream : -1, upstream_events, c->upstream_generation);
+        if (!reactor_watch(&reactor, node, false, c->client, client_events, c->upstream_generation) ||
+            !reactor_watch(&reactor, node, true, upstream_events ? c->upstream : -1, upstream_events, c->upstream_generation)) {
+            perror("proxy epoll registration");
+            dispose(c);
+            refresh_exchange(c);
+            profile_end(P_UPDATE, stamp);
+            return;
+        }
         int64_t due = deadline(c);
         if (c->backend_idle_at && c->upstream >= 0 && c->backend_idle_at + BACKEND_IDLE_MS < due)
             due = c->backend_idle_at + BACKEND_IDLE_MS;
@@ -514,13 +522,23 @@ static void accept_clients(int listener)
     }
 }
 
-static void prepare_rejections(struct pollfd *fds, int *timeout)
+static void close_rejection(int i)
+{
+    if (!reactor_set(&reactor, (size_t)i+1, -1, 0, (struct watch_owner){0})) perror("epoll remove rejection");
+    if (rejected[i].fd >= 0) close(rejected[i].fd);
+    rejected[i].fd = -1;
+}
+
+static void prepare_rejections(int *timeout)
 {
     int64_t now = now_ms();
     for (int i = 0; i < REJECT_SLOTS; i++) {
         struct rejection *r = &rejected[i];
-        if (r->fd >= 0 && r->until <= now) { close(r->fd); r->fd = -1; }
-        fds[i] = (struct pollfd){.fd = r->fd, .events = r->sent == sizeof(busy)-1 ? POLLIN : POLLOUT};
+        if (r->fd >= 0 && r->until <= now) close_rejection(i);
+        short events = r->sent == sizeof(busy)-1 ? POLLIN : POLLOUT;
+        if (!reactor_set(&reactor, (size_t)i+1, r->fd, events, (struct watch_owner){0})) {
+            perror("epoll register rejection"); close_rejection(i);
+        }
         if (r->fd >= 0 && r->until - now < *timeout) *timeout = (int)(r->until - now);
     }
 }
@@ -538,11 +556,9 @@ static void dispatch_rejections(struct pollfd *fds)
         if (fds[i].revents & POLLIN) {
             char discard[4096];
             ssize_t n = recv(r->fd, discard, sizeof(discard), 0);
-            if (!n) { close(r->fd); r->fd = -1; }
+            if (!n) close_rejection(i);
         }
-        if (r->fd >= 0 && (fds[i].revents & (POLLHUP | POLLERR | POLLNVAL))) {
-            close(r->fd); r->fd = -1;
-        }
+        if (r->fd >= 0 && (fds[i].revents & (POLLHUP | POLLERR | POLLNVAL))) close_rejection(i);
     }
 }
 
@@ -589,9 +605,15 @@ int main(int argc, char **argv)
     struct sigaction action = {.sa_handler = stop};
     sigemptyset(&action.sa_mask);
     sigaction(SIGINT, &action, NULL); sigaction(SIGTERM, &action, NULL);
-    reactor_init(&reactor, client_capacity, 1 + REJECT_SLOTS);
+    if (!reactor_init(&reactor, client_capacity, 1 + REJECT_SLOTS)) {
+        perror("epoll_create1"); close(listener); free(clients); free(pool); return 1;
+    }
     nodes = runtime_alloc((size_t)client_capacity, sizeof(*nodes));
-    reactor.fds[0] = (struct pollfd){.fd=listener, .events=POLLIN};
+    if (!reactor_set(&reactor, 0, listener, POLLIN, (struct watch_owner){0})) {
+        perror("epoll register listener"); reactor_destroy(&reactor); close(listener);
+        free(nodes); free(clients); free(pool); return 1;
+    }
+    fprintf(stderr, "[proxy] reactor=epoll mode=level-triggered batch=%d\n", REACTOR_BATCH);
     for (int i = client_capacity - 1; i >= 0; i--) {
         struct exchange *c = &clients[i];
         c->client = c->upstream = -1;
@@ -600,22 +622,23 @@ int main(int argc, char **argv)
         c->free_next = free_clients; free_clients = c; c->in_free = true;
     }
     for (int i = 0; i < REJECT_SLOTS; i++) rejected[i].fd = -1;
+    int exit_status = 0;
     while (!stopping) {
         if (profile_enabled) profile_loops++;
         int timeout = prepare_timers();
         struct profile_stamp stamp = profile_begin();
-        prepare_rejections(reactor.fds + 1, &timeout);
+        prepare_rejections(&timeout);
         profile_end(P_PREPARE, stamp);
         stamp = profile_begin();
-        int ready = poll(reactor.fds, reactor.count, timeout);
+        int ready = reactor_wait(&reactor, timeout);
         profile_end(P_POLL, stamp);
         if (ready < 0) {
             if (errno == EINTR) continue;
-            perror("proxy poll"); break;
+            perror("proxy epoll_wait"); exit_status = 1; break;
         }
         stamp = profile_begin();
-        bool accepting = (reactor.fds[0].revents & POLLIN) != 0;
         size_t count = reactor_collect(&reactor, ready, profile_enabled ? &profile_slots : NULL);
+        bool accepting = (reactor.fds[0].revents & POLLIN) != 0;
         if (profile_enabled) profile_ready += (uint64_t)ready;
         for (size_t i = 0; i < count; i++) {
             struct ready_event event = reactor.ready[i];
@@ -639,9 +662,9 @@ int main(int argc, char **argv)
         profile_end(P_ACCEPT, stamp);
     }
     for (int i = 0; i < client_capacity; i++) dispose(&clients[i]);
-    for (int i = 0; i < REJECT_SLOTS; i++) if (rejected[i].fd >= 0) close(rejected[i].fd);
+    for (int i = 0; i < REJECT_SLOTS; i++) close_rejection(i);
     profile_report();
     close(listener);
     reactor_destroy(&reactor); free(nodes); free(clients); free(pool);
-    return 0;
+    return exit_status;
 }

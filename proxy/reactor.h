@@ -2,7 +2,11 @@
 #define PROXY_REACTOR_H
 #include <assert.h>
 
-/* Dense poll registry and one indexed heap entry per connection. */
+#include <sys/epoll.h>
+#include <errno.h>
+#include <unistd.h>
+
+enum { REACTOR_BATCH = 64 };
 struct reactor_node {
     void *owner;
     int watch[2], heap_index;
@@ -12,49 +16,85 @@ struct reactor_node {
 struct watch_owner { struct reactor_node *node; unsigned generation; bool upstream; };
 struct ready_event { struct reactor_node *node; uint64_t life; unsigned generation; short events; bool upstream; };
 struct reactor {
-    struct pollfd *fds;
+    int epoll_fd, free_watch;
+    struct pollfd *fds; /* interest metadata, never passed to poll() */
     struct watch_owner *owners;
-    struct ready_event *ready;
+    uint32_t *tickets, serial;
+    int *next_free;
+    struct ready_event ready[REACTOR_BATCH];
+    struct epoll_event events[REACTOR_BATCH];
     struct reactor_node **heap;
     size_t count, reserved, heap_count, limit;
 };
-static void reactor_init(struct reactor *r, int capacity, size_t reserved)
+static bool reactor_init(struct reactor *r, int capacity, size_t reserved)
 {
     memset(r, 0, sizeof(*r));
-    r->reserved = r->count = reserved;
+    r->epoll_fd = epoll_create1(EPOLL_CLOEXEC);
+    if (r->epoll_fd < 0) return false;
+    r->reserved = reserved;
     r->limit = reserved + (size_t)capacity * 2;
     r->fds = runtime_alloc(r->limit, sizeof(*r->fds));
     r->owners = runtime_alloc(r->limit, sizeof(*r->owners));
-    r->ready = runtime_alloc(r->limit, sizeof(*r->ready));
+    r->tickets = runtime_alloc(r->limit, sizeof(*r->tickets));
+    r->next_free = runtime_alloc(r->limit, sizeof(*r->next_free));
     r->heap = runtime_alloc((size_t)capacity, sizeof(*r->heap));
-    for (size_t i = 0; i < reserved; i++) r->fds[i].fd = -1;
+    for (size_t i = 0; i < r->limit; i++) {
+        r->fds[i].fd = -1;
+        r->next_free[i] = i+1 < r->limit ? (int)i+1 : -1;
+    }
+    r->free_watch = (int)reserved;
+    return true;
 }
 static void reactor_destroy(struct reactor *r)
 {
-    free(r->fds); free(r->owners); free(r->ready); free(r->heap);
+    close(r->epoll_fd);
+    free(r->fds); free(r->owners); free(r->tickets); free(r->next_free); free(r->heap);
 }
-static void reactor_watch(struct reactor *r, struct reactor_node *n, bool upstream,
+/* A ticket identifies a registration, not a mutable pointer or a reused fd number. */
+static bool reactor_set(struct reactor *r, size_t index, int fd, short events, struct watch_owner owner)
+{
+    int previous = r->fds[index].fd;
+    if (previous >= 0 && (fd < 0 || previous != fd)) {
+        int result = epoll_ctl(r->epoll_fd, EPOLL_CTL_DEL, previous, NULL);
+        int error = errno;
+        r->fds[index].fd = -1; r->tickets[index] = 0; r->count--;
+        if (result < 0 && error != ENOENT && error != EBADF) { errno = error; return false; }
+    }
+    if (fd < 0) return true;
+    bool present = r->fds[index].fd >= 0;
+    if (present && r->fds[index].events == events &&
+        r->owners[index].generation == owner.generation) return true;
+    /* Never wrap a token into the identity of an old event. Fail closed instead. */
+    if (r->serial == UINT32_MAX) { errno = EOVERFLOW; return false; }
+    uint32_t ticket = ++r->serial;
+    struct epoll_event event = {.events = 0};
+    if (events & POLLIN) event.events |= EPOLLIN;
+    if (events & POLLOUT) event.events |= EPOLLOUT;
+    event.data.u64 = ((uint64_t)ticket << 32) | (index + 1);
+    int op = present ? EPOLL_CTL_MOD : EPOLL_CTL_ADD;
+    if (epoll_ctl(r->epoll_fd, op, fd, &event) < 0) return false;
+    if (!present) r->count++;
+    r->fds[index] = (struct pollfd){.fd=fd, .events=events};
+    r->owners[index] = owner; r->tickets[index] = ticket;
+    return true;
+}
+static bool reactor_watch(struct reactor *r, struct reactor_node *n, bool upstream,
                           int fd, short events, unsigned generation)
 {
     int index = n->watch[upstream];
-    if (fd < 0) {
-        if (index < 0) return;
-        size_t last = --r->count;
-        if ((size_t)index != last) {
-            r->fds[index] = r->fds[last]; r->owners[index] = r->owners[last];
-            struct watch_owner *moved = &r->owners[index];
-            moved->node->watch[moved->upstream] = index;
-        }
+    if (fd < 0 && index < 0) return true;
+    bool fresh = index < 0;
+    if (fresh) {
+        index = r->free_watch;
+        if (index < 0) { errno = ENOSPC; return false; }
+        r->free_watch = r->next_free[index];
+    }
+    bool result = reactor_set(r, (size_t)index, fd, events, (struct watch_owner){n, generation, upstream});
+    if (fd < 0 || (fresh && !result)) {
+        r->next_free[index] = r->free_watch; r->free_watch = index;
         n->watch[upstream] = -1;
-        return;
-    }
-    if (index < 0) {
-        assert(r->count < r->limit);
-        index = (int)r->count++;
-        n->watch[upstream] = index;
-    }
-    r->fds[index] = (struct pollfd){.fd=fd, .events=events};
-    r->owners[index] = (struct watch_owner){n, generation, upstream};
+    } else n->watch[upstream] = index;
+    return result;
 }
 static void heap_swap(struct reactor *r, size_t a, size_t b)
 {
@@ -98,18 +138,31 @@ static void reactor_timer(struct reactor *r, struct reactor_node *n, int64_t due
     }
     heap_down(r, heap_up(r, (size_t)index));
 }
-/* Snapshot before callbacks: swap-removal or fd reuse cannot rewrite old events. */
+
+static int reactor_wait(struct reactor *r, int timeout)
+{
+    for (size_t i = 0; i < r->reserved; i++) r->fds[i].revents = 0;
+    return epoll_wait(r->epoll_fd, r->events, REACTOR_BATCH, timeout);
+}
 static size_t reactor_collect(struct reactor *r, int ready, uint64_t *checked)
 {
     size_t count = 0;
-    for (size_t i = 0; i < r->count && ready > 0; i++) {
+    for (int i = 0; i < ready; i++) {
         if (checked) (*checked)++;
-        short events = r->fds[i].revents;
-        if (!events) continue;
-        ready--;
-        if (i < r->reserved) continue;
-        struct watch_owner *w = &r->owners[i];
-        r->ready[count++] = (struct ready_event){w->node, w->node->life, w->generation, events, w->upstream};
+        uint64_t token = r->events[i].data.u64;
+        uint32_t id = (uint32_t)token;
+        if (!id || (size_t)(id-1) >= r->limit) continue;
+        size_t index = id-1;
+        if (r->fds[index].fd < 0 || r->tickets[index] != (uint32_t)(token >> 32)) continue;
+        uint32_t event = r->events[i].events;
+        short flags = 0;
+        if (event & EPOLLIN) flags |= POLLIN;
+        if (event & EPOLLOUT) flags |= POLLOUT;
+        if (event & EPOLLERR) flags |= POLLERR;
+        if (event & EPOLLHUP) flags |= POLLHUP;
+        if (index < r->reserved) { r->fds[index].revents |= flags; continue; }
+        struct watch_owner *w = &r->owners[index];
+        r->ready[count++] = (struct ready_event){w->node, w->node->life, w->generation, flags, w->upstream};
     }
     return count;
 }

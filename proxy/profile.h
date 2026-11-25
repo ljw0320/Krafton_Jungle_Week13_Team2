@@ -27,7 +27,7 @@ static void profile_end(int stage, struct profile_stamp start)
 static void profile_report(void)
 {
     if (!profile_enabled) return;
-    const char *names[] = {"prepare", "generations", "poll", "ready_scan_dispatch", "accept", "update", "timers"};
+    const char *names[] = {"prepare", "generations", "epoll_wait", "ready_scan_dispatch", "accept", "update", "timers"};
     fprintf(stderr, "[proxy_profile] {\"loops\":%" PRIu64 ",\"slots_checked\":%" PRIu64 ",\"ready_events\":%" PRIu64 ",\"stages\":{", profile_loops, profile_slots, profile_ready);
     for (int i = 0; i < P_COUNT; i++)
         fprintf(stderr, "%s\"%s\":{\"calls\":%" PRIu64 ",\"wall_seconds\":%.6f,\"cpu_seconds\":%.6f}",
