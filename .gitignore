@@ -1,3 +1,5 @@
 server
+chatd
 tests/test_http
 tests/test_proxy
+tests/test_ws
