@@ -1,4 +1,6 @@
 #include <errno.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,6 +13,7 @@
 #include "http.h"
 #include "proxy.h"
 #include "route.h"
+#include "tunnel.h"
 
 static void log_error(struct conn *c, int status, const char *why) {
     fprintf(stderr, "fd=%d proxy error %d: %s\n", c->w.fd, status, why);
@@ -57,6 +60,14 @@ int proxy_start(struct conn *c, const struct http_req *req, struct route *r) {
     c->woff = 0;
     u->w.fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
     if (u->w.fd < 0) return start_fail(c, 500, strerror(errno));
+    u->ws = req->ws;
+    if (u->ws) {
+        int size = TUNNEL_SOCKBUF, on = 1;
+        if (setsockopt(u->w.fd, SOL_SOCKET, SO_RCVBUF, &size, sizeof(size)) < 0 ||
+            setsockopt(u->w.fd, SOL_SOCKET, SO_SNDBUF, &size, sizeof(size)) < 0 ||
+            setsockopt(u->w.fd, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on)) < 0)
+            return start_fail(c, 500, strerror(errno));
+    }
     fprintf(stderr, "fd=%d backend fd=%d connect %s\n", c->w.fd, u->w.fd, b->name);
     if (connect(u->w.fd, (const struct sockaddr *)&b->addr, sizeof(b->addr)) < 0 && errno != EINPROGRESS)
         return start_fail(c, 502, strerror(errno));
@@ -108,8 +119,8 @@ static int up_head(struct upstream *u) {
     struct http_upresp r;
     ssize_t n;
     for (;;) {
-        n = http_proxy_response(c->wbuf, c->wlen, u->minor, c->keep_alive, 0, out, PROXY_BUF_SIZE, &r);
-        if (n <= 0 || r.status >= 200) break;
+        n = http_proxy_response(c->wbuf, c->wlen, u->minor, c->keep_alive, u->ws, out, PROXY_BUF_SIZE, &r);
+        if (n <= 0 || r.status == 101 || r.status >= 200) break;
         c->wlen -= (size_t)n;  // 1xx는 버린다
         memmove(c->wbuf, c->wbuf + n, c->wlen);
     }
@@ -137,6 +148,7 @@ static int up_head(struct upstream *u) {
     u->remain = r.has_len ? r.body_len - body : 0;
     c->keep_alive = r.keep_alive;
     c->outq = 0;  // 앞 응답의 값이 남으면 첫 sweep이 줄어든 것으로 잘못 본다
+    if (r.status == 101) return tunnel_start(c);
     return relay(c);
 }
 
@@ -171,7 +183,7 @@ static int up_recv(struct upstream *u) {
 
 // ERR|HUP과 함께 응답이 남아 있을 수 있어 이벤트 종류가 아니라 send, recv의 반환값으로 판단한다
 int proxy_event(struct upstream *u, uint32_t events) {
-    (void)events;
+    if (u->state == UP_TUNNEL) return tunnel_on_backend(u->c, events);
     if (u->state == UP_CONNECTING) {
         int err;
         socklen_t len = sizeof(err);

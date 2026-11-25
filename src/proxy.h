@@ -15,7 +15,7 @@ struct conn;
 struct http_req;
 struct route;
 
-enum up_state { UP_CONNECTING, UP_SENDING, UP_RECEIVING };
+enum up_state { UP_CONNECTING, UP_SENDING, UP_RECEIVING, UP_TUNNEL };
 
 // 백엔드 연결(B). struct conn 안에 값으로 들어 있다
 struct upstream {
@@ -24,6 +24,7 @@ struct upstream {
     enum up_state state;
     time_t since;             // 타이머 시작 시각
     int    minor;             // 보낸 요청의 HTTP/1.x
+    int    ws;                // WebSocket 업그레이드를 요청했나
     int    head_done;         // 응답 헤더 검사를 통과했나 (A로 보내기 시작)
     int    has_len;
     size_t remain;            // has_len이면 B에서 더 받을 본문

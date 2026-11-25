@@ -16,6 +16,7 @@
 #include "http.h"
 #include "proxy.h"
 #include "route.h"
+#include "tunnel.h"
 
 static struct conn *head;
 static int conn_count;
@@ -65,6 +66,7 @@ void conn_close(struct conn *c) {
 }
 
 int conn_on_readable(struct conn *c) {
+    if (c->state == CONN_TUNNEL) return tunnel_on_client(c, EPOLLIN);
     ssize_t n = recv(c->w.fd, c->rbuf + c->rlen, RBUF_SIZE - c->rlen, 0);
     if (n < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) return 0;
@@ -208,6 +210,10 @@ void conn_sweep_idle(time_t now) {
     struct conn *next;
     for (struct conn *c = head; c; c = next) {
         next = c->next;  // conn_close가 c를 해제하므로 먼저 저장
+        if (c->state == CONN_TUNNEL) {
+            tunnel_sweep(c, now);
+            continue;
+        }
         if (c->state == CONN_PROXYING) {  // 요청 10초와 유휴 10초는 보지 않는다
             proxy_timeout(c, now);
             continue;
@@ -230,6 +236,7 @@ void conn_sweep_idle(time_t now) {
 }
 
 int conn_on_writable(struct conn *c) {
+    if (c->state == CONN_TUNNEL) return tunnel_on_client(c, EPOLLOUT);
     int r = conn_send(c);
     return r == 1 ? conn_process(c) : r;
 }

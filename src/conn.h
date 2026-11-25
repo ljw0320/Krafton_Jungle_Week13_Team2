@@ -13,13 +13,15 @@
 #define IDLE_TIMEOUT_SEC 10
 #define REQ_TIMEOUT_SEC 10
 
-enum conn_state { CONN_READING, CONN_PROXYING, CONN_WRITING };
+enum conn_state { CONN_READING, CONN_PROXYING, CONN_WRITING, CONN_TUNNEL };
 
 struct conn {
     struct watch w;           // 첫 필드. w.fd, w.events가 클라이언트 소켓과 등록 이벤트
     enum conn_state state;
     char   rbuf[RBUF_SIZE];   // 받았지만 아직 처리 안 한 바이트
     size_t rlen;
+    size_t roff;              // 터널에서 B로 보낸 위치
+    uint32_t trace;
     char  *wbuf;              // A로 보낼 응답 또는 B로 보낼 요청, 다 보내면 free
     size_t wlen, woff;        // wbuf 길이, 보낸 위치
     int    file_fd;           // 보낼 파일, 없으면 -1
