@@ -8,13 +8,39 @@
 #include <limits.h>
 #include <unistd.h>
 
+/* Changed/new/completed connections only; worker publication uses server->mutex. */
+void server_changed(struct server *server, struct connection *client)
+{
+    if (client->control_queued) return;
+    client->control_prev = server->control_tail;
+    client->control_next = NULL;
+    if (server->control_tail) server->control_tail->control_next = client;
+    else server->control_head = client;
+    server->control_tail = client;
+    client->control_queued = true;
+}
+
+void server_forget(struct server *server, struct connection *client)
+{
+    if (!client->control_queued) return;
+    if (client->control_prev) client->control_prev->control_next = client->control_next;
+    else server->control_head = client->control_next;
+    if (client->control_next) client->control_next->control_prev = client->control_prev;
+    else server->control_tail = client->control_prev;
+    client->control_prev = client->control_next = NULL;
+    client->control_queued = false;
+}
+
 /* 연결 소켓은 메인만 close합니다. RUNNING 자원은 join 전까지 건드리지 않습니다. */
 void connection_close(struct connection *client)
 {
     if (client->state == FREE)
         return;
-    if (client->server)
+    if (client->server) {
+        server_forget(client->server, client);
+        pending_remove(client->server, client);
         timer_cancel(client->server, client);
+    }
     if (client->server && client->server->epoll_active && client->watch_registered)
         epoll_ctl(client->server->epoll_fd, EPOLL_CTL_DEL, client->watch_fd, NULL);
     client->watch_registered = client->watch_armed = false;
@@ -58,6 +84,7 @@ static void register_client(struct server *server, int fd)
         client->file_fd = -1;
         client->progress = now_ms();
         timer_update(server, client);
+        server_changed(server, client);
         printf("[accept fd=%d]\n", fd);
         return;
     }
@@ -129,32 +156,61 @@ static bool arm_client(struct server *server, struct connection *client)
     return true;
 }
 
-/* Preserve the scheduling scan; this change only replaces I/O watching. */
+static void refresh_client(struct server *server, struct connection *client)
+{
+    if (client->state == FINISHED) { connection_close(client); return; }
+    if (client->state != WAITING || client->pending) return;
+    if (!client->context_wait_deadline && connection_buffered(client)) {
+        enqueue_turn(server, client);
+        return;
+    }
+    if (!arm_client(server, client)) {
+        perror("epoll arm client");
+        client->reason = "epoll_registration_error";
+        connection_close(client);
+    }
+}
+
+/* The context pool already owns FIFO order. Inspect only its head, not all slots.
+ * Main holds server->mutex; pool->mutex protects concurrent worker pool changes. */
+static uint64_t resume_contexts(struct server *server)
+{
+    struct context_pool *pool = &server->contexts;
+    uint64_t visits = 0;
+    for (;;) {
+        check_thread(pthread_mutex_lock(&pool->mutex));
+        struct connection *client = pool->wait_count ? pool->waiters[0] : NULL;
+        check_thread(pthread_mutex_unlock(&pool->mutex));
+        if (!client || client->state != WAITING || client->pending) break;
+        visits++;
+        if (now_ms() >= client->context_wait_deadline) {
+            client->reason = "context_wait_timeout";
+            connection_close(client);
+            continue;
+        }
+        if (!context_acquire(client)) break;
+        client->progress = now_ms();
+        enqueue_turn(server, client);
+    }
+    return visits;
+}
+
 static int prepare_epoll(struct server *server)
 {
     struct server_stamp stamp = server_profile_begin();
-    int timeout = timer_expire(server);
-    int64_t now = now_ms();
-    for (int i = 0; i < server->capacity; i++) {
-        struct connection *client = &server->clients[i];
-        if (client->state == FINISHED) connection_close(client);
-        if (client->state != WAITING) continue;
-        if (client->pending) { enqueue_turn(server, client); continue; }
-        if (client->context_wait_deadline && now < client->context_wait_deadline &&
-            context_acquire(client)) {
-            client->context_wait_deadline = 0;
-            client->progress = now;
-            enqueue_turn(server, client);
-            continue;
-        }
-        if (connection_buffered(client)) { enqueue_turn(server, client); continue; }
-        if (!arm_client(server, client)) {
-            perror("epoll arm client");
-            client->reason = "epoll_registration_error";
-            connection_close(client);
-        }
+    timer_expire(server);
+    uint64_t visits = 0;
+    while (server->control_head) {
+        struct connection *client = server->control_head;
+        server_forget(server, client);
+        visits++;
+        refresh_client(server, client);
     }
-    server_profile_end(SP_PREPARE, stamp, (uint64_t)server->capacity);
+    visits += resume_contexts(server);
+    dispatch_pending(server);
+    /* Scheduling may have removed the earliest timer. Recompute without a scan. */
+    int timeout = timer_expire(server);
+    server_profile_end(SP_PREPARE, stamp, visits);
     return timeout;
 }
 

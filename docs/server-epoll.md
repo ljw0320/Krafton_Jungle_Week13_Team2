@@ -1,5 +1,7 @@
 # 웹서버 LT epoll + EPOLLONESHOT
 
+아래는 전환 당시 기록이다. 후속 전체 순회 축소는 [완료 큐·배정 FIFO](server-queues.md)에 있다.
+
 ## 범위와 동작
 
 웹서버의 poll 감시를 LT epoll로 교체했다. 메인이 감시하고 워커4개가 HTTP I/O를

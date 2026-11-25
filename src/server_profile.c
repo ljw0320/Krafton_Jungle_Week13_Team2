@@ -82,7 +82,7 @@ void server_profile_report(void)
 {
     if (!enabled) return;
     server_profile_flush(); /* called by main only after all workers joined */
-    const char *names[] = {"prepare_scan", "epoll_wait", "ready_dispatch", "accept", "notification_drain",
+    const char *names[] = {"prepare_changed", "epoll_wait", "ready_dispatch", "accept", "notification_drain",
         "timer_cancel", "timer_update", "timer_expire", "server_mutex_wait", "queue_take",
         "queue_enqueue", "worker_idle_condwait", "request_turn", "publish_result", "notify_main", "queue_residence_wall_only"};
     fprintf(stderr, "[server_profile] {");

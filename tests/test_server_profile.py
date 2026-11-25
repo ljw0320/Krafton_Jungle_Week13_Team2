@@ -55,7 +55,7 @@ def run(enabled):
         assert worker['publish_result']['calls'] == worker['request_turn']['calls']
         assert worker['notify_main']['calls'] == worker['request_turn']['calls']
         assert profile['main']['epoll_wait']['calls'] > 0
-        assert profile['main']['prepare_scan']['units'] >= 16
+        assert profile['main']['prepare_changed']['units'] >= 4
         return responses
 
 assert run(False) == run(True)

@@ -87,3 +87,5 @@ JUNGLE_PROFILE=1 python3 proxy/tests/test_proxy.py
 
 계측 비활성 시 출력 없음, 활성 JSON·작업자 집계의 일관성, 동일 HTTP 응답을
 확인했다. 스케줄러·타이머 검사와 기존 TCP 11개도 실행한다.
+
+후속 완료 큐 적용 후 prepare_scan은 prepare_changed로 바뀌며 units도 변경·선두 확인 수이다. 상세는 [완료 큐·배정 FIFO](server-queues.md)에 있다.

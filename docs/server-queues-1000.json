@@ -1,0 +1,291 @@
+{
+  "status": "passed",
+  "connections": 1000,
+  "configured_connections": 1100,
+  "contexts_each": 8,
+  "empty_body": true,
+  "requests": 1000,
+  "elapsed_seconds": 0.821,
+  "fd_soft_before": 10240,
+  "fd_soft_test": 65536,
+  "backend_accepts_excluding_probe": 1000,
+  "fd_counts_during": {
+    "backend": 1007,
+    "proxy": 2005
+  },
+  "final_established": {
+    "frontend": 0,
+    "backend": 0
+  },
+  "timings": [
+    {
+      "phase": "requests_round_0",
+      "wall_seconds": 0.788074,
+      "cpu_seconds": {
+        "loader": 0.909129,
+        "backend": 0.25,
+        "proxy": 0.25
+      }
+    },
+    {
+      "phase": "connection_snapshot_round_0",
+      "wall_seconds": 0.030039,
+      "cpu_seconds": {
+        "loader": 0.029786,
+        "backend": 0.0,
+        "proxy": 0.0
+      },
+      "parts": {
+        "fd_enumeration_seconds": 0.017752,
+        "tcp_table_read_seconds": 0.007311,
+        "tcp_parse_seconds": 0.00448
+      },
+      "observed_established": {
+        "frontend": 1000,
+        "backend": 1000
+      },
+      "oldest_request_age_seconds": 0.80734
+    }
+  ],
+  "scope": "bounded-concurrency POST echo heartbeats; connection retention/reuse, not throughput",
+  "proxy_profile": {
+    "loops": 2406,
+    "slots_checked": 4787,
+    "ready_events": 4787,
+    "stages": {
+      "prepare": {
+        "calls": 2406,
+        "wall_seconds": 0.001419,
+        "cpu_seconds": 0.000877
+      },
+      "generations": {
+        "calls": 0,
+        "wall_seconds": 0.0,
+        "cpu_seconds": 0.0
+      },
+      "epoll_wait": {
+        "calls": 2406,
+        "wall_seconds": 0.634215,
+        "cpu_seconds": 0.016848
+      },
+      "ready_scan_dispatch": {
+        "calls": 2405,
+        "wall_seconds": 0.224842,
+        "cpu_seconds": 0.223629
+      },
+      "accept": {
+        "calls": 2405,
+        "wall_seconds": 0.039699,
+        "cpu_seconds": 0.039051
+      },
+      "update": {
+        "calls": 5002,
+        "wall_seconds": 0.017406,
+        "cpu_seconds": 0.014857
+      },
+      "timers": {
+        "calls": 2406,
+        "wall_seconds": 0.001391,
+        "cpu_seconds": 0.000829
+      }
+    }
+  },
+  "server_profile": {
+    "main": {
+      "prepare_changed": {
+        "calls": 2529,
+        "wall_seconds": 0.037914,
+        "cpu_seconds": 0.037298,
+        "units": 2837
+      },
+      "epoll_wait": {
+        "calls": 2528,
+        "wall_seconds": 0.665387,
+        "cpu_seconds": 0.017698,
+        "units": 3915
+      },
+      "ready_dispatch": {
+        "calls": 2528,
+        "wall_seconds": 0.03463,
+        "cpu_seconds": 0.032304,
+        "units": 3915
+      },
+      "accept": {
+        "calls": 742,
+        "wall_seconds": 0.133522,
+        "cpu_seconds": 0.05529,
+        "units": 0
+      },
+      "notification_drain": {
+        "calls": 1172,
+        "wall_seconds": 0.00271,
+        "cpu_seconds": 0.002401,
+        "units": 1172
+      },
+      "timer_cancel": {
+        "calls": 3843,
+        "wall_seconds": 0.014062,
+        "cpu_seconds": 0.012741,
+        "units": 1481900
+      },
+      "timer_update": {
+        "calls": 1001,
+        "wall_seconds": 0.009552,
+        "cpu_seconds": 0.009288,
+        "units": 499245
+      },
+      "timer_expire": {
+        "calls": 5058,
+        "wall_seconds": 0.002881,
+        "cpu_seconds": 0.001497,
+        "units": 0
+      },
+      "server_mutex_wait": {
+        "calls": 6059,
+        "wall_seconds": 0.023638,
+        "cpu_seconds": 0.004311,
+        "units": 0
+      },
+      "queue_take": {
+        "calls": 0,
+        "wall_seconds": 0.0,
+        "cpu_seconds": 0.0,
+        "units": 0
+      },
+      "queue_enqueue": {
+        "calls": 2001,
+        "wall_seconds": 0.033116,
+        "cpu_seconds": 0.030201,
+        "units": 1202
+      },
+      "worker_idle_condwait": {
+        "calls": 0,
+        "wall_seconds": 0.0,
+        "cpu_seconds": 0.0,
+        "units": 0
+      },
+      "request_turn": {
+        "calls": 0,
+        "wall_seconds": 0.0,
+        "cpu_seconds": 0.0,
+        "units": 0
+      },
+      "publish_result": {
+        "calls": 0,
+        "wall_seconds": 0.0,
+        "cpu_seconds": 0.0,
+        "units": 0
+      },
+      "notify_main": {
+        "calls": 0,
+        "wall_seconds": 0.0,
+        "cpu_seconds": 0.0,
+        "units": 0
+      },
+      "queue_residence_wall_only": {
+        "calls": 0,
+        "wall_seconds": 0.0,
+        "cpu_seconds": 0.0,
+        "units": 0
+      }
+    },
+    "workers": {
+      "prepare_changed": {
+        "calls": 0,
+        "wall_seconds": 0.0,
+        "cpu_seconds": 0.0,
+        "units": 0
+      },
+      "epoll_wait": {
+        "calls": 0,
+        "wall_seconds": 0.0,
+        "cpu_seconds": 0.0,
+        "units": 0
+      },
+      "ready_dispatch": {
+        "calls": 0,
+        "wall_seconds": 0.0,
+        "cpu_seconds": 0.0,
+        "units": 0
+      },
+      "accept": {
+        "calls": 0,
+        "wall_seconds": 0.0,
+        "cpu_seconds": 0.0,
+        "units": 0
+      },
+      "notification_drain": {
+        "calls": 0,
+        "wall_seconds": 0.0,
+        "cpu_seconds": 0.0,
+        "units": 0
+      },
+      "timer_cancel": {
+        "calls": 1841,
+        "wall_seconds": 0.010939,
+        "cpu_seconds": 0.010473,
+        "units": 983840
+      },
+      "timer_update": {
+        "calls": 1841,
+        "wall_seconds": 0.013389,
+        "cpu_seconds": 0.012945,
+        "units": 499605
+      },
+      "timer_expire": {
+        "calls": 0,
+        "wall_seconds": 0.0,
+        "cpu_seconds": 0.0,
+        "units": 0
+      },
+      "server_mutex_wait": {
+        "calls": 3686,
+        "wall_seconds": 0.157334,
+        "cpu_seconds": 0.010683,
+        "units": 0
+      },
+      "queue_take": {
+        "calls": 1845,
+        "wall_seconds": 0.00133,
+        "cpu_seconds": 0.000868,
+        "units": 1841
+      },
+      "queue_enqueue": {
+        "calls": 0,
+        "wall_seconds": 0.0,
+        "cpu_seconds": 0.0,
+        "units": 0
+      },
+      "worker_idle_condwait": {
+        "calls": 1300,
+        "wall_seconds": 3.357187,
+        "cpu_seconds": 0.023688,
+        "units": 0
+      },
+      "request_turn": {
+        "calls": 1841,
+        "wall_seconds": 0.068964,
+        "cpu_seconds": 0.067817,
+        "units": 1841
+      },
+      "publish_result": {
+        "calls": 1841,
+        "wall_seconds": 0.014584,
+        "cpu_seconds": 0.014153,
+        "units": 1841
+      },
+      "notify_main": {
+        "calls": 1841,
+        "wall_seconds": 0.01949,
+        "cpu_seconds": 0.018218,
+        "units": 1841
+      },
+      "queue_residence_wall_only": {
+        "calls": 1841,
+        "wall_seconds": 0.211802,
+        "cpu_seconds": 0.0,
+        "units": 1841
+      }
+    }
+  }
+}

@@ -26,7 +26,9 @@ static struct connection *take_job(struct server *server)
     }
 
     server_profile_end(SP_QUEUE_TAKE, stamp, client != NULL);
+    bool refill = client && server->pending_head;
     check_thread(pthread_mutex_unlock(&server->mutex));
+    if (refill) notify_main(server->wake_fd);
 
     return client;
 }
@@ -47,6 +49,7 @@ static void *worker_main(void *argument)
         stamp = server_profile_begin();
         client->state = client->reason ? FINISHED : WAITING;
         timer_update(server, client);
+        server_changed(server, client);
         server_profile_end(SP_PUBLISH, stamp, 1);
         check_thread(pthread_mutex_unlock(&server->mutex));
 
@@ -59,28 +62,50 @@ static void *worker_main(void *argument)
     return NULL;
 }
 
-/* 메인이 mutex를 보유하고 WAITING 연결만 큐에 넣습니다. */
+/* Intrusive FIFO, one entry per connection. All operations hold server->mutex. */
+void pending_remove(struct server *server, struct connection *client)
+{
+    if (!client->pending) return;
+    if (client->pending_prev) client->pending_prev->pending_next = client->pending_next;
+    else server->pending_head = client->pending_next;
+    if (client->pending_next) client->pending_next->pending_prev = client->pending_prev;
+    else server->pending_tail = client->pending_prev;
+    client->pending_prev = client->pending_next = NULL;
+    client->pending = false;
+}
+
+void dispatch_pending(struct server *server)
+{
+    while (server->pending_head && server->count < QUEUE_CAPACITY) {
+        struct connection *client = server->pending_head;
+        pending_remove(server, client);
+        timer_cancel(server, client);
+        client->profile_queued_at = server_profile_wall();
+        server->jobs[server->tail] = client;
+        server->tail = (server->tail + 1) % QUEUE_CAPACITY;
+        server->count++;
+        client->state = QUEUED;
+        check_thread(pthread_cond_signal(&server->ready));
+    }
+}
+
+/* New work never bypasses older pending work, even when a slot just became free. */
 void enqueue_turn(struct server *server, struct connection *client)
 {
     struct server_stamp stamp = server_profile_begin();
     if (client->state != WAITING) { server_profile_end(SP_QUEUE_ENQUEUE, stamp, 0); return; }
-    if (server->count == QUEUE_CAPACITY) {
+    if (!client->pending) {
+        server_io_suspend(client);
+        client->pending_prev = server->pending_tail;
+        client->pending_next = NULL;
+        if (server->pending_tail) server->pending_tail->pending_next = client;
+        else server->pending_head = client;
+        server->pending_tail = client;
         client->pending = true;
-        server_profile_end(SP_QUEUE_ENQUEUE, stamp, 0);
-        return;
     }
-    client->pending = false;
-    server_io_suspend(client);
-    timer_cancel(server, client);
-
-    client->profile_queued_at = server_profile_wall();
-    server->jobs[server->tail] = client;
-    server->tail = (server->tail + 1) % QUEUE_CAPACITY;
-    server->count++;
-    client->state = QUEUED;
-
-    check_thread(pthread_cond_signal(&server->ready));
-    server_profile_end(SP_QUEUE_ENQUEUE, stamp, 1);
+    size_t before = server->count;
+    dispatch_pending(server);
+    server_profile_end(SP_QUEUE_ENQUEUE, stamp, server->count - before);
 }
 
 void pool_start(struct server *server)

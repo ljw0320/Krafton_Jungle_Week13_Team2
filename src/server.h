@@ -75,7 +75,9 @@ struct connection {
     struct connection *free_next;
     struct connection *timer_next;
     int64_t expires;
-    bool pending;
+    bool pending, control_queued;
+    struct connection *pending_prev, *pending_next;
+    struct connection *control_prev, *control_next;
     int watch_fd;
     uint32_t watch_ticket;
     bool watch_registered, watch_armed;
@@ -123,6 +125,8 @@ struct server {
     struct context_pool contexts;
     struct connection *free_clients;
     struct connection *timers;
+    struct connection *control_head, *control_tail;
+    struct connection *pending_head, *pending_tail;
     bool slots_initialized;
 
     struct connection *jobs[QUEUE_CAPACITY];
@@ -175,6 +179,10 @@ void slots_init(struct server *server);
 
 void pool_start(struct server *server);
 void pool_stop(struct server *server);
+void server_changed(struct server *server, struct connection *client);
+void server_forget(struct server *server, struct connection *client);
+void pending_remove(struct server *server, struct connection *client);
+void dispatch_pending(struct server *server);
 void server_io_suspend(struct connection *client);
 void enqueue_turn(struct server *server, struct connection *client);
 
