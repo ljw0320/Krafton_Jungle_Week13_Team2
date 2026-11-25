@@ -70,6 +70,7 @@ void enqueue_turn(struct server *server, struct connection *client)
         return;
     }
     client->pending = false;
+    server_io_suspend(client);
     timer_cancel(server, client);
 
     client->profile_queued_at = server_profile_wall();

@@ -1,5 +1,9 @@
 # 웹서버 내부 구간 계측
 
+아래는 웹서버 poll 전환 전 계측 기록이다. 현재 epoll 구현과 후속 비교는
+[웹서버 epoll 전환](server-epoll.md)에 있다. 현재 출력 키는 poll→epoll_wait,
+dispatch_scan→ready_dispatch이며 후자는 반환된 이벤트 수를 units로 기록한다.
+
 이번 변경은 계측 추가이며 서버의 poll·정렬 타이머·큐·자원·시간 정책은 유지한다.
 `JUNGLE_PROFILE=1`일 때만 시계를 읽고, 종료 시 `[server_profile]` JSON 한 줄을
 stderr로 출력한다. 메인 스레드와 작업자 전체를 구분한다. 작업자는 TLS에

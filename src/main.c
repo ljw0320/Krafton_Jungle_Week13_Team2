@@ -93,5 +93,5 @@ int main(int argc, char **argv)
     server_cleanup(&server, listener);
     server_profile_report();
 
-    return EXIT_SUCCESS;
+    return server.io_failed ? EXIT_FAILURE : EXIT_SUCCESS;
 }

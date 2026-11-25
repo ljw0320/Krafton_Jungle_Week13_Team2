@@ -100,11 +100,10 @@ static void test_timeout_releases_context_and_fds(void)
     CHECK(file_fd >= 0);
     client.connection->file_fd = file_fd;
     client.connection->progress = now_ms() - RECV_TIMEOUT_MS - 1;
-    struct pollfd descriptor;
-    int timeout = -1;
-    /* 실행: 실제 메인 루프의 기한 검사 함수를 호출한다. */
-    bool retained = poll_client(client.connection, &descriptor, &timeout, now_ms());
-    CHECK(!retained && client.connection->state == FREE);
+    /* Exercise the scheduler's actual deadline path. */
+    timer_update(&fixture_server, client.connection);
+    timer_expire(&fixture_server);
+    CHECK(client.connection->state == FREE);
     CHECK(client.connection->context == NULL);
     CHECK(fcntl(socket_fd, F_GETFD) == -1 && errno == EBADF);
     CHECK(fcntl(file_fd, F_GETFD) == -1 && errno == EBADF);
@@ -159,7 +158,7 @@ static void test_partial_send_keeps_context_until_complete(void)
     fixture_finish();
 }
 
-static void test_exhaustion_closes_only_the_new_request(void)
+static void test_exhaustion_waits_without_losing_existing_data(void)
 {
     fixture_start();
     struct test_client holders[CONTEXT_CAPACITY];
@@ -172,9 +171,11 @@ static void test_exhaustion_closes_only_the_new_request(void)
     struct test_client extra = open_client();
     send_text(&extra, "POST /echo HTTP/1.1\r\nHost: x\r\nContent-Length: 1\r\n\r\nx");
     process_turn(&fixture_server, extra.connection);
-    /* 검증: 고갈 실패는 새 연결만 종료하고 기존 데이터는 보존한다. */
+    /* 검증: 고갈 시 새 요청은 대기하고 기존 데이터는 보존한다. */
     CHECK(extra.connection->context == NULL);
-    CHECK(strcmp(extra.connection->reason, "request_context_limit") == 0);
+    CHECK(extra.connection->reason == NULL);
+    CHECK(extra.connection->context_wait_deadline > now_ms());
+    CHECK(fixture_server.contexts.wait_count == 1);
     expect_count("owners after rejected request", used_contexts(&fixture_server.contexts), CONTEXT_CAPACITY);
     for (int i = 0; i < CONTEXT_CAPACITY; i++) {
         CHECK(memcmp(holders[i].connection->context->input, "GET /", 5) == 0);
@@ -193,7 +194,7 @@ int main(void)
     test_timeout_releases_context_and_fds();
     test_close_response_releases_before_drain();
     test_partial_send_keeps_context_until_complete();
-    test_exhaustion_closes_only_the_new_request();
+    test_exhaustion_waits_without_losing_existing_data();
     printf("sizeof(connection)=%zu, sizeof(request_context)=%zu, sizeof(server)=%zu\n",
            sizeof(struct connection), sizeof(struct request_context), sizeof(struct server));
     puts("All 8 context lifecycle groups passed.");

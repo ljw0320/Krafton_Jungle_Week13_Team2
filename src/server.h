@@ -5,7 +5,6 @@
 #include "server_profile.h"
 #include "../common/runtime.h"
 
-#include <poll.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdint.h>
@@ -77,6 +76,9 @@ struct connection {
     struct connection *timer_next;
     int64_t expires;
     bool pending;
+    int watch_fd;
+    uint32_t watch_ticket;
+    bool watch_registered, watch_armed;
     enum state state;
     enum phase phase;
 
@@ -133,6 +135,9 @@ struct server {
     atomic_uint active_cgi;
     atomic_uint active_files;
 
+    int epoll_fd;
+    bool epoll_active, io_failed;
+    uint32_t next_ticket;
     int wake_fd;
     int root_fd;
     int cgi_root_fd;
@@ -170,6 +175,7 @@ void slots_init(struct server *server);
 
 void pool_start(struct server *server);
 void pool_stop(struct server *server);
+void server_io_suspend(struct connection *client);
 void enqueue_turn(struct server *server, struct connection *client);
 
 void process_turn(struct server *server, struct connection *client);
