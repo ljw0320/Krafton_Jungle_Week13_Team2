@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>1:1 채팅</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="chat.js" defer></script>
+</head>
+<body class="chat-page">
+  <main class="chat">
+    <header class="chat-header">
+      <h1>1:1 채팅</h1>
+      <p id="status" role="status">채팅을 시작할 수 있습니다.</p>
+      <p id="counts" hidden></p>
+      <div class="chat-actions">
+        <button id="start" type="button">채팅 시작</button>
+        <button id="cancel" type="button" hidden>취소</button>
+        <button id="next" type="button" hidden>다음 상대</button>
+        <button id="leave" type="button" hidden>나가기</button>
+        <button id="reconnect" type="button" hidden>다시 연결</button>
+      </div>
+    </header>
+
+    <ul id="messages" class="chat-messages" aria-label="대화 내용" aria-live="polite" hidden></ul>
+
+    <form id="composer" class="chat-composer" hidden>
+      <label for="message">메시지</label>
+      <textarea id="message" rows="2" maxlength="2000" aria-describedby="message-limit"></textarea>
+      <small id="message-limit">최대 1,000자</small>
+      <div class="chat-actions">
+        <button type="submit">보내기</button>
+        <button id="image-button" type="button">이미지 보내기</button>
+        <input id="image-file" type="file" accept="image/jpeg,image/png" aria-label="보낼 이미지" hidden>
+      </div>
+    </form>
+    <p id="notice" class="chat-notice" role="status"></p>
+  </main>
+</body>
+</html>
