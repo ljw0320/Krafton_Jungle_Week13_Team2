@@ -31,8 +31,8 @@ test_context: src/tests/test_support.h src/tests/context_fixture.h src/tests/tes
 test_stage1: test_context
 	./test_context
 
-test_context_pool: src/tests/test_context_pool.c src/context_pool.c src/platform.c $(HEADERS) src/tests/test_support.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc src/tests/test_context_pool.c src/context_pool.c src/platform.c -o $@ $(LDLIBS)
+test_context_pool: src/tests/test_context_pool.c src/context_pool.c src/platform.c src/server_profile.c $(HEADERS) src/tests/test_support.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc src/tests/test_context_pool.c src/context_pool.c src/platform.c src/server_profile.c -o $@ $(LDLIBS)
 
 test_stage2: test_context_pool test_context
 	./test_context_pool

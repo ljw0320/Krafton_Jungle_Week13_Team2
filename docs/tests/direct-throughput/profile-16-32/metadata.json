@@ -1,0 +1,47 @@
+{
+  "tool": "wrk 4.2.0, 1 load thread, Lua response validation enabled",
+  "request": "HTTP/1.1 POST /echo, Content-Length: 0",
+  "server": {
+    "workers": 4,
+    "job_queue": 4,
+    "contexts": 8,
+    "connections": 11000,
+    "profile": true,
+    "keep_alive_max_requests": 100
+  },
+  "duration_seconds": 30,
+  "warmup_seconds": 5,
+  "repetitions": 3,
+  "concurrency": [
+    16,
+    32
+  ],
+  "order": "16,32 / 32,16 / 16,32",
+  "fresh_server_each_run": true,
+  "proxy": false,
+  "profile_scope": "server counters include startup, 5s warmup, 30s measurement, teardown; thread CPU brackets measured wrk only",
+  "fd_soft_before": 10240,
+  "fd_soft_test": 65536,
+  "cpu_definition": "aggregate process CPU; 100% equals one core; sample brackets wrk process lifetime",
+  "latency_definition": "wrk corrected histogram for completed responses; excludes TCP connect time; not C10K retention test",
+  "error_definition": "HTTP errors/completed responses; socket error counters separate, not a per-request failure fraction",
+  "stdout_policy": "server logs to WSL temporary regular file; saved after shutdown",
+  "environment": {
+    "os_release": "NAME=\"Ubuntu\"\nVERSION=\"18.04.6 LTS (Bionic Beaver)\"\nID=ubuntu\nID_LIKE=debian\nPRETTY_NAME=\"Ubuntu 18.04.6 LTS\"\nVERSION_ID=\"18.04\"\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nVERSION_CODENAME=bionic\nUBUNTU_CODENAME=bionic\n",
+    "uname": [
+      "Linux",
+      "DESKTOP-MLBNT47",
+      "6.18.58.1-microsoft-standard-WSL2",
+      "#1 SMP PREEMPT_DYNAMIC Tue Oct 27 00:24:11 UTC 2026",
+      "x86_64"
+    ],
+    "cpu_count": 8,
+    "ticks": 100
+  },
+  "hashes": {
+    "webserver": "7500f5460ab7a6770d51ae7866a4f4ae5bd29f4aa13ffe6a4737faf89073521a",
+    "artifacts/load-tools/wrk-4.2.0/wrk": "0c66da41593cd32add309310943ef6766aeab5c7122c5085f5fe378d491b6569",
+    "artifacts/load-tools/post-empty.lua": "ef4690a884a109a78fc04c5534beee84b49317f123d744135120b94939c7c8b8",
+    "artifacts/load-tools/run_profile.py": "cf16f52ddb38ad9a36cdaec8a37845c6e13b4074ea933ba681c20b3ce81d340c"
+  }
+}

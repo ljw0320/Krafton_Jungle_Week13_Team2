@@ -102,6 +102,7 @@ struct connection {
     int64_t profile_pending_at;
     int64_t profile_queued_at;
     int64_t profile_taken_at;
+    int64_t profile_context_wait_at;
     int64_t context_wait_deadline;
     int64_t progress;
     int64_t drain_deadline;

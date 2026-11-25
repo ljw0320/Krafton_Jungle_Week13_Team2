@@ -1,0 +1,3509 @@
+[
+  {
+    "concurrency": 16,
+    "repetition": 1,
+    "execution_status": "completed",
+    "started_kst": "2026-11-25T21:33:26.771452+09:00",
+    "warmup": {
+      "duration_us": 5004591,
+      "completed": 157186,
+      "normal": 157186,
+      "http_errors": 0,
+      "bad_bodies": 0,
+      "connect_errors": 0,
+      "read_errors": 0,
+      "write_errors": 0,
+      "timeout_errors": 0,
+      "p95_us": 1236.0,
+      "p99_us": 22163.0,
+      "mean_us": 1068.648,
+      "max_us": 61356.0,
+      "command": [
+        "/mnt/c/Users/ljw/Desktop/Jungle_Project/Week_13_WebServer/Krafton_Jungle_Week13_Team2/artifacts/load-tools/wrk-4.2.0/wrk",
+        "-t1",
+        "-c16",
+        "-d5s",
+        "--latency",
+        "--timeout",
+        "3s",
+        "-s",
+        "/mnt/c/Users/ljw/Desktop/Jungle_Project/Week_13_WebServer/Krafton_Jungle_Week13_Team2/artifacts/load-tools/post-empty.lua",
+        "http://127.0.0.1:44629/echo"
+      ],
+      "sampled_wall_seconds": 5.046250100000179,
+      "normal_rps": 31408.360843073893,
+      "total_rps": 31408.360843073893,
+      "http_error_percent": 0.0,
+      "server_cpu_seconds": 15.03,
+      "generator_cpu_seconds": 2.4992729999999996,
+      "server_cpu_percent_one_core": 297.8449284548831,
+      "generator_cpu_percent_one_core": 49.527331195889616,
+      "thread_cpu": [
+        {
+          "tid": 513,
+          "role": "main",
+          "cpu_seconds": 3.3,
+          "cpu_percent_one_core": 65.39509407193042
+        },
+        {
+          "tid": 514,
+          "role": "worker",
+          "cpu_seconds": 2.93,
+          "cpu_percent_one_core": 58.062916857804886
+        },
+        {
+          "tid": 515,
+          "role": "worker",
+          "cpu_seconds": 2.92,
+          "cpu_percent_one_core": 57.864749906071765
+        },
+        {
+          "tid": 516,
+          "role": "worker",
+          "cpu_seconds": 2.95,
+          "cpu_percent_one_core": 58.45925076127113
+        },
+        {
+          "tid": 517,
+          "role": "worker",
+          "cpu_seconds": 2.9,
+          "cpu_percent_one_core": 57.468416002605515
+        }
+      ]
+    },
+    "measurement": {
+      "duration_us": 30000399,
+      "completed": 984516,
+      "normal": 984516,
+      "http_errors": 0,
+      "bad_bodies": 0,
+      "connect_errors": 0,
+      "read_errors": 0,
+      "write_errors": 0,
+      "timeout_errors": 0,
+      "p95_us": 791.0,
+      "p99_us": 1129.0,
+      "mean_us": 481.95,
+      "max_us": 6509.0,
+      "command": [
+        "/mnt/c/Users/ljw/Desktop/Jungle_Project/Week_13_WebServer/Krafton_Jungle_Week13_Team2/artifacts/load-tools/wrk-4.2.0/wrk",
+        "-t1",
+        "-c16",
+        "-d30s",
+        "--latency",
+        "--timeout",
+        "3s",
+        "-s",
+        "/mnt/c/Users/ljw/Desktop/Jungle_Project/Week_13_WebServer/Krafton_Jungle_Week13_Team2/artifacts/load-tools/post-empty.lua",
+        "http://127.0.0.1:44629/echo"
+      ],
+      "sampled_wall_seconds": 30.03858067600231,
+      "normal_rps": 32816.76353704496,
+      "total_rps": 32816.76353704496,
+      "http_error_percent": 0.0,
+      "server_cpu_seconds": 90.28999999999999,
+      "generator_cpu_seconds": 14.914571000000002,
+      "server_cpu_percent_one_core": 300.5801138671385,
+      "generator_cpu_percent_one_core": 49.651383868197165,
+      "thread_cpu": [
+        {
+          "tid": 513,
+          "role": "main",
+          "cpu_seconds": 20.4,
+          "cpu_percent_one_core": 67.91266278535413
+        },
+        {
+          "tid": 514,
+          "role": "worker",
+          "cpu_seconds": 17.43,
+          "cpu_percent_one_core": 58.025378056309926
+        },
+        {
+          "tid": 515,
+          "role": "worker",
+          "cpu_seconds": 17.490000000000002,
+          "cpu_percent_one_core": 58.225121182149216
+        },
+        {
+          "tid": 516,
+          "role": "worker",
+          "cpu_seconds": 17.48,
+          "cpu_percent_one_core": 58.19183066117599
+        },
+        {
+          "tid": 517,
+          "role": "worker",
+          "cpu_seconds": 17.490000000000002,
+          "cpu_percent_one_core": 58.225121182149216
+        }
+      ]
+    },
+    "server_exit_code": 0,
+    "server_close_reasons_including_warmup_and_shutdown": {
+      "peer_closed": 4,
+      "response_complete": 11403,
+      "recv_error": 30,
+      "drain_error": 1
+    },
+    "server_profile": {
+      "main": {
+        "prepare_changed": {
+          "calls": 611093,
+          "wall_seconds": 5.411544,
+          "cpu_seconds": 5.089106,
+          "units": 1154096,
+          "max_wall_seconds": 0.002893774,
+          "max_cpu_seconds": 0.002515951,
+          "max_units": 17
+        },
+        "epoll_wait": {
+          "calls": 611093,
+          "wall_seconds": 8.091635,
+          "cpu_seconds": 2.240104,
+          "units": 1675160,
+          "max_wall_seconds": 0.257960052,
+          "max_cpu_seconds": 0.011993051,
+          "max_units": 21
+        },
+        "ready_dispatch": {
+          "calls": 611092,
+          "wall_seconds": 2.512241,
+          "cpu_seconds": 2.339924,
+          "units": 1675160,
+          "max_wall_seconds": 0.002100161,
+          "max_cpu_seconds": 0.002099839,
+          "max_units": 21
+        },
+        "accept": {
+          "calls": 10430,
+          "wall_seconds": 0.743888,
+          "cpu_seconds": 0.640859,
+          "units": 0,
+          "max_wall_seconds": 0.000947372,
+          "max_cpu_seconds": 0.000823385,
+          "max_units": 0
+        },
+        "notification_drain": {
+          "calls": 522072,
+          "wall_seconds": 1.267916,
+          "cpu_seconds": 1.096359,
+          "units": 522072,
+          "max_wall_seconds": 0.048881678,
+          "max_cpu_seconds": 0.031583748,
+          "max_units": 1
+        },
+        "timer_cancel": {
+          "calls": 1154096,
+          "wall_seconds": 0.909482,
+          "cpu_seconds": 0.503419,
+          "units": 2517005,
+          "max_wall_seconds": 0.000564562,
+          "max_cpu_seconds": 0.000333831,
+          "max_units": 8
+        },
+        "timer_update": {
+          "calls": 11438,
+          "wall_seconds": 0.009285,
+          "cpu_seconds": 0.005939,
+          "units": 11433,
+          "max_wall_seconds": 0.00011302,
+          "max_cpu_seconds": 6.8047e-05,
+          "max_units": 1
+        },
+        "timer_expire": {
+          "calls": 1222186,
+          "wall_seconds": 0.737189,
+          "cpu_seconds": 0.401713,
+          "units": 0,
+          "max_wall_seconds": 0.001713129,
+          "max_cpu_seconds": 0.001708887,
+          "max_units": 0
+        },
+        "server_mutex_wait": {
+          "calls": 1233624,
+          "wall_seconds": 8.076276,
+          "cpu_seconds": 1.650801,
+          "units": 0,
+          "max_wall_seconds": 0.013491791,
+          "max_cpu_seconds": 0.000665151,
+          "max_units": 0
+        },
+        "queue_take": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "queue_enqueue": {
+          "calls": 1142658,
+          "wall_seconds": 2.085948,
+          "cpu_seconds": 1.755388,
+          "units": 462264,
+          "max_wall_seconds": 0.002099039,
+          "max_cpu_seconds": 0.002098096,
+          "max_units": 4
+        },
+        "worker_idle_condwait": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "request_turn": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "publish_result": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "notify_main": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "queue_residence_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "pending_residence_wall_only": {
+          "calls": 1142658,
+          "wall_seconds": 252.366605,
+          "cpu_seconds": 0.0,
+          "units": 1142658,
+          "max_wall_seconds": 0.060945757,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_pending_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_queue_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_turn": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_started": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_acquired_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_cancelled_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_mutex_wait": {
+          "calls": 622531,
+          "wall_seconds": 0.559385,
+          "cpu_seconds": 0.228209,
+          "units": 0,
+          "max_wall_seconds": 0.000429244,
+          "max_cpu_seconds": 0.000309506,
+          "max_units": 0
+        }
+      },
+      "workers": {
+        "prepare_changed": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "epoll_wait": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "ready_dispatch": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "accept": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "notification_drain": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "timer_cancel": {
+          "calls": 11438,
+          "wall_seconds": 0.006791,
+          "cpu_seconds": 0.003656,
+          "units": 0,
+          "max_wall_seconds": 8.474e-05,
+          "max_cpu_seconds": 8.1302e-05,
+          "max_units": 0
+        },
+        "timer_update": {
+          "calls": 1142658,
+          "wall_seconds": 0.912802,
+          "cpu_seconds": 0.598731,
+          "units": 1168069,
+          "max_wall_seconds": 0.000409221,
+          "max_cpu_seconds": 0.000202237,
+          "max_units": 5
+        },
+        "timer_expire": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "server_mutex_wait": {
+          "calls": 2285320,
+          "wall_seconds": 48.759479,
+          "cpu_seconds": 6.7667,
+          "units": 0,
+          "max_wall_seconds": 0.0110041,
+          "max_cpu_seconds": 0.008477637,
+          "max_units": 0
+        },
+        "queue_take": {
+          "calls": 1142662,
+          "wall_seconds": 0.81651,
+          "cpu_seconds": 0.50112,
+          "units": 1142658,
+          "max_wall_seconds": 0.00035623,
+          "max_cpu_seconds": 0.000250877,
+          "max_units": 1
+        },
+        "queue_enqueue": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "worker_idle_condwait": {
+          "calls": 111743,
+          "wall_seconds": 19.482774,
+          "cpu_seconds": 1.721538,
+          "units": 0,
+          "max_wall_seconds": 0.262578656,
+          "max_cpu_seconds": 0.001709577,
+          "max_units": 0
+        },
+        "request_turn": {
+          "calls": 1142658,
+          "wall_seconds": 46.508655,
+          "cpu_seconds": 45.093615,
+          "units": 1142658,
+          "max_wall_seconds": 0.032326788,
+          "max_cpu_seconds": 0.032302323,
+          "max_units": 1
+        },
+        "publish_result": {
+          "calls": 1142658,
+          "wall_seconds": 1.720833,
+          "cpu_seconds": 1.405434,
+          "units": 1142658,
+          "max_wall_seconds": 0.000415412,
+          "max_cpu_seconds": 0.00041288,
+          "max_units": 1
+        },
+        "notify_main": {
+          "calls": 1142658,
+          "wall_seconds": 6.377443,
+          "cpu_seconds": 5.829403,
+          "units": 1142658,
+          "max_wall_seconds": 0.03723482,
+          "max_cpu_seconds": 0.037233101,
+          "max_units": 1
+        },
+        "queue_residence_wall_only": {
+          "calls": 1142658,
+          "wall_seconds": 94.842851,
+          "cpu_seconds": 0.0,
+          "units": 1142658,
+          "max_wall_seconds": 0.028416735,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "pending_residence_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_pending_wall_only": {
+          "calls": 1131220,
+          "wall_seconds": 250.66367,
+          "cpu_seconds": 0.0,
+          "units": 1131220,
+          "max_wall_seconds": 0.060946698,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_queue_wall_only": {
+          "calls": 1131220,
+          "wall_seconds": 93.744182,
+          "cpu_seconds": 0.0,
+          "units": 1131220,
+          "max_wall_seconds": 0.028416384,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_turn": {
+          "calls": 1131220,
+          "wall_seconds": 46.760009,
+          "cpu_seconds": 45.386758,
+          "units": 1131220,
+          "max_wall_seconds": 0.032327159,
+          "max_cpu_seconds": 0.032302734,
+          "max_units": 1
+        },
+        "context_wait_started": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_acquired_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_cancelled_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_mutex_wait": {
+          "calls": 2283468,
+          "wall_seconds": 3.275321,
+          "cpu_seconds": 1.425176,
+          "units": 0,
+          "max_wall_seconds": 0.006123047,
+          "max_cpu_seconds": 0.005566654,
+          "max_units": 0
+        }
+      }
+    }
+  },
+  {
+    "concurrency": 32,
+    "repetition": 1,
+    "execution_status": "completed",
+    "started_kst": "2026-11-25T21:34:02.153049+09:00",
+    "warmup": {
+      "duration_us": 5099233,
+      "completed": 166912,
+      "normal": 166912,
+      "http_errors": 0,
+      "bad_bodies": 0,
+      "connect_errors": 0,
+      "read_errors": 0,
+      "write_errors": 0,
+      "timeout_errors": 0,
+      "p95_us": 1441.0,
+      "p99_us": 1825.0,
+      "mean_us": 967.372,
+      "max_us": 5938.0,
+      "command": [
+        "/mnt/c/Users/ljw/Desktop/Jungle_Project/Week_13_WebServer/Krafton_Jungle_Week13_Team2/artifacts/load-tools/wrk-4.2.0/wrk",
+        "-t1",
+        "-c32",
+        "-d5s",
+        "--latency",
+        "--timeout",
+        "3s",
+        "-s",
+        "/mnt/c/Users/ljw/Desktop/Jungle_Project/Week_13_WebServer/Krafton_Jungle_Week13_Team2/artifacts/load-tools/post-empty.lua",
+        "http://127.0.0.1:58469/echo"
+      ],
+      "sampled_wall_seconds": 5.145101137000893,
+      "normal_rps": 32732.76588851696,
+      "total_rps": 32732.76588851696,
+      "http_error_percent": 0.0,
+      "server_cpu_seconds": 15.46,
+      "generator_cpu_seconds": 2.6129920000000055,
+      "server_cpu_percent_one_core": 300.4800020123942,
+      "generator_cpu_percent_one_core": 50.78601820299946,
+      "thread_cpu": [
+        {
+          "tid": 526,
+          "role": "main",
+          "cpu_seconds": 3.4600000000000004,
+          "cpu_percent_one_core": 67.24843512049704
+        },
+        {
+          "tid": 527,
+          "role": "worker",
+          "cpu_seconds": 2.98,
+          "cpu_percent_one_core": 57.919172444821136
+        },
+        {
+          "tid": 528,
+          "role": "worker",
+          "cpu_seconds": 2.98,
+          "cpu_percent_one_core": 57.919172444821136
+        },
+        {
+          "tid": 529,
+          "role": "worker",
+          "cpu_seconds": 3.0,
+          "cpu_percent_one_core": 58.3078917229743
+        },
+        {
+          "tid": 530,
+          "role": "worker",
+          "cpu_seconds": 3.0,
+          "cpu_percent_one_core": 58.3078917229743
+        }
+      ]
+    },
+    "measurement": {
+      "duration_us": 30004974,
+      "completed": 877422,
+      "normal": 877422,
+      "http_errors": 0,
+      "bad_bodies": 0,
+      "connect_errors": 0,
+      "read_errors": 0,
+      "write_errors": 0,
+      "timeout_errors": 0,
+      "p95_us": 1613.0,
+      "p99_us": 2183.0,
+      "mean_us": 1092.164,
+      "max_us": 15877.0,
+      "command": [
+        "/mnt/c/Users/ljw/Desktop/Jungle_Project/Week_13_WebServer/Krafton_Jungle_Week13_Team2/artifacts/load-tools/wrk-4.2.0/wrk",
+        "-t1",
+        "-c32",
+        "-d30s",
+        "--latency",
+        "--timeout",
+        "3s",
+        "-s",
+        "/mnt/c/Users/ljw/Desktop/Jungle_Project/Week_13_WebServer/Krafton_Jungle_Week13_Team2/artifacts/load-tools/post-empty.lua",
+        "http://127.0.0.1:58469/echo"
+      ],
+      "sampled_wall_seconds": 30.04092168599891,
+      "normal_rps": 29242.551584947214,
+      "total_rps": 29242.551584947214,
+      "http_error_percent": 0.0,
+      "server_cpu_seconds": 90.38,
+      "generator_cpu_seconds": 15.139614999999992,
+      "server_cpu_percent_one_core": 300.8562817901927,
+      "generator_cpu_percent_one_core": 50.396639484786746,
+      "thread_cpu": [
+        {
+          "tid": 526,
+          "role": "main",
+          "cpu_seconds": 20.490000000000002,
+          "cpu_percent_one_core": 68.20696187077948
+        },
+        {
+          "tid": 527,
+          "role": "worker",
+          "cpu_seconds": 17.46,
+          "cpu_percent_one_core": 58.120720071440196
+        },
+        {
+          "tid": 528,
+          "role": "worker",
+          "cpu_seconds": 17.48,
+          "cpu_percent_one_core": 58.187295924901186
+        },
+        {
+          "tid": 529,
+          "role": "worker",
+          "cpu_seconds": 17.5,
+          "cpu_percent_one_core": 58.25387177836217
+        },
+        {
+          "tid": 530,
+          "role": "worker",
+          "cpu_seconds": 17.45,
+          "cpu_percent_one_core": 58.08743214470971
+        }
+      ]
+    },
+    "server_exit_code": 0,
+    "server_close_reasons_including_warmup_and_shutdown": {
+      "peer_closed": 4,
+      "response_complete": 10428,
+      "recv_error": 63
+    },
+    "server_profile": {
+      "main": {
+        "prepare_changed": {
+          "calls": 554570,
+          "wall_seconds": 5.528081,
+          "cpu_seconds": 5.201129,
+          "units": 1056959,
+          "max_wall_seconds": 0.005034983,
+          "max_cpu_seconds": 0.004120308,
+          "max_units": 16
+        },
+        "epoll_wait": {
+          "calls": 554570,
+          "wall_seconds": 7.799534,
+          "cpu_seconds": 2.192843,
+          "units": 1531053,
+          "max_wall_seconds": 0.24975325,
+          "max_cpu_seconds": 0.003241954,
+          "max_units": 37
+        },
+        "ready_dispatch": {
+          "calls": 554569,
+          "wall_seconds": 2.535015,
+          "cpu_seconds": 2.36509,
+          "units": 1531053,
+          "max_wall_seconds": 0.001179796,
+          "max_cpu_seconds": 0.001179551,
+          "max_units": 37
+        },
+        "accept": {
+          "calls": 8949,
+          "wall_seconds": 0.66224,
+          "cpu_seconds": 0.556826,
+          "units": 0,
+          "max_wall_seconds": 0.001693747,
+          "max_cpu_seconds": 0.001679922,
+          "max_units": 0
+        },
+        "notification_drain": {
+          "calls": 475640,
+          "wall_seconds": 1.180453,
+          "cpu_seconds": 1.020438,
+          "units": 475640,
+          "max_wall_seconds": 0.002507103,
+          "max_cpu_seconds": 0.002506503,
+          "max_units": 1
+        },
+        "timer_cancel": {
+          "calls": 1056959,
+          "wall_seconds": 0.969068,
+          "cpu_seconds": 0.559077,
+          "units": 3260656,
+          "max_wall_seconds": 0.000583143,
+          "max_cpu_seconds": 0.000580142,
+          "max_units": 10
+        },
+        "timer_update": {
+          "calls": 10495,
+          "wall_seconds": 0.009382,
+          "cpu_seconds": 0.006113,
+          "units": 10490,
+          "max_wall_seconds": 0.000138575,
+          "max_cpu_seconds": 0.000136375,
+          "max_units": 1
+        },
+        "timer_expire": {
+          "calls": 1109140,
+          "wall_seconds": 0.743082,
+          "cpu_seconds": 0.399136,
+          "units": 0,
+          "max_wall_seconds": 0.000635143,
+          "max_cpu_seconds": 0.000626498,
+          "max_units": 0
+        },
+        "server_mutex_wait": {
+          "calls": 1119635,
+          "wall_seconds": 8.247935,
+          "cpu_seconds": 1.693846,
+          "units": 0,
+          "max_wall_seconds": 0.007048922,
+          "max_cpu_seconds": 0.00092783,
+          "max_units": 0
+        },
+        "queue_take": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "queue_enqueue": {
+          "calls": 1046464,
+          "wall_seconds": 2.102504,
+          "cpu_seconds": 1.778388,
+          "units": 427439,
+          "max_wall_seconds": 0.001025593,
+          "max_cpu_seconds": 0.001021616,
+          "max_units": 4
+        },
+        "worker_idle_condwait": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "request_turn": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "publish_result": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "notify_main": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "queue_residence_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "pending_residence_wall_only": {
+          "calls": 1046464,
+          "wall_seconds": 817.839635,
+          "cpu_seconds": 0.0,
+          "units": 1046464,
+          "max_wall_seconds": 0.01208,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_pending_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_queue_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_turn": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_started": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_acquired_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_cancelled_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_mutex_wait": {
+          "calls": 565065,
+          "wall_seconds": 0.561842,
+          "cpu_seconds": 0.229056,
+          "units": 0,
+          "max_wall_seconds": 0.000858521,
+          "max_cpu_seconds": 0.000252821,
+          "max_units": 0
+        }
+      },
+      "workers": {
+        "prepare_changed": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "epoll_wait": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "ready_dispatch": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "accept": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "notification_drain": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "timer_cancel": {
+          "calls": 10495,
+          "wall_seconds": 0.006518,
+          "cpu_seconds": 0.003415,
+          "units": 0,
+          "max_wall_seconds": 4.1658e-05,
+          "max_cpu_seconds": 3.8892e-05,
+          "max_units": 0
+        },
+        "timer_update": {
+          "calls": 1046464,
+          "wall_seconds": 0.928166,
+          "cpu_seconds": 0.60226,
+          "units": 1075058,
+          "max_wall_seconds": 0.002468691,
+          "max_cpu_seconds": 0.000203184,
+          "max_units": 6
+        },
+        "timer_expire": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "server_mutex_wait": {
+          "calls": 2092932,
+          "wall_seconds": 49.724074,
+          "cpu_seconds": 6.936639,
+          "units": 0,
+          "max_wall_seconds": 0.013324478,
+          "max_cpu_seconds": 0.004041177,
+          "max_units": 0
+        },
+        "queue_take": {
+          "calls": 1046468,
+          "wall_seconds": 0.829891,
+          "cpu_seconds": 0.50627,
+          "units": 1046464,
+          "max_wall_seconds": 0.000345714,
+          "max_cpu_seconds": 0.000342989,
+          "max_units": 1
+        },
+        "queue_enqueue": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "worker_idle_condwait": {
+          "calls": 100888,
+          "wall_seconds": 18.92053,
+          "cpu_seconds": 1.708737,
+          "units": 0,
+          "max_wall_seconds": 0.254089107,
+          "max_cpu_seconds": 0.001324939,
+          "max_units": 0
+        },
+        "request_turn": {
+          "calls": 1046464,
+          "wall_seconds": 46.616661,
+          "cpu_seconds": 45.301452,
+          "units": 1046464,
+          "max_wall_seconds": 0.008577149,
+          "max_cpu_seconds": 0.00856527,
+          "max_units": 1
+        },
+        "publish_result": {
+          "calls": 1046464,
+          "wall_seconds": 1.755215,
+          "cpu_seconds": 1.430422,
+          "units": 1046464,
+          "max_wall_seconds": 0.002492204,
+          "max_cpu_seconds": 0.002486119,
+          "max_units": 1
+        },
+        "notify_main": {
+          "calls": 1046464,
+          "wall_seconds": 6.133181,
+          "cpu_seconds": 5.567824,
+          "units": 1046464,
+          "max_wall_seconds": 0.011211834,
+          "max_cpu_seconds": 0.011211554,
+          "max_units": 1
+        },
+        "queue_residence_wall_only": {
+          "calls": 1046464,
+          "wall_seconds": 95.891662,
+          "cpu_seconds": 0.0,
+          "units": 1046464,
+          "max_wall_seconds": 0.008434983,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "pending_residence_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_pending_wall_only": {
+          "calls": 1035969,
+          "wall_seconds": 809.785146,
+          "cpu_seconds": 0.0,
+          "units": 1035969,
+          "max_wall_seconds": 0.012082195,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_queue_wall_only": {
+          "calls": 1035969,
+          "wall_seconds": 94.809481,
+          "cpu_seconds": 0.0,
+          "units": 1035969,
+          "max_wall_seconds": 0.008434792,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_turn": {
+          "calls": 1035969,
+          "wall_seconds": 46.88644,
+          "cpu_seconds": 45.611998,
+          "units": 1035969,
+          "max_wall_seconds": 0.0085776,
+          "max_cpu_seconds": 0.008565761,
+          "max_units": 1
+        },
+        "context_wait_started": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_acquired_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_cancelled_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_mutex_wait": {
+          "calls": 2088796,
+          "wall_seconds": 3.146338,
+          "cpu_seconds": 1.399015,
+          "units": 0,
+          "max_wall_seconds": 0.000955597,
+          "max_cpu_seconds": 0.000738453,
+          "max_units": 0
+        }
+      }
+    }
+  },
+  {
+    "concurrency": 32,
+    "repetition": 2,
+    "execution_status": "completed",
+    "started_kst": "2026-11-25T21:34:37.638256+09:00",
+    "warmup": {
+      "duration_us": 5099478,
+      "completed": 141857,
+      "normal": 141857,
+      "http_errors": 0,
+      "bad_bodies": 0,
+      "connect_errors": 0,
+      "read_errors": 0,
+      "write_errors": 0,
+      "timeout_errors": 0,
+      "p95_us": 1693.0,
+      "p99_us": 2189.0,
+      "mean_us": 1138.097,
+      "max_us": 5847.0,
+      "command": [
+        "/mnt/c/Users/ljw/Desktop/Jungle_Project/Week_13_WebServer/Krafton_Jungle_Week13_Team2/artifacts/load-tools/wrk-4.2.0/wrk",
+        "-t1",
+        "-c32",
+        "-d5s",
+        "--latency",
+        "--timeout",
+        "3s",
+        "-s",
+        "/mnt/c/Users/ljw/Desktop/Jungle_Project/Week_13_WebServer/Krafton_Jungle_Week13_Team2/artifacts/load-tools/post-empty.lua",
+        "http://127.0.0.1:52693/echo"
+      ],
+      "sampled_wall_seconds": 5.145808895002119,
+      "normal_rps": 27817.94528773337,
+      "total_rps": 27817.94528773337,
+      "http_error_percent": 0.0,
+      "server_cpu_seconds": 15.43,
+      "generator_cpu_seconds": 2.5665970000000016,
+      "server_cpu_percent_one_core": 299.8556750715408,
+      "generator_cpu_percent_one_core": 49.877425539312505,
+      "thread_cpu": [
+        {
+          "tid": 541,
+          "role": "main",
+          "cpu_seconds": 3.44,
+          "cpu_percent_one_core": 66.85051991225538
+        },
+        {
+          "tid": 542,
+          "role": "worker",
+          "cpu_seconds": 3.0,
+          "cpu_percent_one_core": 58.29987201650178
+        },
+        {
+          "tid": 543,
+          "role": "worker",
+          "cpu_seconds": 2.99,
+          "cpu_percent_one_core": 58.10553910978011
+        },
+        {
+          "tid": 544,
+          "role": "worker",
+          "cpu_seconds": 2.97,
+          "cpu_percent_one_core": 57.716873296336765
+        },
+        {
+          "tid": 545,
+          "role": "worker",
+          "cpu_seconds": 2.99,
+          "cpu_percent_one_core": 58.10553910978011
+        }
+      ]
+    },
+    "measurement": {
+      "duration_us": 30000826,
+      "completed": 809248,
+      "normal": 809248,
+      "http_errors": 0,
+      "bad_bodies": 0,
+      "connect_errors": 0,
+      "read_errors": 0,
+      "write_errors": 0,
+      "timeout_errors": 0,
+      "p95_us": 1776.0,
+      "p99_us": 2523.0,
+      "mean_us": 1180.716,
+      "max_us": 11474.0,
+      "command": [
+        "/mnt/c/Users/ljw/Desktop/Jungle_Project/Week_13_WebServer/Krafton_Jungle_Week13_Team2/artifacts/load-tools/wrk-4.2.0/wrk",
+        "-t1",
+        "-c32",
+        "-d30s",
+        "--latency",
+        "--timeout",
+        "3s",
+        "-s",
+        "/mnt/c/Users/ljw/Desktop/Jungle_Project/Week_13_WebServer/Krafton_Jungle_Week13_Team2/artifacts/load-tools/post-empty.lua",
+        "http://127.0.0.1:52693/echo"
+      ],
+      "sampled_wall_seconds": 30.040928335998615,
+      "normal_rps": 26974.190643950937,
+      "total_rps": 26974.190643950937,
+      "http_error_percent": 0.0,
+      "server_cpu_seconds": 90.12,
+      "generator_cpu_seconds": 15.112029999999976,
+      "server_cpu_percent_one_core": 299.99072928784125,
+      "generator_cpu_percent_one_core": 50.30480360319273,
+      "thread_cpu": [
+        {
+          "tid": 541,
+          "role": "main",
+          "cpu_seconds": 20.43,
+          "cpu_percent_one_core": 68.00721925599863
+        },
+        {
+          "tid": 542,
+          "role": "worker",
+          "cpu_seconds": 17.46,
+          "cpu_percent_one_core": 58.120707205567115
+        },
+        {
+          "tid": 543,
+          "role": "worker",
+          "cpu_seconds": 17.42,
+          "cpu_percent_one_core": 57.98755552812023
+        },
+        {
+          "tid": 544,
+          "role": "worker",
+          "cpu_seconds": 17.42,
+          "cpu_percent_one_core": 57.98755552812023
+        },
+        {
+          "tid": 545,
+          "role": "worker",
+          "cpu_seconds": 17.39,
+          "cpu_percent_one_core": 57.88769177003506
+        }
+      ]
+    },
+    "server_exit_code": 0,
+    "server_close_reasons_including_warmup_and_shutdown": {
+      "peer_closed": 8,
+      "response_complete": 9480,
+      "recv_error": 59
+    },
+    "server_profile": {
+      "main": {
+        "prepare_changed": {
+          "calls": 504674,
+          "wall_seconds": 5.527811,
+          "cpu_seconds": 5.199269,
+          "units": 962411,
+          "max_wall_seconds": 0.005156638,
+          "max_cpu_seconds": 0.002464749,
+          "max_units": 19
+        },
+        "epoll_wait": {
+          "calls": 504674,
+          "wall_seconds": 7.8877,
+          "cpu_seconds": 2.223665,
+          "units": 1394371,
+          "max_wall_seconds": 0.247684178,
+          "max_cpu_seconds": 0.004104745,
+          "max_units": 32
+        },
+        "ready_dispatch": {
+          "calls": 504673,
+          "wall_seconds": 2.536033,
+          "cpu_seconds": 2.367142,
+          "units": 1394371,
+          "max_wall_seconds": 0.001172229,
+          "max_cpu_seconds": 0.001171823,
+          "max_units": 32
+        },
+        "accept": {
+          "calls": 8023,
+          "wall_seconds": 0.659597,
+          "cpu_seconds": 0.549217,
+          "units": 0,
+          "max_wall_seconds": 0.000855189,
+          "max_cpu_seconds": 0.000556448,
+          "max_units": 0
+        },
+        "notification_drain": {
+          "calls": 433484,
+          "wall_seconds": 1.182989,
+          "cpu_seconds": 1.024233,
+          "units": 433484,
+          "max_wall_seconds": 0.001545393,
+          "max_cpu_seconds": 0.001543392,
+          "max_units": 1
+        },
+        "timer_cancel": {
+          "calls": 962411,
+          "wall_seconds": 0.960819,
+          "cpu_seconds": 0.55837,
+          "units": 3039022,
+          "max_wall_seconds": 0.000232816,
+          "max_cpu_seconds": 0.000231692,
+          "max_units": 10
+        },
+        "timer_update": {
+          "calls": 9547,
+          "wall_seconds": 0.009364,
+          "cpu_seconds": 0.006075,
+          "units": 9542,
+          "max_wall_seconds": 0.000103455,
+          "max_cpu_seconds": 0.000102131,
+          "max_units": 1
+        },
+        "timer_expire": {
+          "calls": 1009348,
+          "wall_seconds": 0.740791,
+          "cpu_seconds": 0.399318,
+          "units": 0,
+          "max_wall_seconds": 0.0006576,
+          "max_cpu_seconds": 0.000539226,
+          "max_units": 0
+        },
+        "server_mutex_wait": {
+          "calls": 1018895,
+          "wall_seconds": 8.274763,
+          "cpu_seconds": 1.692119,
+          "units": 0,
+          "max_wall_seconds": 0.003728894,
+          "max_cpu_seconds": 0.000708,
+          "max_units": 0
+        },
+        "queue_take": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "queue_enqueue": {
+          "calls": 952864,
+          "wall_seconds": 2.106773,
+          "cpu_seconds": 1.782738,
+          "units": 389629,
+          "max_wall_seconds": 0.001170657,
+          "max_cpu_seconds": 0.001166564,
+          "max_units": 4
+        },
+        "worker_idle_condwait": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "request_turn": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "publish_result": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "notify_main": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "queue_residence_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "pending_residence_wall_only": {
+          "calls": 952864,
+          "wall_seconds": 819.60904,
+          "cpu_seconds": 0.0,
+          "units": 952864,
+          "max_wall_seconds": 0.008438855,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_pending_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_queue_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_turn": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_started": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_acquired_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_cancelled_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_mutex_wait": {
+          "calls": 514221,
+          "wall_seconds": 0.571001,
+          "cpu_seconds": 0.229863,
+          "units": 0,
+          "max_wall_seconds": 0.001068113,
+          "max_cpu_seconds": 0.000316861,
+          "max_units": 0
+        }
+      },
+      "workers": {
+        "prepare_changed": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "epoll_wait": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "ready_dispatch": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "accept": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "notification_drain": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "timer_cancel": {
+          "calls": 9547,
+          "wall_seconds": 0.006502,
+          "cpu_seconds": 0.003394,
+          "units": 0,
+          "max_wall_seconds": 3.9244e-05,
+          "max_cpu_seconds": 3.8302e-05,
+          "max_units": 0
+        },
+        "timer_update": {
+          "calls": 952864,
+          "wall_seconds": 0.922859,
+          "cpu_seconds": 0.602108,
+          "units": 979086,
+          "max_wall_seconds": 0.000867436,
+          "max_cpu_seconds": 0.000863711,
+          "max_units": 6
+        },
+        "timer_expire": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "server_mutex_wait": {
+          "calls": 1905732,
+          "wall_seconds": 49.636409,
+          "cpu_seconds": 6.938134,
+          "units": 0,
+          "max_wall_seconds": 0.005244305,
+          "max_cpu_seconds": 0.002733337,
+          "max_units": 0
+        },
+        "queue_take": {
+          "calls": 952868,
+          "wall_seconds": 0.820397,
+          "cpu_seconds": 0.498867,
+          "units": 952864,
+          "max_wall_seconds": 0.000257908,
+          "max_cpu_seconds": 0.000158846,
+          "max_units": 1
+        },
+        "queue_enqueue": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "worker_idle_condwait": {
+          "calls": 94117,
+          "wall_seconds": 19.259097,
+          "cpu_seconds": 1.774531,
+          "units": 0,
+          "max_wall_seconds": 0.252226655,
+          "max_cpu_seconds": 0.001017101,
+          "max_units": 0
+        },
+        "request_turn": {
+          "calls": 952864,
+          "wall_seconds": 46.412174,
+          "cpu_seconds": 45.0518,
+          "units": 952864,
+          "max_wall_seconds": 0.003882928,
+          "max_cpu_seconds": 0.003882459,
+          "max_units": 1
+        },
+        "publish_result": {
+          "calls": 952864,
+          "wall_seconds": 1.749838,
+          "cpu_seconds": 1.426935,
+          "units": 952864,
+          "max_wall_seconds": 0.000892047,
+          "max_cpu_seconds": 0.000891738,
+          "max_units": 1
+        },
+        "notify_main": {
+          "calls": 952864,
+          "wall_seconds": 6.170369,
+          "cpu_seconds": 5.605186,
+          "units": 952864,
+          "max_wall_seconds": 0.004230754,
+          "max_cpu_seconds": 0.004229727,
+          "max_units": 1
+        },
+        "queue_residence_wall_only": {
+          "calls": 952864,
+          "wall_seconds": 95.676612,
+          "cpu_seconds": 0.0,
+          "units": 952864,
+          "max_wall_seconds": 0.005186754,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "pending_residence_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_pending_wall_only": {
+          "calls": 943317,
+          "wall_seconds": 811.358959,
+          "cpu_seconds": 0.0,
+          "units": 943317,
+          "max_wall_seconds": 0.008439917,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_queue_wall_only": {
+          "calls": 943317,
+          "wall_seconds": 94.605065,
+          "cpu_seconds": 0.0,
+          "units": 943317,
+          "max_wall_seconds": 0.005186423,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_turn": {
+          "calls": 943317,
+          "wall_seconds": 46.678991,
+          "cpu_seconds": 45.362372,
+          "units": 943317,
+          "max_wall_seconds": 0.003883329,
+          "max_cpu_seconds": 0.003882899,
+          "max_units": 1
+        },
+        "context_wait_started": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_acquired_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_cancelled_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_mutex_wait": {
+          "calls": 1902330,
+          "wall_seconds": 3.246097,
+          "cpu_seconds": 1.433078,
+          "units": 0,
+          "max_wall_seconds": 0.001511036,
+          "max_cpu_seconds": 0.001508793,
+          "max_units": 0
+        }
+      }
+    }
+  },
+  {
+    "concurrency": 16,
+    "repetition": 2,
+    "execution_status": "completed",
+    "started_kst": "2026-11-25T21:35:13.114166+09:00",
+    "warmup": {
+      "duration_us": 5101112,
+      "completed": 125708,
+      "normal": 125708,
+      "http_errors": 0,
+      "bad_bodies": 0,
+      "connect_errors": 0,
+      "read_errors": 0,
+      "write_errors": 0,
+      "timeout_errors": 0,
+      "p95_us": 3651.0,
+      "p99_us": 26597.0,
+      "mean_us": 1432.461,
+      "max_us": 80422.0,
+      "command": [
+        "/mnt/c/Users/ljw/Desktop/Jungle_Project/Week_13_WebServer/Krafton_Jungle_Week13_Team2/artifacts/load-tools/wrk-4.2.0/wrk",
+        "-t1",
+        "-c16",
+        "-d5s",
+        "--latency",
+        "--timeout",
+        "3s",
+        "-s",
+        "/mnt/c/Users/ljw/Desktop/Jungle_Project/Week_13_WebServer/Krafton_Jungle_Week13_Team2/artifacts/load-tools/post-empty.lua",
+        "http://127.0.0.1:53907/echo"
+      ],
+      "sampled_wall_seconds": 5.163565151997318,
+      "normal_rps": 24643.254255150645,
+      "total_rps": 24643.254255150645,
+      "http_error_percent": 0.0,
+      "server_cpu_seconds": 15.36,
+      "generator_cpu_seconds": 2.5245759999999677,
+      "server_cpu_percent_one_core": 297.46889112183663,
+      "generator_cpu_percent_one_core": 48.89211089015574,
+      "thread_cpu": [
+        {
+          "tid": 552,
+          "role": "main",
+          "cpu_seconds": 3.39,
+          "cpu_percent_one_core": 65.6523138608741
+        },
+        {
+          "tid": 553,
+          "role": "worker",
+          "cpu_seconds": 2.98,
+          "cpu_percent_one_core": 57.71206351191883
+        },
+        {
+          "tid": 554,
+          "role": "worker",
+          "cpu_seconds": 2.99,
+          "cpu_percent_one_core": 57.90572815457627
+        },
+        {
+          "tid": 555,
+          "role": "worker",
+          "cpu_seconds": 2.97,
+          "cpu_percent_one_core": 57.51839886926138
+        },
+        {
+          "tid": 556,
+          "role": "worker",
+          "cpu_seconds": 3.0,
+          "cpu_percent_one_core": 58.09939279723372
+        }
+      ]
+    },
+    "measurement": {
+      "duration_us": 30018500,
+      "completed": 768946,
+      "normal": 768946,
+      "http_errors": 0,
+      "bad_bodies": 0,
+      "connect_errors": 0,
+      "read_errors": 0,
+      "write_errors": 0,
+      "timeout_errors": 0,
+      "p95_us": 1277.0,
+      "p99_us": 7682.0,
+      "mean_us": 805.952,
+      "max_us": 46090.0,
+      "command": [
+        "/mnt/c/Users/ljw/Desktop/Jungle_Project/Week_13_WebServer/Krafton_Jungle_Week13_Team2/artifacts/load-tools/wrk-4.2.0/wrk",
+        "-t1",
+        "-c16",
+        "-d30s",
+        "--latency",
+        "--timeout",
+        "3s",
+        "-s",
+        "/mnt/c/Users/ljw/Desktop/Jungle_Project/Week_13_WebServer/Krafton_Jungle_Week13_Team2/artifacts/load-tools/post-empty.lua",
+        "http://127.0.0.1:53907/echo"
+      ],
+      "sampled_wall_seconds": 30.058553948001645,
+      "normal_rps": 25615.73696220664,
+      "total_rps": 25615.73696220664,
+      "http_error_percent": 0.0,
+      "server_cpu_seconds": 89.37,
+      "generator_cpu_seconds": 14.836817999999994,
+      "server_cpu_percent_one_core": 297.31969194060815,
+      "generator_cpu_percent_one_core": 49.35971978447878,
+      "thread_cpu": [
+        {
+          "tid": 552,
+          "role": "main",
+          "cpu_seconds": 20.22,
+          "cpu_percent_one_core": 67.26870505806308
+        },
+        {
+          "tid": 553,
+          "role": "worker",
+          "cpu_seconds": 17.23,
+          "cpu_percent_one_core": 57.32145341990241
+        },
+        {
+          "tid": 554,
+          "role": "worker",
+          "cpu_seconds": 17.299999999999997,
+          "cpu_percent_one_core": 57.5543322207958
+        },
+        {
+          "tid": 555,
+          "role": "worker",
+          "cpu_seconds": 17.26,
+          "cpu_percent_one_core": 57.4212586202853
+        },
+        {
+          "tid": 556,
+          "role": "worker",
+          "cpu_seconds": 17.35,
+          "cpu_percent_one_core": 57.72067422143395
+        }
+      ]
+    },
+    "server_exit_code": 0,
+    "server_close_reasons_including_warmup_and_shutdown": {
+      "peer_closed": 5,
+      "response_complete": 8930,
+      "recv_error": 30
+    },
+    "server_profile": {
+      "main": {
+        "prepare_changed": {
+          "calls": 472202,
+          "wall_seconds": 5.337121,
+          "cpu_seconds": 4.994705,
+          "units": 905685,
+          "max_wall_seconds": 0.011537645,
+          "max_cpu_seconds": 0.002910677,
+          "max_units": 15
+        },
+        "epoll_wait": {
+          "calls": 472202,
+          "wall_seconds": 8.472107,
+          "cpu_seconds": 2.44826,
+          "units": 1309506,
+          "max_wall_seconds": 0.267759043,
+          "max_cpu_seconds": 0.017935731,
+          "max_units": 20
+        },
+        "ready_dispatch": {
+          "calls": 472201,
+          "wall_seconds": 2.514204,
+          "cpu_seconds": 2.344059,
+          "units": 1309506,
+          "max_wall_seconds": 0.004867345,
+          "max_cpu_seconds": 0.00486706,
+          "max_units": 20
+        },
+        "accept": {
+          "calls": 8101,
+          "wall_seconds": 0.717387,
+          "cpu_seconds": 0.602713,
+          "units": 0,
+          "max_wall_seconds": 0.016632137,
+          "max_cpu_seconds": 0.012551914,
+          "max_units": 0
+        },
+        "notification_drain": {
+          "calls": 404685,
+          "wall_seconds": 1.417929,
+          "cpu_seconds": 1.266642,
+          "units": 404685,
+          "max_wall_seconds": 0.048364722,
+          "max_cpu_seconds": 0.048364315,
+          "max_units": 1
+        },
+        "timer_cancel": {
+          "calls": 905685,
+          "wall_seconds": 0.88257,
+          "cpu_seconds": 0.491094,
+          "units": 2042924,
+          "max_wall_seconds": 0.003552119,
+          "max_cpu_seconds": 0.002351123,
+          "max_units": 8
+        },
+        "timer_update": {
+          "calls": 8965,
+          "wall_seconds": 0.008874,
+          "cpu_seconds": 0.005701,
+          "units": 8960,
+          "max_wall_seconds": 6.1091e-05,
+          "max_cpu_seconds": 6.0371e-05,
+          "max_units": 1
+        },
+        "timer_expire": {
+          "calls": 944404,
+          "wall_seconds": 0.714306,
+          "cpu_seconds": 0.388633,
+          "units": 0,
+          "max_wall_seconds": 0.001819053,
+          "max_cpu_seconds": 0.001816668,
+          "max_units": 0
+        },
+        "server_mutex_wait": {
+          "calls": 953369,
+          "wall_seconds": 8.104597,
+          "cpu_seconds": 1.661418,
+          "units": 0,
+          "max_wall_seconds": 0.015284907,
+          "max_cpu_seconds": 0.012195749,
+          "max_units": 0
+        },
+        "queue_take": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "queue_enqueue": {
+          "calls": 896720,
+          "wall_seconds": 2.104552,
+          "cpu_seconds": 1.778393,
+          "units": 367296,
+          "max_wall_seconds": 0.003718689,
+          "max_cpu_seconds": 0.003717231,
+          "max_units": 4
+        },
+        "worker_idle_condwait": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "request_turn": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "publish_result": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "notify_main": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "queue_residence_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "pending_residence_wall_only": {
+          "calls": 896720,
+          "wall_seconds": 253.381319,
+          "cpu_seconds": 0.0,
+          "units": 896720,
+          "max_wall_seconds": 0.061713902,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_pending_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_queue_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_turn": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_started": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_acquired_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_cancelled_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_mutex_wait": {
+          "calls": 481167,
+          "wall_seconds": 0.547366,
+          "cpu_seconds": 0.21754,
+          "units": 0,
+          "max_wall_seconds": 0.011479777,
+          "max_cpu_seconds": 0.001135322,
+          "max_units": 0
+        }
+      },
+      "workers": {
+        "prepare_changed": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "epoll_wait": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "ready_dispatch": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "accept": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "notification_drain": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "timer_cancel": {
+          "calls": 8965,
+          "wall_seconds": 0.006135,
+          "cpu_seconds": 0.003189,
+          "units": 0,
+          "max_wall_seconds": 3.8602e-05,
+          "max_cpu_seconds": 1.1211e-05,
+          "max_units": 0
+        },
+        "timer_update": {
+          "calls": 896720,
+          "wall_seconds": 0.879085,
+          "cpu_seconds": 0.571033,
+          "units": 917443,
+          "max_wall_seconds": 0.000498799,
+          "max_cpu_seconds": 0.000496284,
+          "max_units": 5
+        },
+        "timer_expire": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "server_mutex_wait": {
+          "calls": 1793444,
+          "wall_seconds": 47.479146,
+          "cpu_seconds": 6.704325,
+          "units": 0,
+          "max_wall_seconds": 0.016426927,
+          "max_cpu_seconds": 0.016162605,
+          "max_units": 0
+        },
+        "queue_take": {
+          "calls": 896724,
+          "wall_seconds": 0.788789,
+          "cpu_seconds": 0.481203,
+          "units": 896720,
+          "max_wall_seconds": 0.000409655,
+          "max_cpu_seconds": 0.000376181,
+          "max_units": 1
+        },
+        "queue_enqueue": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "worker_idle_condwait": {
+          "calls": 94495,
+          "wall_seconds": 22.126301,
+          "cpu_seconds": 1.965226,
+          "units": 0,
+          "max_wall_seconds": 0.273568448,
+          "max_cpu_seconds": 0.016438991,
+          "max_units": 0
+        },
+        "request_turn": {
+          "calls": 896720,
+          "wall_seconds": 45.125351,
+          "cpu_seconds": 43.848807,
+          "units": 896720,
+          "max_wall_seconds": 0.038267381,
+          "max_cpu_seconds": 0.038254084,
+          "max_units": 1
+        },
+        "publish_result": {
+          "calls": 896720,
+          "wall_seconds": 1.662204,
+          "cpu_seconds": 1.35318,
+          "units": 896720,
+          "max_wall_seconds": 0.000746576,
+          "max_cpu_seconds": 0.000555916,
+          "max_units": 1
+        },
+        "notify_main": {
+          "calls": 896720,
+          "wall_seconds": 7.135026,
+          "cpu_seconds": 6.592078,
+          "units": 896720,
+          "max_wall_seconds": 0.048450572,
+          "max_cpu_seconds": 0.048449816,
+          "max_units": 1
+        },
+        "queue_residence_wall_only": {
+          "calls": 896720,
+          "wall_seconds": 93.737056,
+          "cpu_seconds": 0.0,
+          "units": 896720,
+          "max_wall_seconds": 0.049795216,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "pending_residence_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_pending_wall_only": {
+          "calls": 887755,
+          "wall_seconds": 251.600761,
+          "cpu_seconds": 0.0,
+          "units": 887755,
+          "max_wall_seconds": 0.061715194,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_queue_wall_only": {
+          "calls": 887755,
+          "wall_seconds": 92.664019,
+          "cpu_seconds": 0.0,
+          "units": 887755,
+          "max_wall_seconds": 0.049795046,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_turn": {
+          "calls": 887755,
+          "wall_seconds": 45.36204,
+          "cpu_seconds": 44.125878,
+          "units": 887755,
+          "max_wall_seconds": 0.038267761,
+          "max_cpu_seconds": 0.038254565,
+          "max_units": 1
+        },
+        "context_wait_started": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_acquired_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_cancelled_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_mutex_wait": {
+          "calls": 1789370,
+          "wall_seconds": 3.041198,
+          "cpu_seconds": 1.356142,
+          "units": 0,
+          "max_wall_seconds": 0.011423621,
+          "max_cpu_seconds": 0.011264392,
+          "max_units": 0
+        }
+      }
+    }
+  },
+  {
+    "concurrency": 16,
+    "repetition": 3,
+    "execution_status": "completed",
+    "started_kst": "2026-11-25T21:35:48.634613+09:00",
+    "warmup": {
+      "duration_us": 5100047,
+      "completed": 145521,
+      "normal": 145521,
+      "http_errors": 0,
+      "bad_bodies": 0,
+      "connect_errors": 0,
+      "read_errors": 0,
+      "write_errors": 0,
+      "timeout_errors": 0,
+      "p95_us": 872.0,
+      "p99_us": 1117.0,
+      "mean_us": 548.861,
+      "max_us": 2855.0,
+      "command": [
+        "/mnt/c/Users/ljw/Desktop/Jungle_Project/Week_13_WebServer/Krafton_Jungle_Week13_Team2/artifacts/load-tools/wrk-4.2.0/wrk",
+        "-t1",
+        "-c16",
+        "-d5s",
+        "--latency",
+        "--timeout",
+        "3s",
+        "-s",
+        "/mnt/c/Users/ljw/Desktop/Jungle_Project/Week_13_WebServer/Krafton_Jungle_Week13_Team2/artifacts/load-tools/post-empty.lua",
+        "http://127.0.0.1:49995/echo"
+      ],
+      "sampled_wall_seconds": 5.148455575006665,
+      "normal_rps": 28533.26645813264,
+      "total_rps": 28533.26645813264,
+      "http_error_percent": 0.0,
+      "server_cpu_seconds": 15.42,
+      "generator_cpu_seconds": 2.52799600000003,
+      "server_cpu_percent_one_core": 299.5072944759757,
+      "generator_cpu_percent_one_core": 49.102026096374686,
+      "thread_cpu": [
+        {
+          "tid": 567,
+          "role": "main",
+          "cpu_seconds": 3.51,
+          "cpu_percent_one_core": 68.17578492935634
+        },
+        {
+          "tid": 568,
+          "role": "worker",
+          "cpu_seconds": 2.99,
+          "cpu_percent_one_core": 58.07566864352577
+        },
+        {
+          "tid": 569,
+          "role": "worker",
+          "cpu_seconds": 2.96,
+          "cpu_percent_one_core": 57.49296962703554
+        },
+        {
+          "tid": 570,
+          "role": "worker",
+          "cpu_seconds": 2.96,
+          "cpu_percent_one_core": 57.49296962703554
+        },
+        {
+          "tid": 571,
+          "role": "worker",
+          "cpu_seconds": 2.96,
+          "cpu_percent_one_core": 57.49296962703554
+        }
+      ]
+    },
+    "measurement": {
+      "duration_us": 30004748,
+      "completed": 807525,
+      "normal": 807525,
+      "http_errors": 0,
+      "bad_bodies": 0,
+      "connect_errors": 0,
+      "read_errors": 0,
+      "write_errors": 0,
+      "timeout_errors": 0,
+      "p95_us": 1028.0,
+      "p99_us": 2259.0,
+      "mean_us": 627.83,
+      "max_us": 31550.0,
+      "command": [
+        "/mnt/c/Users/ljw/Desktop/Jungle_Project/Week_13_WebServer/Krafton_Jungle_Week13_Team2/artifacts/load-tools/wrk-4.2.0/wrk",
+        "-t1",
+        "-c16",
+        "-d30s",
+        "--latency",
+        "--timeout",
+        "3s",
+        "-s",
+        "/mnt/c/Users/ljw/Desktop/Jungle_Project/Week_13_WebServer/Krafton_Jungle_Week13_Team2/artifacts/load-tools/post-empty.lua",
+        "http://127.0.0.1:49995/echo"
+      ],
+      "sampled_wall_seconds": 30.056084769996232,
+      "normal_rps": 26913.24053113194,
+      "total_rps": 26913.24053113194,
+      "http_error_percent": 0.0,
+      "server_cpu_seconds": 89.05,
+      "generator_cpu_seconds": 14.723779999999977,
+      "server_cpu_percent_one_core": 296.2794411895424,
+      "generator_cpu_percent_one_core": 48.987684565948946,
+      "thread_cpu": [
+        {
+          "tid": 567,
+          "role": "main",
+          "cpu_seconds": 20.18,
+          "cpu_percent_one_core": 67.14114680746734
+        },
+        {
+          "tid": 568,
+          "role": "worker",
+          "cpu_seconds": 17.25,
+          "cpu_percent_one_core": 57.39270477843466
+        },
+        {
+          "tid": 569,
+          "role": "worker",
+          "cpu_seconds": 17.189999999999998,
+          "cpu_percent_one_core": 57.19307797920531
+        },
+        {
+          "tid": 570,
+          "role": "worker",
+          "cpu_seconds": 17.23,
+          "cpu_percent_one_core": 57.32616251202488
+        },
+        {
+          "tid": 571,
+          "role": "worker",
+          "cpu_seconds": 17.21,
+          "cpu_percent_one_core": 57.2596202456151
+        }
+      ]
+    },
+    "server_exit_code": 0,
+    "server_close_reasons_including_warmup_and_shutdown": {
+      "peer_closed": 7,
+      "response_complete": 9515,
+      "recv_error": 27,
+      "drain_error": 1
+    },
+    "server_profile": {
+      "main": {
+        "prepare_changed": {
+          "calls": 504361,
+          "wall_seconds": 5.444218,
+          "cpu_seconds": 5.063447,
+          "units": 963272,
+          "max_wall_seconds": 0.011272035,
+          "max_cpu_seconds": 0.011275278,
+          "max_units": 15
+        },
+        "epoll_wait": {
+          "calls": 504361,
+          "wall_seconds": 7.97074,
+          "cpu_seconds": 2.233955,
+          "units": 1395205,
+          "max_wall_seconds": 0.250706745,
+          "max_cpu_seconds": 0.012440377,
+          "max_units": 18
+        },
+        "ready_dispatch": {
+          "calls": 504360,
+          "wall_seconds": 2.563158,
+          "cpu_seconds": 2.373151,
+          "units": 1395205,
+          "max_wall_seconds": 0.001512363,
+          "max_cpu_seconds": 0.001075636,
+          "max_units": 18
+        },
+        "accept": {
+          "calls": 8682,
+          "wall_seconds": 0.71562,
+          "cpu_seconds": 0.606129,
+          "units": 0,
+          "max_wall_seconds": 0.000849784,
+          "max_cpu_seconds": 0.000766549,
+          "max_units": 0
+        },
+        "notification_drain": {
+          "calls": 432801,
+          "wall_seconds": 1.192137,
+          "cpu_seconds": 1.033107,
+          "units": 432801,
+          "max_wall_seconds": 0.016829892,
+          "max_cpu_seconds": 0.016827965,
+          "max_units": 1
+        },
+        "timer_cancel": {
+          "calls": 963272,
+          "wall_seconds": 0.913506,
+          "cpu_seconds": 0.506309,
+          "units": 2158087,
+          "max_wall_seconds": 0.003165995,
+          "max_cpu_seconds": 0.000652296,
+          "max_units": 8
+        },
+        "timer_update": {
+          "calls": 9550,
+          "wall_seconds": 0.009202,
+          "cpu_seconds": 0.005888,
+          "units": 9545,
+          "max_wall_seconds": 6.7125e-05,
+          "max_cpu_seconds": 6.6113e-05,
+          "max_units": 1
+        },
+        "timer_expire": {
+          "calls": 1008722,
+          "wall_seconds": 0.740342,
+          "cpu_seconds": 0.400917,
+          "units": 0,
+          "max_wall_seconds": 0.000881766,
+          "max_cpu_seconds": 0.000196696,
+          "max_units": 0
+        },
+        "server_mutex_wait": {
+          "calls": 1018272,
+          "wall_seconds": 8.265592,
+          "cpu_seconds": 1.695305,
+          "units": 0,
+          "max_wall_seconds": 0.006760719,
+          "max_cpu_seconds": 0.001654083,
+          "max_units": 0
+        },
+        "queue_take": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "queue_enqueue": {
+          "calls": 953722,
+          "wall_seconds": 2.131034,
+          "cpu_seconds": 1.780467,
+          "units": 389961,
+          "max_wall_seconds": 0.001511272,
+          "max_cpu_seconds": 0.001068432,
+          "max_units": 4
+        },
+        "worker_idle_condwait": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "request_turn": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "publish_result": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "notify_main": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "queue_residence_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "pending_residence_wall_only": {
+          "calls": 953722,
+          "wall_seconds": 253.5813,
+          "cpu_seconds": 0.0,
+          "units": 953722,
+          "max_wall_seconds": 0.030216477,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_pending_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_queue_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_turn": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_started": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_acquired_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_cancelled_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_mutex_wait": {
+          "calls": 513911,
+          "wall_seconds": 0.564211,
+          "cpu_seconds": 0.227285,
+          "units": 0,
+          "max_wall_seconds": 0.00285257,
+          "max_cpu_seconds": 0.000759224,
+          "max_units": 0
+        }
+      },
+      "workers": {
+        "prepare_changed": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "epoll_wait": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "ready_dispatch": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "accept": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "notification_drain": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "timer_cancel": {
+          "calls": 9550,
+          "wall_seconds": 0.006588,
+          "cpu_seconds": 0.003456,
+          "units": 0,
+          "max_wall_seconds": 7.3036e-05,
+          "max_cpu_seconds": 7.2213e-05,
+          "max_units": 0
+        },
+        "timer_update": {
+          "calls": 953722,
+          "wall_seconds": 0.913262,
+          "cpu_seconds": 0.589189,
+          "units": 975708,
+          "max_wall_seconds": 0.001441577,
+          "max_cpu_seconds": 0.00098362,
+          "max_units": 5
+        },
+        "timer_expire": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "server_mutex_wait": {
+          "calls": 1907448,
+          "wall_seconds": 48.747056,
+          "cpu_seconds": 6.831391,
+          "units": 0,
+          "max_wall_seconds": 0.008142708,
+          "max_cpu_seconds": 0.007542758,
+          "max_units": 0
+        },
+        "queue_take": {
+          "calls": 953726,
+          "wall_seconds": 0.81538,
+          "cpu_seconds": 0.493599,
+          "units": 953722,
+          "max_wall_seconds": 0.000403729,
+          "max_cpu_seconds": 0.000400457,
+          "max_units": 1
+        },
+        "queue_enqueue": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "worker_idle_condwait": {
+          "calls": 96098,
+          "wall_seconds": 20.889894,
+          "cpu_seconds": 1.854304,
+          "units": 0,
+          "max_wall_seconds": 0.254779479,
+          "max_cpu_seconds": 0.011205589,
+          "max_units": 0
+        },
+        "request_turn": {
+          "calls": 953722,
+          "wall_seconds": 45.89188,
+          "cpu_seconds": 44.442722,
+          "units": 953722,
+          "max_wall_seconds": 0.015976408,
+          "max_cpu_seconds": 0.015974325,
+          "max_units": 1
+        },
+        "publish_result": {
+          "calls": 953722,
+          "wall_seconds": 1.765723,
+          "cpu_seconds": 1.442637,
+          "units": 953722,
+          "max_wall_seconds": 0.001444042,
+          "max_cpu_seconds": 0.001443285,
+          "max_units": 1
+        },
+        "notify_main": {
+          "calls": 953722,
+          "wall_seconds": 6.090018,
+          "cpu_seconds": 5.512561,
+          "units": 953722,
+          "max_wall_seconds": 0.00739487,
+          "max_cpu_seconds": 0.007389412,
+          "max_units": 1
+        },
+        "queue_residence_wall_only": {
+          "calls": 953722,
+          "wall_seconds": 94.798851,
+          "cpu_seconds": 0.0,
+          "units": 953722,
+          "max_wall_seconds": 0.015063032,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "pending_residence_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_pending_wall_only": {
+          "calls": 944172,
+          "wall_seconds": 251.823234,
+          "cpu_seconds": 0.0,
+          "units": 944172,
+          "max_wall_seconds": 0.030217538,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_queue_wall_only": {
+          "calls": 944172,
+          "wall_seconds": 93.714947,
+          "cpu_seconds": 0.0,
+          "units": 944172,
+          "max_wall_seconds": 0.015062942,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_turn": {
+          "calls": 944172,
+          "wall_seconds": 46.148579,
+          "cpu_seconds": 44.746551,
+          "units": 944172,
+          "max_wall_seconds": 0.015976789,
+          "max_cpu_seconds": 0.015974746,
+          "max_units": 1
+        },
+        "context_wait_started": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_acquired_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_cancelled_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_mutex_wait": {
+          "calls": 1906150,
+          "wall_seconds": 3.170211,
+          "cpu_seconds": 1.386991,
+          "units": 0,
+          "max_wall_seconds": 0.003942654,
+          "max_cpu_seconds": 0.000580973,
+          "max_units": 0
+        }
+      }
+    }
+  },
+  {
+    "concurrency": 32,
+    "repetition": 3,
+    "execution_status": "completed",
+    "started_kst": "2026-11-25T21:36:24.139103+09:00",
+    "warmup": {
+      "duration_us": 5000842,
+      "completed": 139629,
+      "normal": 139629,
+      "http_errors": 0,
+      "bad_bodies": 0,
+      "connect_errors": 0,
+      "read_errors": 0,
+      "write_errors": 0,
+      "timeout_errors": 0,
+      "p95_us": 1657.0,
+      "p99_us": 2087.0,
+      "mean_us": 1137.03,
+      "max_us": 8923.0,
+      "command": [
+        "/mnt/c/Users/ljw/Desktop/Jungle_Project/Week_13_WebServer/Krafton_Jungle_Week13_Team2/artifacts/load-tools/wrk-4.2.0/wrk",
+        "-t1",
+        "-c32",
+        "-d5s",
+        "--latency",
+        "--timeout",
+        "3s",
+        "-s",
+        "/mnt/c/Users/ljw/Desktop/Jungle_Project/Week_13_WebServer/Krafton_Jungle_Week13_Team2/artifacts/load-tools/post-empty.lua",
+        "http://127.0.0.1:33839/echo"
+      ],
+      "sampled_wall_seconds": 5.050612810002349,
+      "normal_rps": 27921.098087082137,
+      "total_rps": 27921.098087082137,
+      "http_error_percent": 0.0,
+      "server_cpu_seconds": 15.05,
+      "generator_cpu_seconds": 2.5285710000000563,
+      "server_cpu_percent_one_core": 297.98364210763964,
+      "generator_cpu_percent_one_core": 50.0646376018454,
+      "thread_cpu": [
+        {
+          "tid": 580,
+          "role": "main",
+          "cpu_seconds": 3.45,
+          "cpu_percent_one_core": 68.3085425429473
+        },
+        {
+          "tid": 581,
+          "role": "worker",
+          "cpu_seconds": 2.9,
+          "cpu_percent_one_core": 57.418774891173086
+        },
+        {
+          "tid": 582,
+          "role": "worker",
+          "cpu_seconds": 2.89,
+          "cpu_percent_one_core": 57.22077911568628
+        },
+        {
+          "tid": 583,
+          "role": "worker",
+          "cpu_seconds": 2.89,
+          "cpu_percent_one_core": 57.22077911568628
+        },
+        {
+          "tid": 584,
+          "role": "worker",
+          "cpu_seconds": 2.89,
+          "cpu_percent_one_core": 57.22077911568628
+        }
+      ]
+    },
+    "measurement": {
+      "duration_us": 30031986,
+      "completed": 803746,
+      "normal": 803746,
+      "http_errors": 0,
+      "bad_bodies": 0,
+      "connect_errors": 0,
+      "read_errors": 0,
+      "write_errors": 0,
+      "timeout_errors": 0,
+      "p95_us": 1887.0,
+      "p99_us": 5611.0,
+      "mean_us": 1378.792,
+      "max_us": 92554.0,
+      "command": [
+        "/mnt/c/Users/ljw/Desktop/Jungle_Project/Week_13_WebServer/Krafton_Jungle_Week13_Team2/artifacts/load-tools/wrk-4.2.0/wrk",
+        "-t1",
+        "-c32",
+        "-d30s",
+        "--latency",
+        "--timeout",
+        "3s",
+        "-s",
+        "/mnt/c/Users/ljw/Desktop/Jungle_Project/Week_13_WebServer/Krafton_Jungle_Week13_Team2/artifacts/load-tools/post-empty.lua",
+        "http://127.0.0.1:33839/echo"
+      ],
+      "sampled_wall_seconds": 30.094796333003615,
+      "normal_rps": 26762.998624200212,
+      "total_rps": 26762.998624200212,
+      "http_error_percent": 0.0,
+      "server_cpu_seconds": 90.38000000000001,
+      "generator_cpu_seconds": 15.133399999999938,
+      "server_cpu_percent_one_core": 300.3176994452171,
+      "generator_cpu_percent_one_core": 50.28576978075049,
+      "thread_cpu": [
+        {
+          "tid": 580,
+          "role": "main",
+          "cpu_seconds": 20.43,
+          "cpu_percent_one_core": 67.88549014899075
+        },
+        {
+          "tid": 581,
+          "role": "worker",
+          "cpu_seconds": 17.470000000000002,
+          "cpu_percent_one_core": 58.04990273631271
+        },
+        {
+          "tid": 582,
+          "role": "worker",
+          "cpu_seconds": 17.46,
+          "cpu_percent_one_core": 58.01667440045906
+        },
+        {
+          "tid": 583,
+          "role": "worker",
+          "cpu_seconds": 17.49,
+          "cpu_percent_one_core": 58.11635940801998
+        },
+        {
+          "tid": 584,
+          "role": "worker",
+          "cpu_seconds": 17.52,
+          "cpu_percent_one_core": 58.21604441558091
+        }
+      ]
+    },
+    "server_exit_code": 0,
+    "server_close_reasons_including_warmup_and_shutdown": {
+      "peer_closed": 7,
+      "response_complete": 9403,
+      "recv_error": 59,
+      "drain_error": 1
+    },
+    "server_profile": {
+      "main": {
+        "prepare_changed": {
+          "calls": 496951,
+          "wall_seconds": 5.460173,
+          "cpu_seconds": 5.126703,
+          "units": 954585,
+          "max_wall_seconds": 0.012353971,
+          "max_cpu_seconds": 0.012353922,
+          "max_units": 16
+        },
+        "epoll_wait": {
+          "calls": 496951,
+          "wall_seconds": 7.813274,
+          "cpu_seconds": 2.217011,
+          "units": 1381509,
+          "max_wall_seconds": 0.245306665,
+          "max_cpu_seconds": 0.016147212,
+          "max_units": 33
+        },
+        "ready_dispatch": {
+          "calls": 496950,
+          "wall_seconds": 2.515712,
+          "cpu_seconds": 2.346063,
+          "units": 1381509,
+          "max_wall_seconds": 0.006181142,
+          "max_cpu_seconds": 0.006180953,
+          "max_units": 33
+        },
+        "accept": {
+          "calls": 8031,
+          "wall_seconds": 0.641075,
+          "cpu_seconds": 0.537512,
+          "units": 0,
+          "max_wall_seconds": 0.001140976,
+          "max_cpu_seconds": 0.001139024,
+          "max_units": 0
+        },
+        "notification_drain": {
+          "calls": 428363,
+          "wall_seconds": 1.260389,
+          "cpu_seconds": 1.101399,
+          "units": 428363,
+          "max_wall_seconds": 0.064518744,
+          "max_cpu_seconds": 0.064518784,
+          "max_units": 1
+        },
+        "timer_cancel": {
+          "calls": 954585,
+          "wall_seconds": 0.966905,
+          "cpu_seconds": 0.557078,
+          "units": 3007289,
+          "max_wall_seconds": 0.000277622,
+          "max_cpu_seconds": 0.000274761,
+          "max_units": 10
+        },
+        "timer_update": {
+          "calls": 9470,
+          "wall_seconds": 0.009528,
+          "cpu_seconds": 0.006179,
+          "units": 9465,
+          "max_wall_seconds": 6.4417e-05,
+          "max_cpu_seconds": 6.427e-05,
+          "max_units": 1
+        },
+        "timer_expire": {
+          "calls": 993902,
+          "wall_seconds": 0.731076,
+          "cpu_seconds": 0.39392,
+          "units": 0,
+          "max_wall_seconds": 0.000867352,
+          "max_cpu_seconds": 0.000857689,
+          "max_units": 0
+        },
+        "server_mutex_wait": {
+          "calls": 1003372,
+          "wall_seconds": 8.28963,
+          "cpu_seconds": 1.700086,
+          "units": 0,
+          "max_wall_seconds": 0.009802913,
+          "max_cpu_seconds": 0.008828261,
+          "max_units": 0
+        },
+        "queue_take": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "queue_enqueue": {
+          "calls": 945115,
+          "wall_seconds": 2.089096,
+          "cpu_seconds": 1.766403,
+          "units": 388282,
+          "max_wall_seconds": 0.006175442,
+          "max_cpu_seconds": 0.006175242,
+          "max_units": 4
+        },
+        "worker_idle_condwait": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "request_turn": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "publish_result": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "notify_main": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "queue_residence_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "pending_residence_wall_only": {
+          "calls": 945115,
+          "wall_seconds": 816.587746,
+          "cpu_seconds": 0.0,
+          "units": 945115,
+          "max_wall_seconds": 0.080499578,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_pending_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_queue_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_turn": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_started": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_acquired_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_cancelled_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_mutex_wait": {
+          "calls": 506421,
+          "wall_seconds": 0.570494,
+          "cpu_seconds": 0.228013,
+          "units": 0,
+          "max_wall_seconds": 0.000911494,
+          "max_cpu_seconds": 0.000545804,
+          "max_units": 0
+        }
+      },
+      "workers": {
+        "prepare_changed": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "epoll_wait": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "ready_dispatch": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "accept": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "notification_drain": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "timer_cancel": {
+          "calls": 9470,
+          "wall_seconds": 0.006479,
+          "cpu_seconds": 0.003407,
+          "units": 0,
+          "max_wall_seconds": 4.6625e-05,
+          "max_cpu_seconds": 4.5856e-05,
+          "max_units": 0
+        },
+        "timer_update": {
+          "calls": 945115,
+          "wall_seconds": 0.939219,
+          "cpu_seconds": 0.610539,
+          "units": 970997,
+          "max_wall_seconds": 0.000577921,
+          "max_cpu_seconds": 0.000577567,
+          "max_units": 6
+        },
+        "timer_expire": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "server_mutex_wait": {
+          "calls": 1890234,
+          "wall_seconds": 49.308044,
+          "cpu_seconds": 6.926975,
+          "units": 0,
+          "max_wall_seconds": 0.016287513,
+          "max_cpu_seconds": 0.016243702,
+          "max_units": 0
+        },
+        "queue_take": {
+          "calls": 945119,
+          "wall_seconds": 0.816275,
+          "cpu_seconds": 0.495114,
+          "units": 945115,
+          "max_wall_seconds": 0.000677168,
+          "max_cpu_seconds": 0.000674672,
+          "max_units": 1
+        },
+        "queue_enqueue": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "worker_idle_condwait": {
+          "calls": 92793,
+          "wall_seconds": 19.533797,
+          "cpu_seconds": 1.770125,
+          "units": 0,
+          "max_wall_seconds": 0.250704549,
+          "max_cpu_seconds": 0.004304494,
+          "max_units": 0
+        },
+        "request_turn": {
+          "calls": 945115,
+          "wall_seconds": 46.346778,
+          "cpu_seconds": 44.96391,
+          "units": 945115,
+          "max_wall_seconds": 0.034262327,
+          "max_cpu_seconds": 0.034244735,
+          "max_units": 1
+        },
+        "publish_result": {
+          "calls": 945115,
+          "wall_seconds": 1.761112,
+          "cpu_seconds": 1.439498,
+          "units": 945115,
+          "max_wall_seconds": 0.000781245,
+          "max_cpu_seconds": 0.000579009,
+          "max_units": 1
+        },
+        "notify_main": {
+          "calls": 945115,
+          "wall_seconds": 6.316839,
+          "cpu_seconds": 5.751142,
+          "units": 945115,
+          "max_wall_seconds": 0.064603059,
+          "max_cpu_seconds": 0.06460282,
+          "max_units": 1
+        },
+        "queue_residence_wall_only": {
+          "calls": 945115,
+          "wall_seconds": 95.414924,
+          "cpu_seconds": 0.0,
+          "units": 945115,
+          "max_wall_seconds": 0.05211852,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "pending_residence_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_pending_wall_only": {
+          "calls": 935645,
+          "wall_seconds": 808.406532,
+          "cpu_seconds": 0.0,
+          "units": 935645,
+          "max_wall_seconds": 0.080502514,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_queue_wall_only": {
+          "calls": 935645,
+          "wall_seconds": 94.333134,
+          "cpu_seconds": 0.0,
+          "units": 935645,
+          "max_wall_seconds": 0.052118379,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "nonterminal_turn": {
+          "calls": 935645,
+          "wall_seconds": 46.618806,
+          "cpu_seconds": 45.275139,
+          "units": 935645,
+          "max_wall_seconds": 0.034262808,
+          "max_cpu_seconds": 0.034245256,
+          "max_units": 1
+        },
+        "context_wait_started": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_acquired_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_wait_cancelled_wall_only": {
+          "calls": 0,
+          "wall_seconds": 0.0,
+          "cpu_seconds": 0.0,
+          "units": 0,
+          "max_wall_seconds": 0.0,
+          "max_cpu_seconds": 0.0,
+          "max_units": 0
+        },
+        "context_mutex_wait": {
+          "calls": 1886872,
+          "wall_seconds": 3.246442,
+          "cpu_seconds": 1.408539,
+          "units": 0,
+          "max_wall_seconds": 0.003995948,
+          "max_cpu_seconds": 0.000978699,
+          "max_units": 0
+        }
+      }
+    }
+  }
+]

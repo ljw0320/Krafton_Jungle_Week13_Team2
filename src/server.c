@@ -178,7 +178,7 @@ static uint64_t resume_contexts(struct server *server)
     struct context_pool *pool = &server->contexts;
     uint64_t visits = 0;
     for (;;) {
-        check_thread(pthread_mutex_lock(&pool->mutex));
+        check_thread(server_profile_context_lock(&pool->mutex));
         struct connection *client = pool->wait_count ? pool->waiters[0] : NULL;
         check_thread(pthread_mutex_unlock(&pool->mutex));
         if (!client || client->state != WAITING || client->pending) break;

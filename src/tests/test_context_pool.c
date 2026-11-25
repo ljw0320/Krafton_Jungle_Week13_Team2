@@ -87,12 +87,14 @@ static void wait_for_peers(void)
 
 static void *hold_context(void *argument)
 {
+    server_profile_worker();
     struct connection *client = argument;
     bool acquired = context_acquire(client);
     CHECK(acquired);
     wait_for_peers();
     wait_for_peers();
     context_release(client);
+    server_profile_flush();
     return NULL;
 }
 
@@ -152,11 +154,13 @@ static void test_fifo(void)
 
 int main(void)
 {
+    server_profile_start();
     test_fifo();
     test_acquire_preserves_owned_data();
     test_full_pool_returns_failure();
     test_release_and_clean_reuse();
     test_concurrent_ownership();
     puts("All 4 pool unit groups passed.");
+    server_profile_report();
     return 0;
 }

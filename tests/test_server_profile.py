@@ -70,4 +70,19 @@ def run(enabled):
         return responses
 
 assert run(False) == run(True)
+pool_env = dict(os.environ, JUNGLE_PROFILE='1')
+for key in ('JUNGLE_CONTEXTS', 'JUNGLE_CONNECTIONS'): pool_env.pop(key, None)
+subprocess.run(['make', 'test_context_pool'], cwd=str(ROOT), check=True,
+               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+pool = subprocess.run(['./test_context_pool'], cwd=str(ROOT), env=pool_env,
+                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+pool_json = [line.split('] ', 1)[1] for line in pool.stderr.decode().splitlines()
+             if line.startswith('[server_profile] ')]
+assert len(pool_json) == 1
+pool_profile = json.loads(pool_json[0])
+assert pool_profile['main']['context_wait_started']['calls'] == 5
+assert pool_profile['main']['context_wait_started']['max_units'] == 2
+assert pool_profile['main']['context_wait_acquired_wall_only']['calls'] == 3
+assert pool_profile['main']['context_wait_cancelled_wall_only']['calls'] == 2
+assert pool_profile['workers']['context_mutex_wait']['calls'] > 0
 print('server profile: disabled silence, enabled JSON, worker aggregation, HTTP parity passed')

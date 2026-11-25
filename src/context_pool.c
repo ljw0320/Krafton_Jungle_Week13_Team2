@@ -24,11 +24,12 @@ void context_pool_destroy(struct context_pool *pool)
 }
 
 /* pool mutex 아래 등록 순서가 FIFO 순서입니다. 신규 연결도 선두를 추월하지 못합니다. */
-static void remove_waiter(struct context_pool *pool, struct connection *client)
+static void remove_waiter(struct context_pool *pool, struct connection *client, bool acquired)
 {
     for (size_t i = 0; i < pool->wait_count; i++) {
         if (pool->waiters[i] != client)
             continue;
+        server_profile_context_finish(client, acquired);
         memmove(&pool->waiters[i], &pool->waiters[i + 1],
                 (--pool->wait_count - i) * sizeof(pool->waiters[0]));
         break;
@@ -41,14 +42,14 @@ bool context_acquire(struct connection *client)
     if (client->context)
         return true;
     struct context_pool *pool = client->context_pool;
-    check_thread(pthread_mutex_lock(&pool->mutex));
+    check_thread(server_profile_context_lock(&pool->mutex));
     if (!pool->wait_count || pool->waiters[0] == client) {
         for (int i = 0; i < pool->capacity; i++) {
             if (pool->owners[i])
                 continue;
             pool->owners[i] = client;
             client->context = &pool->entries[i];
-            remove_waiter(pool, client);
+            remove_waiter(pool, client, true);
             break;
         }
     }
@@ -58,6 +59,7 @@ bool context_acquire(struct connection *client)
         else {
             pool->waiters[pool->wait_count++] = client;
             client->context_wait_deadline = now_ms() + CONTEXT_WAIT_TIMEOUT_MS;
+            server_profile_context_start(client, pool->wait_count);
         }
     }
     check_thread(pthread_mutex_unlock(&pool->mutex));
@@ -70,8 +72,8 @@ bool context_acquire(struct connection *client)
 void context_release(struct connection *client)
 {
     struct context_pool *pool = client->context_pool;
-    check_thread(pthread_mutex_lock(&pool->mutex));
-    remove_waiter(pool, client);
+    check_thread(server_profile_context_lock(&pool->mutex));
+    remove_waiter(pool, client, false);
     for (int i = 0; i < pool->capacity; i++) {
         if (pool->owners[i] != client)
             continue;

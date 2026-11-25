@@ -5,7 +5,7 @@
 #include <string.h>
 #include <time.h>
 
-struct metric { uint64_t calls, wall, cpu, units, max_wall, max_cpu; };
+struct metric { uint64_t calls, wall, cpu, units, max_wall, max_cpu, max_units; };
 static bool enabled; /* immutable after start, before pthread_create */
 static _Thread_local struct metric local[SP_COUNT];
 static _Thread_local int role;
@@ -44,6 +44,7 @@ void server_profile_end(enum server_stage stage, struct server_stamp stamp, uint
     if (wall > local[stage].max_wall) local[stage].max_wall = wall;
     if (cpu > local[stage].max_cpu) local[stage].max_cpu = cpu;
     local[stage].units += units;
+    if (units > local[stage].max_units) local[stage].max_units = units;
     errno = error;
 }
 int64_t server_profile_wall(void)
@@ -74,12 +75,29 @@ void server_profile_active_waits(int64_t pending, int64_t queued, int64_t taken)
 }
 void server_profile_residence(int64_t queued) { residence(SP_QUEUE_RESIDENCE, queued); }
 void server_profile_pending(int64_t queued) { residence(SP_PENDING_RESIDENCE, queued); }
-int server_profile_lock(pthread_mutex_t *mutex)
+static int profile_lock(pthread_mutex_t *mutex, enum server_stage stage)
 {
     struct server_stamp stamp = server_profile_begin();
     int result = pthread_mutex_lock(mutex);
-    server_profile_end(SP_MUTEX_WAIT, stamp, 0);
+    server_profile_end(stage, stamp, 0);
     return result;
+}
+int server_profile_lock(pthread_mutex_t *mutex) { return profile_lock(mutex, SP_MUTEX_WAIT); }
+int server_profile_context_lock(pthread_mutex_t *mutex) { return profile_lock(mutex, SP_CONTEXT_MUTEX); }
+/* Called under the existing context-pool mutex; no additional shared lock. */
+void server_profile_context_start(struct connection *client, size_t waiting)
+{
+    if (!enabled) return;
+    client->profile_context_wait_at = server_profile_wall();
+    struct metric *metric = &local[SP_CONTEXT_WAIT_START];
+    metric->calls++;
+    metric->units++;
+    if (waiting > metric->max_units) metric->max_units = waiting;
+}
+void server_profile_context_finish(struct connection *client, bool acquired)
+{
+    residence(acquired ? SP_CONTEXT_WAIT : SP_CONTEXT_CANCEL, client->profile_context_wait_at);
+    client->profile_context_wait_at = 0;
 }
 /* No shared atomic increments on hot paths. Workers merge only when exiting. */
 void server_profile_flush(void)
@@ -93,6 +111,7 @@ void server_profile_flush(void)
         total[role][i].units += local[i].units;
         if (local[i].max_wall > total[role][i].max_wall) total[role][i].max_wall = local[i].max_wall;
         if (local[i].max_cpu > total[role][i].max_cpu) total[role][i].max_cpu = local[i].max_cpu;
+        if (local[i].max_units > total[role][i].max_units) total[role][i].max_units = local[i].max_units;
     }
     memset(local, 0, sizeof(local));
     check_thread(pthread_mutex_unlock(&merge_mutex));
@@ -103,14 +122,15 @@ void server_profile_report(void)
     server_profile_flush(); /* called by main only after all workers joined */
     const char *names[] = {"prepare_changed", "epoll_wait", "ready_dispatch", "accept", "notification_drain",
         "timer_cancel", "timer_update", "timer_expire", "server_mutex_wait", "queue_take",
-        "queue_enqueue", "worker_idle_condwait", "request_turn", "publish_result", "notify_main", "queue_residence_wall_only", "pending_residence_wall_only", "nonterminal_pending_wall_only", "nonterminal_queue_wall_only", "nonterminal_turn"};
+        "queue_enqueue", "worker_idle_condwait", "request_turn", "publish_result", "notify_main", "queue_residence_wall_only", "pending_residence_wall_only", "nonterminal_pending_wall_only", "nonterminal_queue_wall_only", "nonterminal_turn",
+        "context_wait_started", "context_wait_acquired_wall_only", "context_wait_cancelled_wall_only", "context_mutex_wait"};
     fprintf(stderr, "[server_profile] {");
     for (int group = 0; group < 2; group++) {
         fprintf(stderr, "%s\"%s\":{", group ? "," : "", group ? "workers" : "main");
         for (int i = 0; i < SP_COUNT; i++) {
             struct metric *m = &total[group][i];
-            fprintf(stderr, "%s\"%s\":{\"calls\":%" PRIu64 ",\"wall_seconds\":%.6f,\"cpu_seconds\":%.6f,\"units\":%" PRIu64 ",\"max_wall_seconds\":%.9f,\"max_cpu_seconds\":%.9f}",
-                i ? "," : "", names[i], m->calls, m->wall/1e9, m->cpu/1e9, m->units, m->max_wall/1e9, m->max_cpu/1e9);
+            fprintf(stderr, "%s\"%s\":{\"calls\":%" PRIu64 ",\"wall_seconds\":%.6f,\"cpu_seconds\":%.6f,\"units\":%" PRIu64 ",\"max_wall_seconds\":%.9f,\"max_cpu_seconds\":%.9f,\"max_units\":%" PRIu64 "}",
+                i ? "," : "", names[i], m->calls, m->wall/1e9, m->cpu/1e9, m->units, m->max_wall/1e9, m->max_cpu/1e9, m->max_units);
         }
         fprintf(stderr, "}");
     }
