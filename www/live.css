@@ -21,6 +21,11 @@
   white-space: pre-wrap;
 }
 
+.live-bot-source {
+  display: block;
+  color: #465b70;
+}
+
 .live-chat .chat-notice {
   margin: 0;
 }

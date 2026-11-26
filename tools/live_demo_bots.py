@@ -34,11 +34,12 @@ def read_bot(bot, client, inbox, finished):
             return
 
 
-def run_bots(addr, processes, count, stop, sides, sent, seen, observations):
+def run_bots(addr, processes, count, stop, sides, sent, seen, observations, on_message):
     clients = {}
     inbox = Queue()
     finished = threading.Event()
     readers = []
+    published = set()
 
     def receive_until(deadline):
         while not stop.is_set():
@@ -60,6 +61,11 @@ def run_bots(addr, processes, count, stop, sides, sent, seen, observations):
                 raise RuntimeError(f"{bot}이 예상하지 않은 메시지를 받았습니다.")
             observations.append((bot, sequence, received_at - sent[sequence]))
             seen[bot].append(sequence)
+            if sequence not in published:
+                published.add(sequence)
+                sender = BOTS[(sequence - 1) % len(BOTS)]
+                on_message({"round": count, "sequence": sequence, "from": sender,
+                            "text": data.decode()})
         raise RuntimeError("시험이 중단됐습니다.")
 
     with ExitStack() as stack:
@@ -95,13 +101,13 @@ def run_bots(addr, processes, count, stop, sides, sent, seen, observations):
                 reader.join()
 
 
-def compare(addr, processes, count, stop):
+def compare(addr, processes, count, stop, on_message):
     sides, sent = {}, {}
     seen = {bot: [] for bot in BOTS}
     observations = []
     error = None
     try:
-        run_bots(addr, processes, count, stop, sides, sent, seen, observations)
+        run_bots(addr, processes, count, stop, sides, sent, seen, observations, on_message)
     except (EOFError, OSError, RuntimeError, ValueError) as caught:
         error = str(caught) or "봇 메시지 수신 시간이 초과됐습니다."
 

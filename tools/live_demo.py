@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 import traceback
+from uuid import uuid4
 
 from live_demo_bots import compare
 
@@ -94,20 +95,27 @@ class Trial:
         self.stop = stop
         self.lock = threading.Lock()
         self.worker = None
-        self.state = {"status": "idle", "round": None, "error": None, "results": {}}
+        self.state = {"status": "idle", "round": None, "error": None, "results": {},
+                      "run_id": None, "messages": []}
 
     def snapshot(self):
         with self.lock:
-            return dict(self.state, results=dict(self.state["results"]))
+            return dict(self.state, results=dict(self.state["results"]),
+                        messages=list(self.state["messages"]))
 
     def start(self):
         with self.lock:
             if self.state["status"] == "running" or self.stop.is_set():
                 return False
-            self.state = {"status": "running", "round": 1, "error": None, "results": {}}
+            self.state = {"status": "running", "round": 1, "error": None, "results": {},
+                          "run_id": uuid4().hex, "messages": []}
             self.worker = threading.Thread(target=self.run)
             self.worker.start()
             return True
+
+    def record_message(self, message):
+        with self.lock:
+            self.state["messages"].append(message)
 
     def run(self):
         try:
@@ -115,7 +123,8 @@ class Trial:
                 with self.lock:
                     self.state["round"] = backends
                 with room(backends, self.stop) as (port, processes):
-                    result, error = compare((LOOPBACK, port), processes, backends, self.stop)
+                    result, error = compare((LOOPBACK, port), processes, backends, self.stop,
+                                            self.record_message)
                 with self.lock:
                     self.state["results"][str(backends)] = result
                 if error:

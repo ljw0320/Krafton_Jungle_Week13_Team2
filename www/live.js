@@ -11,6 +11,25 @@ const encoder = new TextEncoder();
 const messageLimit = 4096;
 let socket;
 
+function appendChatMessage(text, source) {
+  const atBottom = messages.scrollHeight - messages.scrollTop - messages.clientHeight < 8;
+  const item = document.createElement('li');
+  item.className = 'chat-message';
+  if (source) {
+    const label = document.createElement('small');
+    label.className = 'live-bot-source';
+    label.textContent = source;
+    const content = document.createElement('span');
+    content.textContent = text;
+    item.append(label, content);
+  } else {
+    item.textContent = text;
+  }
+  messages.append(item);
+  if (messages.children.length > 200) messages.firstElementChild.remove();
+  if (atBottom) messages.scrollTop = messages.scrollHeight;
+}
+
 function connectChat() {
   const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
   chatStatus.textContent = '공용방에 연결하는 중입니다.';
@@ -38,13 +57,7 @@ function connectChat() {
       return;
     }
 
-    const atBottom = messages.scrollHeight - messages.scrollTop - messages.clientHeight < 8;
-    const item = document.createElement('li');
-    item.className = 'chat-message';
-    item.textContent = event.data;
-    messages.append(item);
-    if (messages.children.length > 200) messages.firstElementChild.remove();
-    if (atBottom) messages.scrollTop = messages.scrollHeight;
+    appendChatMessage(event.data);
   });
 
   socket.addEventListener('close', () => {
@@ -82,6 +95,23 @@ const testStatus = document.getElementById('test-status');
 const testApi = '/api/live-test';
 let monitoringTest = false;
 let requesting = false;
+let startRequested = false;
+let testPollTimer;
+let feedRunId = null;
+let feedCount = 0;
+const renderedResults = [];
+
+function renderTestFeed(runId, feed) {
+  if (typeof runId !== 'string' || !runId || !Array.isArray(feed)) return;
+  if (runId !== feedRunId) {
+    feedRunId = runId;
+    feedCount = 0;
+  }
+  for (; feedCount < feed.length; feedCount++) {
+    const {round, from, text} = feed[feedCount];
+    appendChatMessage(text, `${round}회차 · 봇 ${from}`);
+  }
+}
 
 function addMetric(list, label, value, detail) {
   const row = document.createElement('div');
@@ -150,8 +180,14 @@ function renderStatus(data) {
     failed: ['실패', round, data.error].filter(Boolean).join(' · ')
   };
   if (!Object.hasOwn(labels, data.status)) throw new Error('알 수 없는 시험 상태');
-  renderResult(1, data.results[1]);
-  renderResult(2, data.results[2]);
+  for (const round of [1, 2]) {
+    const result = data.results[round];
+    const snapshot = JSON.stringify(result);
+    if (snapshot === renderedResults[round]) continue;
+    renderResult(round, result);
+    renderedResults[round] = snapshot;
+  }
+  renderTestFeed(data.run_id, data.messages);
   testStatus.dataset.state = data.status;
   if (testStatus.textContent !== labels[data.status]) {
     testStatus.textContent = labels[data.status];
@@ -161,11 +197,12 @@ function renderStatus(data) {
 
 async function requestTest(method) {
   if (requesting || (method === 'POST' && monitoringTest)) return;
+  clearTimeout(testPollTimer);
   requesting = true;
-  runTest.disabled = true;
   if (method === 'POST') {
     // The trial may start even if the response never reaches this page.
     monitoringTest = true;
+    runTest.disabled = true;
     testStatus.textContent = '시험 시작을 요청하는 중입니다.';
     testStatus.dataset.state = 'running';
   }
@@ -190,9 +227,23 @@ async function requestTest(method) {
   } finally {
     requesting = false;
     runTest.disabled = monitoringTest;
-    if (monitoringTest) setTimeout(() => requestTest('GET'), 750);
+    if (startRequested && !monitoringTest) {
+      startRequested = false;
+      void requestTest('POST');
+    } else {
+      startRequested = false;
+      testPollTimer = setTimeout(() => requestTest('GET'), monitoringTest ? 350 : 1500);
+    }
   }
 }
 
-runTest.addEventListener('click', () => requestTest('POST'));
+runTest.addEventListener('click', () => {
+  if (monitoringTest || startRequested) return;
+  if (requesting) {
+    startRequested = true;
+    runTest.disabled = true;
+    return;
+  }
+  void requestTest('POST');
+});
 requestTest('GET');
