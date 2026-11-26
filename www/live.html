@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>공용 채팅방</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="live.css">
+  <script src="live.js" defer></script>
+</head>
+<body class="chat-page">
+  <main class="live">
+    <section class="chat flow-panel live-chat" aria-labelledby="chat-heading">
+      <header class="chat-header">
+        <h1 id="chat-heading">공용 채팅방</h1>
+        <p id="chat-status" role="status">공용방에 연결하는 중입니다.</p>
+        <button id="reconnect" type="button" hidden>다시 연결</button>
+      </header>
+      <ul id="messages" class="chat-messages" role="log" aria-label="공용방 메시지" tabindex="0"></ul>
+      <form id="composer" class="chat-composer">
+        <label for="message">메시지</label>
+        <textarea id="message" rows="2" aria-describedby="message-limit"></textarea>
+        <small id="message-limit">최대 4,096바이트 · Shift+Enter로 줄 바꿈</small>
+        <div class="chat-actions">
+          <button id="send" type="submit" disabled>보내기</button>
+        </div>
+        <p id="chat-notice" class="chat-notice" role="status"></p>
+      </form>
+    </section>
+
+    <section class="chat flow-panel live-test" aria-labelledby="test-heading">
+      <h2 id="test-heading">백엔드 비교</h2>
+      <p class="live-explanation">각 회차에서 봇 10명이 15초 동안 메시지 30건을 나누어 보냅니다. 전달 지연은 이 실행에서 측정한 값입니다.</p>
+      <button id="run-test" type="button" disabled>봇 10명 시험</button>
+      <p id="test-status" role="status">시험 상태를 확인하는 중입니다.</p>
+      <div class="live-results">
+        <section class="flow-panel live-result" aria-labelledby="round-1-heading">
+          <h3 id="round-1-heading">백엔드 1개</h3>
+          <div id="round-1"></div>
+        </section>
+        <section class="flow-panel live-result" aria-labelledby="round-2-heading">
+          <h3 id="round-2-heading">백엔드 2개</h3>
+          <div id="round-2"></div>
+        </section>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

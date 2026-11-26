@@ -14,19 +14,21 @@
 #include <sys/ioctl.h>
 #include <sys/random.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
 
 #include "../src/http.h"
 #include "../src/server.h"
 #include "../src/stat.h"
+#include "live_wire.h"
 #include "room.h"
 #include "ws.h"
 
 #define MAX_USERS 6000
 #define MAX_CONNS 6064
 #define FRAME_MAX 16384
-#define TEXT_MAX 4096
+#define TEXT_MAX LIVE_TEXT_MAX
 #define IN_CAP (FRAME_MAX + 14)
 #define OUT_CAP 65536
 #define OUT_RESERVE 1024
@@ -38,8 +40,8 @@
 #define SLOW_SEC 10
 #define EVENTS 64
 
-enum state { HANDSHAKE, WAITING, PAIRED, ALONE, CLOSING };
-enum blocked { RUNNING, OWN_QUEUE, PEER_QUEUE };
+enum state { HANDSHAKE, WAITING, PAIRED, ALONE, LIVE, CLOSING };
+enum blocked { RUNNING, OWN_QUEUE, PEER_QUEUE, HUB_QUEUE };
 struct user {
     int fd, dead, counted, wait_pos;
     uint32_t interest, trace;
@@ -54,6 +56,10 @@ struct user {
 };
 
 static int epfd, users, conns, listener_fd, accept_paused;
+static int hub_fd = -1, hub_waiters;
+static char backend_id;
+static struct live_record hub_input, hub_output;
+static size_t hub_offset;
 static struct user *dirty, *garbage, *active;
 static struct user *waiting[MAX_USERS];
 static int nwaiting;
@@ -238,6 +244,74 @@ static void interest(struct user *u, uint32_t mask) {
     u->interest = mask;
 }
 
+static void lose_hub(void) {
+    fprintf(stderr, "live room relay disconnected\n");
+    close(hub_fd);
+    hub_fd = -1;
+    for (struct user *u = active; u; u = u->next)
+        if (!u->dead && u->state == LIVE) drop(u);
+}
+
+static void hub_interest(uint32_t mask) {
+    struct epoll_event ev = { .events = mask, .data.ptr = &hub_fd };
+    if (epoll_ctl(epfd, EPOLL_CTL_MOD, hub_fd, &ev) < 0) lose_hub();
+}
+
+static void publish(struct user *u, const unsigned char *p, size_t len) {
+    if (hub_output.used) {
+        u->blocked = HUB_QUEUE;
+        hub_waiters = 1;
+        interest(u, u->interest & ~EPOLLIN);
+        return;
+    }
+    hub_output.bytes[0] = (unsigned char)(len >> 8);
+    hub_output.bytes[1] = (unsigned char)len;
+    memcpy(hub_output.bytes + 2, p, len);
+    hub_output.used = len + 2;
+    hub_offset = 0;
+    int rc = live_write(hub_fd, &hub_output, &hub_offset);
+    if (rc < 0) lose_hub();
+    else if (!rc) hub_interest(EPOLLIN | EPOLLOUT);
+    else hub_output.used = 0;
+}
+
+static void hub_event(uint32_t mask) {
+    if (hub_fd < 0) return;
+    if (mask & (EPOLLERR | EPOLLHUP)) {
+        lose_hub();
+        return;
+    }
+    if (mask & EPOLLIN) {
+        int rc = live_read(hub_fd, &hub_input);
+        if (rc < 0 || (rc && !ws_utf8(hub_input.bytes + 2, hub_input.used - 2))) {
+            lose_hub();
+            return;
+        }
+        if (rc) {
+            for (struct user *u = active; u; u = u->next) {
+                if (u->dead || u->state != LIVE) continue;
+                if (queue_frame(u, 1, hub_input.bytes + 2, hub_input.used - 2, OUT_RESERVE) < 0) {
+                    slow_closed++;
+                    drop(u);
+                }
+            }
+            hub_input.used = 0;
+        }
+    }
+    if ((mask & EPOLLOUT) && hub_output.used) {
+        int rc = live_write(hub_fd, &hub_output, &hub_offset);
+        if (rc < 0) { lose_hub(); return; }
+        if (!rc) return;
+        hub_output.used = 0;
+        hub_interest(EPOLLIN);
+        if (hub_waiters) {
+            for (struct user *u = active; u; u = u->next)
+                if (!u->dead && u->blocked == HUB_QUEUE) resume_input(u);
+            hub_waiters = 0;
+        }
+    }
+}
+
 static void closing(struct user *u) {
     leave_room(u);
     users -= u->counted;
@@ -330,6 +404,11 @@ static void handle_text(struct user *u, const unsigned char *p, size_t len, int 
         violation(u, 1007);
         return;
     }
+    if (u->state == LIVE) {
+        if (len) publish(u, p, len);
+        else violation(u, 1008);
+        return;
+    }
     if (len && (p[0] == 'm' || p[0] == 'i') && !paired) {
         chat_event(u, 0, (char)p[0], len);
         return;
@@ -370,7 +449,8 @@ static void handle_frame(struct user *u, const struct ws_frame *f, unsigned char
     if (f->op) u->paired_at_start = u->state == PAIRED;
     int paired = u->paired_at_start && u->state == PAIRED;
     if (type == 2) {
-        if (paired && f->len) {
+        if (u->state == LIVE) violation(u, 1003);
+        else if (paired && f->len) {
             if (f->len > u->image_left) violation(u, 1008);
             else if (forward(u, 2, p, f->len, 0)) u->image_left -= f->len;
         } else chat_event(u, 0, 'b', f->len);
@@ -400,6 +480,7 @@ static void http_reply(struct user *u, int status) {
         reason = "OK";
         extra = "Content-Type: application/json\r\n";
         break;
+    case 403: reason = "Forbidden"; break;
     case 404: reason = "Not Found"; break;
     case 405: reason = "Method Not Allowed"; extra = "Allow: GET\r\n"; break;
     case 413: reason = "Content Too Large"; break;
@@ -428,27 +509,35 @@ static ssize_t handshake(struct user *u) {
     if (total <= 0) return 0;
     const char *query = memchr(r.target, '?', r.target_len);
     size_t path_len = query ? (size_t)(query - r.target) : r.target_len;
+    int live = backend_id && path_len == 8 && !memcmp(r.target, "/ws/live", 8);
     char accept[29];
     const char *v;
     size_t vlen;
     if (r.method != M_GET) http_reply(u, 405);
     else if (r.target_len == 8 && memcmp(r.target, "/ws/stat", 8) == 0) http_reply(u, 200);
-    else if (path_len != 8 || memcmp(r.target, "/ws/chat", 8) != 0) http_reply(u, 404);
+    else if (!live && (path_len != 8 || memcmp(r.target, "/ws/chat", 8) != 0)) http_reply(u, 404);
+    /* The same-origin demo gateway validates and removes the browser Origin. */
+    else if (live && http_header(&r, buf, "Origin", &v, &vlen) != 0) http_reply(u, 403);
     else if (!r.ws || http_header(&r, buf, "Sec-WebSocket-Key", &v, &vlen) != 1 ||
              ws_accept(v, vlen, accept) < 0) http_reply(u, 400);
     else if (http_header(&r, buf, "Sec-WebSocket-Version", &v, &vlen) != 1 ||
              vlen != 2 || memcmp(v, "13", 2) != 0) http_reply(u, 426);
-    else if (users >= MAX_USERS) http_reply(u, 503);
+    else if (users >= MAX_USERS || (live && hub_fd < 0)) http_reply(u, 503);
     else {
         char reply[192];
         int len = snprintf(reply, sizeof(reply), "HTTP/1.1 101 Switching Protocols\r\n"
                            "Connection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Accept: %s\r\n\r\n", accept);
         append(u, reply, len);
-        u->trace = http_trace(r.target, r.target_len);
+        if (!live) u->trace = http_trace(r.target, r.target_len);
         u->counted = 1;
         users++;
         u->ping_at = now_ms() + 1000 * PING_SEC;
-        join_waiting(u);
+        if (live) {
+            char hello[32];
+            int hello_len = snprintf(hello, sizeof(hello), "{\"backend\":\"%c\"}", backend_id);
+            u->state = LIVE;
+            if (queue_frame(u, 1, hello, (size_t)hello_len, 0) < 0) drop(u);
+        } else join_waiting(u);
     }
     return total;
 }
@@ -602,6 +691,10 @@ static int run(int listener) {
     struct epoll_event event = { .events = EPOLLIN, .data.ptr = NULL };
     epfd = epoll_create1(0);
     if (epfd < 0 || epoll_ctl(epfd, EPOLL_CTL_ADD, listener, &event) < 0) return -1;
+    if (hub_fd >= 0) {
+        event.data.ptr = &hub_fd;
+        if (epoll_ctl(epfd, EPOLL_CTL_ADD, hub_fd, &event) < 0) return -1;
+    }
     int64_t match_at = now_ms() + MATCH_MS, status_at = now_ms() + 1000;
     for (;;) {
         struct epoll_event events[256];
@@ -614,6 +707,7 @@ static int run(int listener) {
         for (int i = 0; i < count; i++) {
             struct user *u = events[i].data.ptr;
             uint32_t mask = events[i].events;
+            if (events[i].data.ptr == &hub_fd) { hub_event(mask); continue; }
             if (!u) { accept_users(listener); continue; }
             if (u->dead) continue;
             if (mask & (EPOLLERR | EPOLLHUP)) { drop(u); continue; }
@@ -645,11 +739,28 @@ static int run(int listener) {
     }
 }
 
+static int connect_hub(int port) {
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) return -1;
+    struct sockaddr_in addr = { .sin_family = AF_INET, .sin_port = htons(port),
+                                .sin_addr.s_addr = htonl(INADDR_LOOPBACK) };
+    int one = 1;
+    struct timeval timeout = {.tv_sec = 3};
+    char ready;
+    if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one)) == 0 &&
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) == 0 &&
+        connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0 &&
+        recv(fd, &ready, 1, 0) == 1 && ready == '+') return fd;
+    close(fd);
+    return -1;
+}
+
 int main(int argc, char **argv) {
-    char *end = NULL;
-    long port = argc == 2 ? strtol(argv[1], &end, 10) : 0;
-    if (port < 1 || port > 65535 || *end) {
-        fprintf(stderr, "usage: ./chatd <port>\n");
+    int port = argc >= 2 ? live_port(argv[1]) : -1;
+    int hub_port = argc == 5 ? live_port(argv[3]) : -1;
+    if (port < 0 || (argc != 2 && (argc != 5 || strcmp(argv[2], "--live") ||
+        hub_port < 0 || (strcmp(argv[4], "A") && strcmp(argv[4], "B"))))) {
+        fprintf(stderr, "usage: ./chatd <port> [--live <hub-port> A|B]\n");
         return 1;
     }
     unsigned seed;
@@ -658,6 +769,14 @@ int main(int argc, char **argv) {
     if (n != sizeof(seed)) { perror("getrandom"); return 1; }
     srandom(seed);
     signal(SIGPIPE, SIG_IGN);
+    if (hub_port > 0) {
+        hub_fd = connect_hub(hub_port);
+        if (hub_fd < 0) {
+            fprintf(stderr, "cannot join live room relay on 127.0.0.1:%d\n", hub_port);
+            return 1;
+        }
+        backend_id = argv[4][0];
+    }
     int listener = server_listen(INADDR_LOOPBACK, port);
     if (listener < 0) return 1;
     if (run(listener) < 0) {

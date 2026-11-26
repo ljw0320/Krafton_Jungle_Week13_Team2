@@ -6,6 +6,7 @@
 - 서버 확인은 run_in_background를 쓰지 않고, 한 번의 `bash -lc` 안에서 띄우기 → 확인 → `kill`로 끝낸다. `pause()`나 이벤트 루프는 스스로 끝나지 않는다.
 - 비대화형 bash에서 `&`로 띄운 프로세스는 SIGINT를 무시한다. `valgrind ... & SP=$!; kill -INT $SP; wait $SP`는 영원히 멈춘다. `kill $SP`(SIGTERM)로 끝내도 valgrind는 HEAP/LEAK 요약을 출력한다.
 - 확인용 스크립트는 `cd <사본> || exit 1`로 시작하고, 출력 문구의 `->`는 따옴표로 감싼다. `cd`가 실패하거나 `echo fds 6 -> 0`이 리다이렉션이 되어 저장소 루트에 파일이 생겼다(Task 6, 7). WSL이 종료되면 `/tmp`가 비워진다. 끝에 `git status`를 본다.
+- 기존 서버가 고정 시험 포트를 쓰면 WSL의 임시 사본에서 `unshare -Urn`으로 시험 네트워크를 분리한다. `ip link set lo up` 뒤 `setpriv --bounding-set=-all --inh-caps=-all --ambient-caps=-all`로 시험을 실행하면 파일 접근 권한 검사도 정상적으로 동작한다.
 - 테스트 스크립트에 실제 CR 바이트를 넣지 않는다. `.gitattributes`의 `eol=lf` 때문에 커밋하면 사라져 요청이 깨진다. `\r\n`은 `printf '%b'`로 만든다. `$(...)`는 끝의 줄바꿈을 지우므로 `\r\n\r\n`으로 끝나는 요청은 파이프로 보낸다(프록시 Task 4, 5).
 - 검증 에이전트가 끝난 뒤 백그라운드 작업이 남아 있으면 8080이 비었는지 `ss -tln`으로 보고 끝낸다(프록시 Task 6).
 - `pkill -f <패턴>`은 그 패턴이 들어 있는 `bash -lc` 자신도 죽인다(종료 코드 15). `kill $SP`처럼 PID로 끝내거나 `pkill -x <이름>`을 쓴다.
